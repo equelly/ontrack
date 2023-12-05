@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.complect{
+    width: auto;
+    background-color: #fff;
+    padding: 8px 12px; 
+    border-left: 2px solid #4caf96;
+    word-wrap: break-word;
+}
