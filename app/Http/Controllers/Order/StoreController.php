@@ -23,6 +23,7 @@ class StoreController extends BaseController
           $mashines = Mashine::all();
             $error = 'Заполните поле заявки или выберите необходимый пункт в комплектации';
             return view('order.create', compact('error', 'sets', 'mashines'));
+            
         }elseif(isset($data['sets'])){
           $sets = $data['sets'];
             //a из массива $data удалим
@@ -36,7 +37,7 @@ class StoreController extends BaseController
               }
         
         }
-              //добавление уникального значения по ключам в массиве первого аргумента метода firstOrCreate()
+      //добавление уникального значения по ключам в массиве первого аргумента метода firstOrCreate()
       //-------------------------
       // $order = Order::firstOrCreate ([
       //   'content'=>$data['content']], $data);

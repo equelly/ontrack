@@ -1,7 +1,9 @@
 @extends('layouts.main')
 @section('content')
-
-    @foreach($mashines as $mashine) 
+<div class="mt-1 flex justify-content-center p-4 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
+<h1  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  {{count($orders)}}</h1>
+</div>    
+@foreach($mashines as $mashine) 
         
     <div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
@@ -9,10 +11,10 @@
                     <div class="col-md-8">
                         <div class="card-body">
                             <div class="flex justify-content-between mt-1">
-                            
+                           
                              
                             <a href="{{route('order.create')}}">    
-                            <h5 class="card-title">ЭКГ№{{$mashine->number}}</h5></a>
+                            <h5 class="card-title"><strong>ЭКГ№{{$mashine->number}}</strong></h5></a>
                              </div> <hr>      
                                     @foreach($mashine->orders as $order)
                                     
