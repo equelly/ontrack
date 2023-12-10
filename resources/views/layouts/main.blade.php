@@ -33,7 +33,7 @@
       <a href="{{route('order.create')}}" class="block mt-4 lg:inline-block lg:mt-0 text-teal-200 hover:text-white mr-4">
         Сформировать заявку
       </a>
-      <a href="#responsive-header" class="block mt-4 lg:inline-block lg:mt-0 text-teal-200 hover:text-white">
+      <a href="{{route('order.search')}}" class="block mt-4 lg:inline-block lg:mt-0 text-teal-200 hover:text-white">
         Поиск 
       </a>
     </div>
@@ -61,7 +61,7 @@ window.onscroll = () =>{
 }
 
 
-
+/*
 let submit = document.querySelector("#button_id")
 submit.addEventListener('click', function(event){
 
@@ -84,7 +84,7 @@ submit.addEventListener('click', function(event){
   };
   
   
-})
+})*/
 </script>
   </body>
 </html>

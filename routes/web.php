@@ -25,4 +25,6 @@ Route::group(['namespace'=>'App\Http\Controllers\Order'], function (){
     Route::get('/orders/{order}/edit', 'EditController')->name('order.edit');
     Route::patch('/orders/{order}', 'UpdateController')->name('order.update');
     Route::delete('/orders/{order}', 'DestroyController')->name('order.destroy');
+    Route::get('/search', 'SearchController')->name('order.search');
+  
 });
