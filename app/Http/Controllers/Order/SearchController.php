@@ -16,7 +16,7 @@ class SearchController extends BaseController
 
       
         
-        if(isset($_GET['action']) && $_GET['action'] == 'search'){
+        if(isset($_GET['action']) && $_GET['action'] == 'search' || isset($_GET['page']) ){
 
             $query = Order::query();
             $user_name = 'невыбрано';
@@ -57,8 +57,8 @@ class SearchController extends BaseController
             if(isset($_GET['content']) && $_GET['content'] != ''){
                 $query->where('content', 'like', "%{$_GET['content']}%");
               }
-              //dd($query);
-                $searched_orders = $query->get();
+              //метод paginate() разделит результаты на фрагментированные страницы, а get() выведет все найденные
+                $searched_orders = $query->where('content', '!=', '')->orderBy('created_at')->paginate(10);
 //dd($searched_orders);
                 $users = User::all();
                 $categories = Category::all();

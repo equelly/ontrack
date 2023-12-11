@@ -1,12 +1,12 @@
 @extends('layouts.main')
 @section('content')
-<div class="mt-1 flex justify-content-center p-4 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
+<div class="mt-1 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
     <h1  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  </h1>
 </div>
     <div class="flex justify-content-center mt-1">
 <form action="" method="GET">
     <div class="row g-3 align-items-center">
-        <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
+        <div class="card shadow p-3 m-3 bg-white rounded" style="width: 20rem">
             <p><div class="col-auto">
                 <label for="category_id" class="col-form-label">Категория </label>
             </div>
@@ -47,7 +47,7 @@
                 <input type="date" id="date_id" class="form-control w-60" name="created_at">
             </div></p>
             <p><div class="col-auto">
-                <label for="content_id" class="col-form-label">содержание </label>
+                <label for="content_id" class="col-form-label">фрагмент заявки</label>
             </div>
             <div class="col-auto">
                 <input type="text" id="content_id" class="form-control" name="content">

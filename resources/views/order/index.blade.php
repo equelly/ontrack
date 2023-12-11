@@ -1,6 +1,6 @@
 @extends('layouts.main')
 @section('content')
-<div class="mt-1 flex justify-content-center p-4 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
+<div class="mt-1 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
 <h1  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  {{count($orders)}}</h1>
 </div>    
 @foreach($mashines as $mashine) 
