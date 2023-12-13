@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return view('welcome');
+    return view('main');
 });
 Route::group(['namespace'=>'App\Http\Controllers\Order'], function (){
     Route::get('/orders', 'IndexController')->name('order.index');
@@ -27,4 +27,17 @@ Route::group(['namespace'=>'App\Http\Controllers\Order'], function (){
     Route::delete('/orders/{order}', 'DestroyController')->name('order.destroy');
     Route::get('/search', 'SearchController')->name('order.search');
   
+});
+Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin'], function (){
+    Route::group(['namespace'=>'Order'], function(){
+         Route::get('/order', 'IndexController')->name('admin.order.index');
+         Route::get('/order/create', 'CreateController')->name('admin.order.create');
+         Route::post('/order', 'StoreController')->name('admin.order.store');
+         Route::get('/order/{order}', 'ShowController')->name('admin.order.show');
+         Route::get('/order/category/{category}', 'ShowByCategoryController')->name('admin.order.showByCategory');
+         Route::get('/order/{order}/edit', 'EditController')->name('admin.order.edit');
+         Route::patch('/order/{order}', 'UpdateController')->name('admin.order.update');
+         Route::delete('/order/{order}', 'DestroyController')->name('admin.order.delete');
+    });
+
 });

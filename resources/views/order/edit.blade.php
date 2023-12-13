@@ -32,7 +32,7 @@
                 </div>  
                 <hr>  
                 <label for="content_id"> заявка на выполнение работ,<br>доставку ТМЦ:</label><br>
-                  <textarea class="focus:outline-none focus:ring focus:border-blue-500" rows="7" cols="25" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;" >{{$order->content}}</textarea><br>
+                  <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;" >{{$order->content}}</textarea><br>
                 <div class="flex justify-between">  
                   <label for="foto" class="pt-3">фото</label>
                   <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="text" name="image" id="foto" placeholder="вставить"  value="{{$order->image}}"style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
