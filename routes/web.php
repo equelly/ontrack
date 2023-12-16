@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Order;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
+Route::get('/main', function () {
     return view('main');
 });
 Route::group(['namespace'=>'App\Http\Controllers\Order'], function (){
@@ -28,7 +29,7 @@ Route::group(['namespace'=>'App\Http\Controllers\Order'], function (){
     Route::get('/search', 'SearchController')->name('order.search');
   
 });
-Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin'], function (){
+Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'middleware'=>'admin'], function (){
     Route::group(['namespace'=>'Order'], function(){
          Route::get('/order', 'IndexController')->name('admin.order.index');
          Route::get('/order/create', 'CreateController')->name('admin.order.create');
@@ -41,3 +42,7 @@ Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin'], fun
     });
 
 });
+Auth::routes();
+
+Route::get('/', [App\Http\Controllers\IndexController::class, 'index'])->name('welcome');
+//Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
