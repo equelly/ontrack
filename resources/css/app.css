@@ -6,7 +6,7 @@
     width: auto;
     background-color: #fff;
     padding: 8px 12px; 
-    border-left: 2px solid #4caf96;
+    border-left: 2px solid #7db4d280;
     word-wrap: break-word;
 }
 html,
@@ -34,7 +34,7 @@ header,
 }
 
 .top-nav-collapse {
-  background-color: rgba(125,180,210,0.5) !important;
+  background-color: #7db4d280 !important;
 }
 
 .navbar:not(.top-nav-collapse) {
@@ -50,9 +50,16 @@ header,
 .card {
   background-color: rgba(125,180,210,0.5);
 }
+.card-text {
+  
+  font-size: 1.1rem;
+}
 
 .md-form label {
   color: #ffffff;
+}
+.row {
+  margin-left: 0.3rem;
 }
 
 h6 {

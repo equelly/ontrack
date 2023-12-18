@@ -26,8 +26,8 @@
                 <ul class="navbar-nav ms-auto pr-2">
                     <li style="color: #ffffff;">
                         @if(isset(Auth::user()->name)) 
-                         пользователь: {{Auth::user()->name}}
-                         @else <a class="nav-link mt-3" href="{{route('register')}}">{{ __('Регистрация') }}</a>
+                          {{Auth::user()->name}}
+                         @else <a class="nav-link mt-2" href="{{route('register')}}">{{ __('Регистрация') }}</a>
                          @endif
                     </li>      
                 </ul>
@@ -35,36 +35,40 @@
                 menu
                 </button>
               <div class="collapse navbar-collapse" id="navbarSupportedContent-7">
-                <ul class="m-2 navbar-nav mr-auto " >
-                <li class="nav-item active mt-2">
-                @guest
-                    @if (Route::has('login'))
+                <ul class="flex justify-around m-2 navbar-nav mr-auto ">
+                  <li class="nav-item active mt-2">
+                  @guest
+                      @if (Route::has('login'))
+                          
+                              <a class="nav-link" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
                         
-                            <a class="nav-link" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
-                       
-                    @endif
-                @endguest  
-                @can('view', auth()->user())  
-                <form id="logout-form" action="{{ route('logout') }}" method="POST">    
-                     @csrf
-                    <input class="nav-item" type="submit" value="{{ __('Выйти') }}">  
-                </form>
-                </li>
-                <li class="nav-item">
+                      @endif
+                  </li>
+                  @endguest  
+                  @can('view', auth()->user())  
+                  <li class="nav-item active">
+                  <form action="{{ route('logout') }}" method="POST">    
+                      @csrf
+                      <input class="nav-link" type="submit" value="{{ __('Выйти из аккаунта') }}">  
+                  </form>
+                  </li>
+                </ul> 
+                <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
+                <li class="nav-item ml-3">
                     <a href="{{route('order.index')}}" class="nav-link">
                         К заявкам
                     </a></li>
-                <li class="nav-item">
+                <li class="nav-item item ml-3">
                     <a href="{{route('order.create')}}" class="nav-link">
                         Сформировать заявку
                     </a></li>
-                <li class="nav-item">
+                <li class="nav-item item ml-3">
                     <a href="{{route('order.search')}}" class="nav-link">
                         Поиск 
                     </a></li>
                 
                     @if(auth()->user()->role == 'admin')
-                <li class="nav-item">   
+                <li class="nav-item item ml-3">   
                     
                     <a href="{{route('admin.order.index')}}" class="nav-link">
                         Admin 

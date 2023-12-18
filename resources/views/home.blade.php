@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container">
+<div class="container bd-red-100">
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="card m-10">
@@ -25,10 +25,10 @@
                         } else {
                             echo "Доброй ночи!";
                         }
-                        ?>
+                        ?><br>
                         Авторизация выполнена успешно.
                     </p><hr class="bg-white">
-                    <div class="row justify-content-center">
+                    <div class="mt-4 row justify-content-center">
                     <a class="btn btn-outline-primary w-75" href="{{route('order.index')}}" style="float: center;">вход от имени {{Auth::user()->name}}</a>
                     </div>
                 </div>
