@@ -9,3 +9,86 @@
     border-left: 2px solid #4caf96;
     word-wrap: break-word;
 }
+html,
+body,
+header,
+.view {
+  height: 100%;
+}
+
+@media (max-width: 740px) {
+  html,
+  body,
+  header,
+  .view {
+    height: 1500px;
+  }
+}
+@media (min-width: 800px) and (max-width: 850px) {
+  html,
+  body,
+  header,
+  .view {
+    height: 1500px;
+  }
+}
+
+.top-nav-collapse {
+  background-color: rgba(125,180,210,0.5) !important;
+}
+
+.navbar:not(.top-nav-collapse) {
+  background: transparent !important;
+}
+
+@media (max-width: 1500px) {
+  .navbar:not(.top-nav-collapse) {
+    background: #7DB4D2 !important;
+  }
+}
+
+.card {
+  background-color: rgba(125,180,210,0.5);
+}
+
+.md-form label {
+  color: #ffffff;
+}
+
+h6 {
+  line-height: 2.5;
+}
+.btn  {
+  color:#ffffff;
+  background-color:rgba(125,180,210) ;
+}
+.collapse {
+  visibility: visible;
+}
+
+#roles {
+	background-color:rgba(125,180,210,0.3) ;
+	color:#ffffff;
+	border-bottom: 1px solid white; 
+}
+h1 {
+    font-size: 2.5em;
+	color: #ffffff;
+}
+
+h2 {
+    font-size: 2.0em;
+	color: #ffffff;
+}
+
+p {
+    font-size: 1.4em;
+}
+input.nav-item {
+  margin: 0;
+  padding: 0;
+  border: none;
+  color: white;
+  background-color: transparent;
+  text-decoration: none;
+}

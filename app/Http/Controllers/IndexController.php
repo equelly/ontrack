@@ -24,7 +24,7 @@ class IndexController extends Controller
      */
     public function index()
     {
-       
+        //@dd(auth()->user()->role);
         return view('welcome');//home
     }
 }

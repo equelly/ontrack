@@ -1,4 +1,4 @@
-@extends('layouts.main')
+@extends('layouts.app')
 @section('content')
 <form action="{{route('order.update', $order->id)}}" method="POST" class="flex justify-center">
     @csrf

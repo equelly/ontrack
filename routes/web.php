@@ -45,4 +45,4 @@ Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'mid
 Auth::routes();
 
 Route::get('/', [App\Http\Controllers\IndexController::class, 'index'])->name('welcome');
-//Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
+Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');

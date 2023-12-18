@@ -5,7 +5,7 @@
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="card m-10">
-                <div class="card-header" style="font-size: 18px;">{{ __('Панель входа') }}</div>
+                <div class="card-header" style="font-size: 18px;color: white;">{{ __('Панель входа') }}</div>
 
                 <div class="card-body">
                     @if (session('status'))
@@ -14,21 +14,22 @@
                         </div>
                     @endif
 
-                    <p>{{ Auth::user() == null ? 'Nemo': Auth::user()->name}}!
+                    <p  style="font-size: 1.5rem;color: white;">
                     <?php
                         $t = date("H");
 
                         if ($t < "10") {
                             echo "Доброе утро!";
-                        } elseif ($t < "20") {
+                        } elseif ($t < "17") {
                             echo "Добрый день!";
                         } else {
                             echo "Доброй ночи!";
                         }
                         ?>
-                    </p><hr>
+                        Авторизация выполнена успешно.
+                    </p><hr class="bg-white">
                     <div class="row justify-content-center">
-                    <a class="btn btn-outline-primary w-75" href="{{route('order.index')}}" style="float: center;">вход на личную страницу</a>
+                    <a class="btn btn-outline-primary w-75" href="{{route('order.index')}}" style="float: center;">вход от имени {{Auth::user()->name}}</a>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-@extends('layouts.main')
+@extends('layouts.app')
 @section('content')
 <div class="mt-1 flex justify-content-center p-4 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
 
