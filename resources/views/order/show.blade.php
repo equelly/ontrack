@@ -1,21 +1,25 @@
 @extends('layouts.app')
 @section('content')
-    <div class="flex justify-content-center mt-1">
+    <div class="flex justify-content-center mt-10">
 
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
         <div class="flex justify-content-between">
             <p class="card-text"><small class="text-muted">{{$order->cteated_at}}</small></p>
-            <form action="{{route('order.destroy', $order->id)}}" method="POST">
-                @csrf
-                @method('delete')
-            <button type="submit" class="card-text"><small class="text-muted">удалить</small></button>
-            </form>
+           
+            @if(auth()->user() && (auth()->user()->id == $order->user_id_req))
+                
+                <form action="{{route('order.destroy', $order->id)}}" method="POST"> 
+                    @csrf
+                    @method('DELETE')
+                <button type="submit" class="btn-close" data-bs-dismiss="toast" aria-label="Close"><small class="text-muted">удалить</small></button>
+                </form>
+            @endif
         </div>
         <div class="row g-0">
             <div class="col-md-8">
                 <div class="card-body">
                     <div class="flex justify-content-between mt-1">
-                        <h5 class="card-title">ЭКГ№{{$order->mashine->number}}</h5><a href="{{route('order.edit', $order->id)}}"><small class="text-muted">обработать ></small></a>
+                        <h4 class="card-title"><strong>ЭКГ№{{$order->mashine->number}}</strong></h4><a href="{{route('order.edit', $order->id)}}"><small class="text-muted">обработать ></small></a>
                     </div>  
                     <hr>  
                     <small class="text-muted">Добавлена: {{$order->created_at}}</small>
@@ -27,7 +31,7 @@
           
             @foreach($mashine_sets->sets as $set)
             
-                <p>{{$set->name}}</p>
+                <p  style="font-size: 1.1rem;">{{$set->name}}</p>
             @endforeach
                
 

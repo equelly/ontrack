@@ -5,7 +5,7 @@
     @method('patch')
     <div class="flex justify-content-center mt-1">
 
-        <div class="card shadow p-3 m-3 bg-white rounded" style="width: 20rem">
+        <div class="card shadow p-3 m-3 bg-white rounded">
           <div class="flex justify-between">
             <div class="card-text"><small class="text-muted">от {{$order->created_at}}</small></div>
             <div>
@@ -42,8 +42,8 @@
                     <div class="form-check">
                         
                         @foreach($sets as $set)   
-                        <p><label class="form-check-label hover:font-cyan-300  hover:text-cyan-400" for="{{$set->id}}">
-                            <input class="form-check-input checked:bg-cyan-300 hover:border-cyan-300" type="checkbox" name = "sets[]" value="{{$set->id}}" id="{{$set->id}}" 
+                        <p  style="font-size: 1rem;"><label class="form-check-label hover:font-cyan-300  hover:text-blue-400" for="{{$set->id}}">
+                            <input class="form-check-input checked:bg-cyan-300 hover:border-blue-300" type="checkbox" name = "sets[]" value="{{$set->id}}" id="{{$set->id}}" 
                             @foreach($mashine_sets as $mashine_set)
                             @if ($set ->id == $mashine_set->set_id and $mashine_set->mashine_id == $order->mashine->id)
                             {{'checked'}}
@@ -60,7 +60,7 @@
                 
                 
                 <div class="flex justify-end">
-                  <button type="submit" class="inline-block text-sm px-4 py-2 leading-none border rounded text-white border-teal-400 bg-teal-500 hover:text-teal-500 hover:bg-cyan-300 mt-4 lg:mt-0 callout mb-1 w-90">обновить</button>
+                  <button type="submit" style="background-color: rgb(59 130 246 / 0.7);" class="inline-block text-sm px-4 py-2 leading-none border rounded text-white border-teal-400 hover:text-teal-500 hover:bg-cyan-300 mt-4 lg:mt-0 callout mb-1 w-90">обновить</button>
                 </div>
             </div>
           </div>

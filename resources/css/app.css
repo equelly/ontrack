@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 .complect{
-    width: auto;
+    width: 20rem;
     background-color: #fff;
     padding: 8px 12px; 
     border-left: 2px solid #7db4d280;
@@ -49,10 +49,17 @@ header,
 
 .card {
   background-color: rgba(125,180,210,0.5);
+  width: 40rem;
 }
 .card-text {
   
   font-size: 1.1rem;
+}
+
+@media (max-width: 850px) {
+  .card {
+    width: auto;
+  }
 }
 
 .md-form label {

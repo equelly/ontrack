@@ -1,12 +1,12 @@
 @extends('layouts.app')
 @section('content')
-<div class="mt-1 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
-    <h1  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  </h1>
+<div class="mt-4 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
+    <h5  class="flex justify-content-end p-2" style="width: auto">Параметры поиска заявок:</h5>
 </div>
     <div class="flex justify-content-center mt-1">
 <form action="" method="GET">
     <div class="row g-3 align-items-center">
-        <div class="card shadow p-3 m-3 bg-white rounded" style="width: 20rem">
+        <div class="card shadow mt-3 bg-white rounded">
             <p><div class="col-auto">
                 <label for="category_id" class="col-form-label">Категория </label>
             </div>
@@ -55,7 +55,7 @@
             <input type="hidden" id="content_id" class="form-control" name="action" value="search">
         
                 <div class="flex justify-end">
-                  <button id = "button_id" type="submit" class=" w-60 inline-block text-sm px-4 py-2 leading-none border rounded text-white border-teal-400 bg-teal-500 hover:text-teal-500 hover:bg-white mt-4 lg:mt-0 callout mb-1 w-90">найти</button>
+                  <button style="background-color: rgb(59 130 246 / 70%)" type="submit" class=" w-60 inline-block text-sm px-4 py-2 leading-none border rounded text-white border-teal-400 hover:text-teal-500 hover:bg-white callout m-3">найти</button>
                 </div>
         </div>
     </div>
