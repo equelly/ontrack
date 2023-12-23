@@ -43,7 +43,12 @@ Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'mid
          Route::patch('/order/{order}', 'UpdateController')->name('admin.order.update');
          Route::delete('/order/{order}', 'DestroyController')->name('admin.order.delete');
     });
-
+    Route::group(['namespace'=>'Mashine'], function(){
+        Route::get('/mashine', 'IndexController')->name('admin.mashine.index');
+        Route::get('/mashine/create', 'CreateController')->name('admin.mashine.create');
+        Route::post('/mashine', 'StoreController')->name('admin.mashine.store');
+        Route::delete('/mashine/{mashine}', 'DestroyController')->name('admin.mashine.delete');
+    });
 });
 Auth::routes();
 
