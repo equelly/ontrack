@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Order;
+namespace App\Http\Controllers\User\Order;
 
 use App\Http\Requests\Order\UpdateRequest;
 use Illuminate\Routing\Controller as BaseController;

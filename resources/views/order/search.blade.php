@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('content')
 <div class="mt-4 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
-    <h5  class="flex justify-content-end p-2" style="width: auto">Параметры поиска заявок:</h5>
+    <h5  class="flex justify-content-end p-2" style="width: auto">Параметры поиска:</h5>
 </div>
     <div class="flex justify-content-center mt-1">
 <form action="" method="GET">

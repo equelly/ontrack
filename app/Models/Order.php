@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -32,6 +33,12 @@ class Order extends Model
     //объект класса Order связан с объектом Category через поле (свойство)'category_id' табл. 'orders' (класса Order) и поле ('id')  табл. 'users'
     public function user(){
         return $this->belongsTo(User::class, 'user_id_req', 'id');
+
+    }
+    //геттер преобразования даты создания в объкт класса Carbon для доступа к методам этого класса 
+    // в html вызвать функцию можно по названию 'dateAsCarbon'
+    public function getDateAsCarbonAttribute(){
+        return Carbon::parse($this->created_at);
 
     }
 }

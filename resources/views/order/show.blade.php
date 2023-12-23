@@ -21,8 +21,9 @@
                     <div class="flex justify-content-between mt-1">
                         <h4 class="card-title"><strong>ЭКГ№{{$order->mashine->number}}</strong></h4><a href="{{route('order.edit', $order->id)}}"><small class="text-muted">обработать ></small></a>
                     </div>  
-                    <hr>  
-                    <small class="text-muted">Добавлена: {{$order->created_at}}</small>
+                    <hr> 
+                  
+                    <small class="text-muted">Добавлена: {{$order->dateAsCarbon->diffForHumans()}}</small>
                         <p class="card-text">{{$order->content}}</p>
                 </div>
                 </div>

@@ -96,7 +96,8 @@ h2 {
 }
 
 p {
-    font-size: 1.4em;
+    font-size: 1.1rem;
+    color: #040404;
 }
 input.nav-item {
   margin: 0;

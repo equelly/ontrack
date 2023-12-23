@@ -15,11 +15,13 @@
                              
                             <a href="{{route('order.create')}}">    
                             <h5 class="card-title"><strong>ЭКГ№{{$mashine->number}}</strong></h5></a>
-                             </div> <hr>      
+                             </div> <hr>  
+                                
                                     @foreach($mashine->orders as $order)
                                     
                                         @if($order->category_id==1 and $order->content != '')
-                                        <small class="text-muted">от {{$order->created_at}}</small>
+                                        
+                                        <small class="text-muted"> {{$order->carbon->day}} {{$order->carbon->translatedFormat('F')}} {{$order->carbon->year}} ({{$order->carbon->diffForHumans()}})</small>
                                         <p class="card-text">{{$order->content}}</p>
                                         
                                         <a href="{{route('order.show', $order->id)}}"><small class="text-muted">подробнее ></small></a><hr>

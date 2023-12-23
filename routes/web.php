@@ -18,15 +18,18 @@ use Illuminate\Support\Facades\Route;
 Route::get('/main', function () {
     return view('main');
 });
-Route::group(['namespace'=>'App\Http\Controllers\Order'], function (){
-    Route::get('/orders', 'IndexController')->name('order.index');
-    Route::get('/orders/create', 'CreateController')->name('order.create');
-    Route::post('/orders', 'StoreController')->name('order.store');//для указания обработчика запроса в форме
-    Route::get('/orders/{order}', 'ShowController')->name('order.show');
-    Route::get('/orders/{order}/edit', 'EditController')->name('order.edit');
-    Route::patch('/orders/{order}', 'UpdateController')->name('order.update');
-    Route::delete('/orders/{order}', 'DestroyController')->name('order.destroy');
-    Route::get('/search', 'SearchController')->name('order.search');
+
+Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middleware'=>'user'], function (){
+    Route::group(['namespace'=>'Order'], function(){
+        Route::get('/orders', 'IndexController')->name('order.index');
+        Route::get('/orders/create', 'CreateController')->name('order.create');
+        Route::post('/orders', 'StoreController')->name('order.store');//для указания обработчика запроса в форме
+        Route::get('/orders/{order}', 'ShowController')->name('order.show');
+        Route::get('/orders/{order}/edit', 'EditController')->name('order.edit');
+        Route::patch('/orders/{order}', 'UpdateController')->name('order.update');
+        Route::delete('/orders/{order}', 'DestroyController')->name('order.destroy');
+        Route::get('/search', 'SearchController')->name('order.search');
+    });
   
 });
 Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'middleware'=>'admin'], function (){
