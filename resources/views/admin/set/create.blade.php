@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 @section('content')
-<form action="{{route('admin.mashine.store')}}" method="POST" class="flex justify-center">
+<form action="{{route('admin.set.store')}}" method="POST" class="flex justify-center">
     @csrf
     
     <div class="flex justify-content-center mt-5">
@@ -11,8 +11,8 @@
             <div class="card-body">
              <div class="text-red-500"></div> 
                 <div class="flex justify-between">
-                  <label for="mashine" class="pt-3 ml-4">Оборудование № </label>
-                  <input class="focus:outline-none focus:ring focus:border-blue-500 w-30 mr-4" type="text" name="number" id="mashine" placeholder="  вставить"  value="" style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6" autofocus>
+                  <label for="set" class="pt-3 ml-4">Наименование позиции</label>
+                  <input class="focus:outline-none focus:ring focus:border-blue-500 w-30 mr-4" type="text" name="name" id="set" placeholder="   вставить"  value="" style="width: 20rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6" autofocus>
                 </div>
               
               <div class="flex justify-end">

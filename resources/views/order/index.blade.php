@@ -4,7 +4,9 @@
 <h4  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  {{count($orders)}}</h4>
 </div>    
 @foreach($mashines as $mashine) 
-        
+<div id="app">
+<example-component></example-component>
+</div>   
     <div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
                 <div class="row g-0">
@@ -30,7 +32,7 @@
                               
                         </div>
                     </div>
-                    <div class="col-md-4 complect">
+                    <div class="col-md-4 complect bg-gray-200">
                     <a href="{{route('order.edit', $order->id)}}"><i><h4>комплектация</h4></i><hr></a>
                             <ul> 
                             @foreach($mashine->sets as $set)
@@ -40,6 +42,7 @@
                             @endforeach
                             </ul>
                     </div>
+                    
                 </div>
         </div>
     </div>     

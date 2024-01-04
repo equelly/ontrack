@@ -3,17 +3,16 @@
 <form action="{{route('order.store')}}" method="POST" class="flex justify-center">
     @csrf
 
-    <!-- временный инпут для обхода ошибки при добавлении по default !=null поле 'user_id_req' -->
+    <!-- добавление id пользователя поле 'user_id_req' -->
     <input type="hidden" name="user_id_req" value="{{(auth()->user()->id)}}">
     <input type="hidden" name="category_id" value="1">
     
     
     <div class="flex justify-content-center mt-5">
     <span class="error" aria-live="polite"></span>
-        <div class="card shadow mt-10 bg-white rounded">
+        <div class="card shadow mt-10 p-2 bg-white rounded">
         <div class="row g-0">
-        <div class="w-100">
-            <div class="card-body">
+          <div class="col-md-6 mr-3">
              <div class="text-red-500"></div> 
                 <div class="flex justify-end mb-2">
                   <label class="pt-2" for="mashine_id">ЭКГ№:</label>
@@ -33,7 +32,8 @@
                   <label for="foto" class="pt-3">фото</label>
                   <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="text" name="image" id="foto" placeholder="вставить"  value="" style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
                   </div>
-                  <div class="col-md-4 complect">
+          </div>
+                  <div class="col-md-5 complect">
                     <i><h4><label for="sets">комплектация</label></h4></i><hr>
                       <div class="form-check">
                        
@@ -56,7 +56,7 @@
           
             
         </div>
-        </div>
+        
     </div> 
 </form> 
 

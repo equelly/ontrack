@@ -19,7 +19,7 @@
           <!-- Navbar -->
           <nav class="navbar navbar-expand-lg navbar-dark fixed-top scrolling-navbar">
             <div class="container">
-              <a class="navbar-brand" href="/">
+              <a class="navbar-brand ml-3" href="/">
                 <strong>SMS</strong>
               </a>
              
@@ -31,7 +31,7 @@
                          @endif
                     </li>      
                 </ul>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent-7" aria-controls="navbarSupportedContent-7" aria-expanded="false" aria-label="Toggle navigation">
+                <button class="navbar-toggler mr-3" type="button" data-toggle="collapse" data-target="#navbarSupportedContent-7" aria-controls="navbarSupportedContent-7" aria-expanded="false" aria-label="Toggle navigation">
                 menu
                 </button>
               <div class="collapse navbar-collapse" id="navbarSupportedContent-7">

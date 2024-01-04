@@ -49,6 +49,12 @@ Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'mid
         Route::post('/mashine', 'StoreController')->name('admin.mashine.store');
         Route::delete('/mashine/{mashine}', 'DestroyController')->name('admin.mashine.delete');
     });
+    Route::group(['namespace'=>'Set'], function(){
+        Route::get('/set', 'IndexController')->name('admin.set.index');
+        Route::get('/set/create', 'CreateController')->name('admin.set.create');
+        Route::post('/set', 'StoreController')->name('admin.set.store');
+        Route::delete('/set/{mashine}', 'DestroyController')->name('admin.set.delete');
+    });
 });
 Auth::routes();
 

@@ -3,8 +3,6 @@
 @tailwind utilities;
 
 .complect{
-    width: 20rem;
-    background-color: #fff;
     padding: 8px 12px; 
     border-left: 2px solid #7db4d280;
     word-wrap: break-word;
@@ -49,7 +47,8 @@ header,
 
 .card {
   background-color: rgba(125,180,210,0.5);
-  width: 40rem;
+  max-width: 30rem;
+  margin: auto;
 }
 .card-text {
   

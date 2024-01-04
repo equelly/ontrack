@@ -16,7 +16,7 @@
 @foreach($searched_orders as $order) 
     
     <div class="flex justify-content-center mt-1">
-        <div class="card shadow p-3 m-3 bg-white rounded">
+        <div class="card shadow p-3 m-3 bg-white rounded"  style="width: 40rem">
                 <div class="row g-0">
                     <div class="col-md-8">
                         <div class="card-body">

@@ -3,8 +3,7 @@
 <!-- вставляем переменные фрагменты -->
 
 @foreach($mashines as $mashine) 
-        
-    <div class="flex justify-content-center mt-1">
+<div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
                 <div class="row g-0">
                     <div class="col-md-8">
@@ -39,6 +38,6 @@
                     </div>
                 </div>
         </div>
-    </div>     
+    </div>       
     @endforeach 
 @endsection
