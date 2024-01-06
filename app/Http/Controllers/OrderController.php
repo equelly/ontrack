@@ -109,7 +109,7 @@ return view('order.create', compact('error', 'sets', 'mashines'));
       'user_id_req'=>'string',
       'sets'=>'array',
     ]);
-   
+   dd($data);
  //сохраним массив sets  из полученных данных в отдельном массиве $sets для передачи в модель MashineSet и последующей записи в БД табл.mashine_sets
  if(isset($data['sets'])){
 

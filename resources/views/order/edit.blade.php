@@ -3,6 +3,8 @@
 <form action="{{route('order.update', $order->id)}}" method="POST" class="flex justify-center">
     @csrf
     @method('patch')
+    <!-- добавим скрытое поле input для передачи в базу id пользавателя, который внес изменения -->
+    <input type="hidden" name="user_exec" value="{{(auth()->user()->id)}}">
     <div class="flex justify-content-center mt-1">
 
         <div class="card shadow p-3 m-3 bg-white rounded">

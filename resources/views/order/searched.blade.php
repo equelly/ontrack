@@ -18,7 +18,7 @@
     <div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded"  style="width: 40rem">
                 <div class="row g-0">
-                    <div class="col-md-8">
+                    
                         <div class="card-body">
                             <div class="flex justify-content-between mt-1">
                            
@@ -33,11 +33,8 @@
                                         <a href="{{route('order.show', $order->id)}}"><small class="text-muted">подробнее ></small></a><hr>
 
                         </div>
-                    </div>
-                    <div class="col-md-4 complect">
-                    <a href="{{route('order.edit', $order->id)}}"><i><h4>комплектация</h4></i><hr></a>
+                    
 
-                    </div>
                 </div>
         </div>
     </div>     

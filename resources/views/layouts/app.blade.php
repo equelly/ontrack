@@ -37,15 +37,15 @@
               <div class="collapse navbar-collapse" id="navbarSupportedContent-7">
                 <ul class="flex justify-around m-2 navbar-nav mr-auto ">
                   <li class="nav-item active mt-2">
-                  @guest
-                      @if (Route::has('login'))
+                  @if(!(auth()->user()) and Route::has('login'))
+                      
                           
                               <a class="nav-link" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
                         
                       @endif
                   </li>
-                  @endguest  
-                  @can('view', auth()->user())  
+                  
+                  @if((auth()->user() !== null))  
                   <li class="nav-item active">
                   <form action="{{ route('logout') }}" method="POST">    
                       @csrf
@@ -74,7 +74,7 @@
                         Admin 
                     </a></li>
                     @endif
-                    @endcan
+                    @endif
                 
                 </ul>
               </div>

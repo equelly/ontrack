@@ -1,11 +1,12 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container bd-red-100">
+<div class="view" style="background-image: url('dist/img/quarry.jpg'); background-repeat: no-repeat; background-size: cover; background-position: center center;">
+     
     <div class="row justify-content-center">
-        <div class="col-md-8">
+        <div class="col-md-8 mt-5">
             <div class="card mt-10 shadow rounded"">
-                <div class="card-header flex justify-content-between" style="font-size: 18px;color: white;">
+                <div class="card-header flex justify-content-between" style="font-size: 1.3rem ;color: white;">
                     <div>{{ __('Панель входа') }}</div>
                     <div>{{Auth::user()->name}}</div>
                 </div>

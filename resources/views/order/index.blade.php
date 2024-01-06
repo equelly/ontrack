@@ -4,9 +4,7 @@
 <h4  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  {{count($orders)}}</h4>
 </div>    
 @foreach($mashines as $mashine) 
-<div id="app">
-<example-component></example-component>
-</div>   
+  
     <div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
                 <div class="row g-0">

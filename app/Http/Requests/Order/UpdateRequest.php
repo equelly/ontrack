@@ -27,7 +27,7 @@ class UpdateRequest extends FormRequest
             'image'=>'',
             'mashine_id'=>'string',
             'category_id'=>'',
-            'user_id_req'=>'string',
+            'user_exec'=>'string',
             'sets'=>'array',
         ];
     }

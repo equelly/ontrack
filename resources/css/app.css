@@ -39,6 +39,11 @@ header,
   background: transparent !important;
 }
 
+.navbar-dark .navbar-nav .nav-link {
+  color: rgba(255,255,255,1);
+  font-size: 1.1rem;
+}
+
 @media (max-width: 1500px) {
   .navbar:not(.top-nav-collapse) {
     background: #7DB4D2 !important;

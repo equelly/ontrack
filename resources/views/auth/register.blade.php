@@ -9,7 +9,7 @@
                 <!--Grid row-->
                 <div class="row mt-5">
                   <!--Grid column-->
-                  <div class="col-md-6 mb-5 mt-md-0 mt-5 white-text text-center text-md-left">
+                  <div class="col-md-6 mb-5 mt-md-0 white-text text-center text-md-left">
                     <h1 class="m-3 h1-responsive font-weight-bold wow fadeInLeft" data-wow-delay="0.3s">Система мониторинга сервиса</h1>
                     
 					<hr class="bg-white wow fadeInLeft" data-wow-delay="0.3s">
@@ -64,22 +64,26 @@
                                 </div>
                                 <div class="md-form">
                                   <i class="fas fa-lock prefix text-light active"></i>
-                                    <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
+                                    <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password" placeholder="Пароль">
                                       @error('password')
                                         <span class="invalid-feedback" role="alert">
                                           <strong>{{ $message }}</strong>
                                         </span>
                                       @enderror
-                                  <label for="password">Пароль</label>
+                                      <div class="remember  callout d-flex justify-content-end">
+                                        <label for="pass" id="check" class="mt-2">показать пароль</label>
+                                          <input type="checkbox" id = "pass" onclick="document.getElementById('password').type == 'password' ? document.getElementById('password').type = 'text' : document.getElementById('password').type ='password';">
+                                          
+                                      </div>
                                 </div>
                                 <div class="md-form">
                                   <i class="fas fa-lock prefix text-light active"></i>
-                                    <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password">
-                                      <label for="password-confirm" class="col-form-label text-md-end">{{ __('Подтвердить пароль') }}</label>
-                                  
-                                      <div class="remember  callout d-flex justify-content-start">
+                                    <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password" placeholder="Подтвердить пароль">
+                                      
+                                      <div class="remember  callout d-flex justify-content-end" class="mt-2">
+                                        <label for="confirm" id="check" class="mt-2">показать подтверждение</label>
                                           <input type="checkbox" id="confirm" onclick="document.getElementById('password-confirm').type == 'password' ? document.getElementById('password-confirm').type = 'text' : document.getElementById('password-confirm').type ='password';">
-                                          <label for="confirm" id="check">показать пароль</label>
+                                          
                                       </div>
                                   </div>
                                 <div class="text-center white-text active mt-4">
