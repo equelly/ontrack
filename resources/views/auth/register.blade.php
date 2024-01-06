@@ -55,23 +55,33 @@
                                 <label for="email" class="active">Ваш email</label>
                                 </div>
                                 <div class="md-form">
-                                <label for="roles" id="roles"></label>
-                                <select name="roles" id="roles"class="browser-default custom-select custom-select-lg mb-3">
+                                <label for="role" id="roles"></label>
+                                <select name="role" id="role"class="browser-default custom-select custom-select-lg mb-3">
                                         <option selected class="option">Категория персонала</option>
                                         <option value="эксплуатационный">эксплуатационный</option>
                                         <option value="обслуживающий">обслуживающий</option>
                                     </select>
                                 </div>
-                                        <div class="md-form">
-                                <i class="fas fa-lock prefix text-light active"></i>
-                                        <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
-                                        @error('password')
-                                            <span class="invalid-feedback" role="alert">
-                                                <strong>{{ $message }}</strong>
-                                            </span>
-                                        @enderror
-                                <label for="password">Пароль</label>
+                                <div class="md-form">
+                                  <i class="fas fa-lock prefix text-light active"></i>
+                                    <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
+                                      @error('password')
+                                        <span class="invalid-feedback" role="alert">
+                                          <strong>{{ $message }}</strong>
+                                        </span>
+                                      @enderror
+                                  <label for="password">Пароль</label>
                                 </div>
+                                <div class="md-form">
+                                  <i class="fas fa-lock prefix text-light active"></i>
+                                    <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password">
+                                      <label for="password-confirm" class="col-form-label text-md-end">{{ __('Подтвердить пароль') }}</label>
+                                  
+                                      <div class="remember  callout d-flex justify-content-start">
+                                          <input type="checkbox" id="confirm" onclick="document.getElementById('password-confirm').type == 'password' ? document.getElementById('password-confirm').type = 'text' : document.getElementById('password-confirm').type ='password';">
+                                          <label for="confirm" id="check">показать пароль</label>
+                                      </div>
+                                  </div>
                                 <div class="text-center white-text active mt-4">
                                 <input type="hidden" name="action" value="login" >
                                 <input class="btn form-control" name="submit" type="submit" value="Зарегистрироваться"></button>
