@@ -8,6 +8,7 @@ use Illuminate\Routing\Controller as BaseController;
 use App\Models\Mashine;
 use App\Models\Order;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class SearchController extends BaseController
@@ -59,7 +60,15 @@ class SearchController extends BaseController
               }
               //метод paginate() разделит результаты на фрагментированные страницы, а get() выведет все найденные
                 $searched_orders = $query->where('content', '!=', '')->orderBy('created_at')->paginate(10);
-//dd($searched_orders);
+        //нужно передать в коллекцию $searched_orders дату в формате Carbon
+        foreach($searched_orders as $order){
+            
+               // dd($data);
+                $order->createCarbon = Carbon::parse($order->created_at);
+                $order->updatedCarbon = Carbon::parse($order->updated_at);
+           
+        }
+       
                 $users = User::all();
                 $categories = Category::all();
                 $mashines = Mashine::all();

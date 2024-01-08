@@ -27,10 +27,19 @@
                             <h5 class="card-title"><strong>ЭКГ№{{$order->mashine->number}}</strong></h5></a>
                              </div> <hr>      
 
-                                        <small class="text-muted">от {{$order->created_at}}</small>
+                                        <small class="text-muted">от {{$order->createCarbon->day}} {{$order->createCarbon->translatedFormat('F')}} {{$order->createCarbon->year}}</small><br>
+                                        <small class="text-muted">автор:</small>{{$order->user->name}}<br>
+                                       
+                                        
+                                       @if(isset($order->userExec->name) && $order->userExec->name != '') 
+                                        <small class="text-muted">изменено пользователем: </small>
+                                           
+                                         {{$order->userExec->name}}({{$order->updatedCarbon->day}} {{$order->updatedCarbon->translatedFormat('F')}} {{$order->updatedCarbon->year}}) 
+                                        @endif
+                                        <hr>
                                         <p class="card-text">{{$order->content}}</p>
                                         
-                                        <a href="{{route('order.show', $order->id)}}"><small class="text-muted">подробнее ></small></a><hr>
+                                        <a href="{{route('order.show', $order->id)}}"><small class="text-muted">подробнее ></small></a>
 
                         </div>
                     

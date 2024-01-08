@@ -7,12 +7,7 @@
             <p class="card-text"><small class="text-muted">{{$order->cteated_at}}</small></p>
            
             @if(auth()->user() && (auth()->user()->id == $order->user_id_req))
-                
-                <form action="{{route('order.destroy', $order->id)}}" method="POST"> 
-                    @csrf
-                    @method('DELETE')
-                <button type="submit" class="btn-close" data-bs-dismiss="toast" aria-label="Close"><small class="text-muted">удалить</small></button>
-                </form>
+
             @endif
         </div>
         <div class="row g-0">
@@ -30,8 +25,13 @@
                     <small class="text-muted">автор: {{$order->user->name}}</small>
                         <p class="card-text">{{$order->content}}</p>
                 </div>
-                </div>
-                <div class="col-md-4 complect">
+                <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 
+                    @csrf
+                    @method('DELETE')
+                <button type="submit" class="btn" data-bs-dismiss="toast" aria-label="Close">удалить</button>
+                </form>
+            </div>
+            <div class="col-md-4 complect">
             <i><h4>комплектация</h4></i><hr>
           
             @foreach($mashine_sets->sets as $set)
