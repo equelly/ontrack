@@ -31,7 +31,7 @@
                         </div>
                     </div>
                     <div class="col-md-4 complect bg-gray-200">
-                    <a href="{{route('order.edit', $order->id)}}"><i><h4>комплектация</h4></i><hr></a>
+                    <i><h4>комплектация</h4></i><hr>
                             <ul> 
                             @foreach($mashine->sets as $set)
                                
