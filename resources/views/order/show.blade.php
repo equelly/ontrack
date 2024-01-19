@@ -25,24 +25,33 @@
                     <small class="text-muted">автор: {{$order->user->name}}</small>
                         <p class="card-text">{{$order->content}}</p>
                 </div>
-                <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 
-                    @csrf
-                    @method('DELETE')
-                <button type="submit" class="btn" data-bs-dismiss="toast" aria-label="Close">удалить</button>
-                </form>
+
             </div>
             <div class="col-md-4 complect">
-            <i><h4>комплектация</h4></i><hr>
-          
-            @foreach($mashine_sets->sets as $set)
+                <i><h4>комплектация</h4></i><hr>
             
-                <p  style="font-size: 1.1rem;">{{$set->name}}</p>
-            @endforeach
-               
-
-                </div>
+                @foreach($mashine_sets->sets as $set)
                 
+                    <p  style="font-size: 1.1rem;">{{$set->name}}</p>
+                @endforeach
+                
+
+            </div>
+            @if ($order->image !== NULL)
+        <div class="flex justify-content-center mt-4">
+             <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' ">
         </div>
+            @endif
+            <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 
+                    @csrf
+                    @method('DELETE')
+                <button type="submit" class="btn m-3" data-bs-dismiss="toast" aria-label="Close">удалить заявку</button>
+                </form>
+        </div>
+     
+            
+        </div>
+
         </div>
     </div> 
 @endsection

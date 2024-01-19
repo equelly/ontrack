@@ -24,7 +24,7 @@ class StoreRequest extends FormRequest
         return [
             //
             'content'=>'',
-            'image'=>'',
+            'image'=>'file',
             'mashine_id'=>'string',
             'category_id'=>'',
             'user_id_req'=>'string',

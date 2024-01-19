@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<form action="{{route('order.store')}}" method="POST" class="flex justify-center">
+<form action="{{route('order.store')}}" method="POST" class="flex justify-center" enctype="multipart/form-data">
     @csrf
 
     <!-- добавление id пользователя поле 'user_id_req' -->
@@ -28,9 +28,9 @@
                 <hr>  
                 <label for="content_id"> заявка на выполнение работ,<br>доставку ТМЦ:</label><br>
                   <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;font-size: 1rem" placeholder="{{(isset($error)) ? $error : 'Текст заявки...'}}"></textarea><br>
-                  <div class="flex justify-between"> 
-                  <label for="foto" class="pt-3">фото</label>
-                  <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="text" name="image" id="foto" placeholder="вставить"  value="" style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
+                  <div class=""> 
+                  <label for="foto" class="pt-3">фото</label><br>
+                  <input class="" type="file" name="image" id="foto">
                   </div>
           </div>
                   <div class="col-md-5 complect">
