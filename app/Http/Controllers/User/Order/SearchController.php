@@ -53,7 +53,7 @@ class SearchController extends BaseController
                 
             }
             if(isset($_GET['created_at']) && $_GET['created_at'] != ''){
-                $query->where('created_at', $_GET['created_at']);
+                $query->where('created_at',  'like', "%{$_GET['created_at']}%");
             }
             if(isset($_GET['content']) && $_GET['content'] != ''){
                 $query->where('content', 'like', "%{$_GET['content']}%");
