@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<form action="{{route('order.update', $order->id)}}" method="POST" class="flex justify-center">
+<form action="{{route('order.update', $order->id)}}" method="POST" class="flex justify-center" enctype="multipart/form-data">
     @csrf
     @method('patch')
     <!-- добавим скрытое поле input для передачи в базу id пользавателя, который внес изменения -->
@@ -27,7 +27,7 @@
              
                 
                   <div class="flex justify-end">
-                    <div class="mr-3"><label class="pt-3" for="mashine_id">ЭКГ№: </label></div>
+                    <div class="mr-3"><label class="pt-3" for="mashine_id">ЭКgg№: </label></div>
                     <div><input class="border-blue-500 focus:outline-none focus:ring focus:border-blue-500 mt-3 w-20" style="width: 5rem; float: right; border-bottom: 2px solid #14B8A6;  border-right: 2px solid #14B8A6" type="text" name="machine_id" id="mashine_id" value="{{$order->mashine->number}}" readonly></div>
                   </div>  
                 <hr>  

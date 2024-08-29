@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 @section('content')
-<form action="{{route('admin.order.store')}}" method="POST">
+<form action="{{route('admin.order.store')}}" method="POST" enctype="multipart/form-data">
     @csrf
 
     <!-- добавление id пользователя поле 'user_id_req' -->

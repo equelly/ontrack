@@ -7,6 +7,7 @@ use Illuminate\Routing\Controller as BaseController;
 use App\Models\MashineSet;
 use App\Models\Order;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class UpdateController extends BaseController
 {
@@ -35,6 +36,15 @@ class UpdateController extends BaseController
             ]);
           }
         }
+             //обновляем изображение (file) в директорию storage/app/public
+      if(isset($data['image']) && $data['image']!== NULL){
+        //класс Storage метод put добавит изображение (file) в директорию storage/app/<первый аргумент функции>
+      $saveImage = Storage::put('public', $data['image']);
+      //разделим строку по символу "/" и сохраним в БД путь для вывода изображения
+      $pieces = explode("/", $saveImage);
+      
+      $data['image'] = $pieces[1];
+    }
       
           $order->update($data);
           
