@@ -99,7 +99,7 @@
           </li>
           <li class="nav-item">
             <a href="#" class="nav-link">
-              <i class="nav-icon fas fa-book"></i>
+            <span class="badge badge-info">{{count($users)}}</span>
               <p>
                 Пользователи
                 <i class="fas fa-angle-left right"></i>
@@ -107,15 +107,9 @@
             </a>
             <ul class="nav nav-treeview">
               <li class="nav-item">
-                <a href="#" class="nav-link">
+                <a href="{{route('admin.users.index')}}" class="nav-link">
                   <i class="far fa-circle nav-icon"></i>
-                  <p>Добавить</p>
-                </a>
-              </li>
-              <li class="nav-item">
-                <a href="#" class="nav-link">
-                  <i class="far fa-circle nav-icon"></i>
-                  <p>Редактировать</p>
+                  <p>Удалить</p>
                 </a>
               </li>
 

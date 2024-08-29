@@ -18,19 +18,20 @@ class IndexController extends BaseController
         //dd($data);
 
         $mashines = Mashine::all();
-        $orders = Order::all()->where('category_id', '=','1')->where('content', '!=', '');
-        $sets = Set::all();
-        $mashine_sets = MashineSet::all();
+         $orders = Order::all()->where('category_id', '=','1')->where('content', '!=', '');
+         $sets = Set::all();
+         $mashine_sets = MashineSet::all();
         //нужно передать в коллекцию $mashines дату в формате Carbon
         foreach($mashines as $mashine){
             foreach($mashine->orders as $data){
                 $data->carbon = Carbon::parse($data->created_at);
             };
+            
         }
 
         
         
-        return view('order.index', compact('mashines', 'sets', 'mashine_sets', 'orders'));
+        return view('order.index', compact('mashines', 'sets', 'mashine_sets', 'orders'));//
         
     }
 }

@@ -73,7 +73,7 @@
 
                                     @if (Route::has('password.request'))
                                         <a class="ml-4" href="{{ route('password.request') }}" style="color:aliceblue;">
-                                            {{ __('Забыли пароль?') }}
+                                            {{ __('Забыли пароль?asdf12345') }}
                                         </a>
                                     @endif
                                 

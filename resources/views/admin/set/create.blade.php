@@ -12,7 +12,7 @@
              <div class="text-red-500"></div> 
                 <div class="flex justify-between">
                   <label for="set" class="pt-3 ml-4">Наименование позиции</label>
-                  <input class="focus:outline-none focus:ring focus:border-blue-500 w-30 mr-4" type="text" name="name" id="set" placeholder="   вставить"  value="" style="width: 20rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6" autofocus>
+                  <input class="focus:outline-none focus:ring focus:border-blue-500 w-30 mr-4" type="text" name="name" id="set" placeholder="   вставить"  value="" style="width: 20rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6" autofocus required autocomplete="off">
                 </div>
               
               <div class="flex justify-end">

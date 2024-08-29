@@ -8,6 +8,7 @@ use App\Models\Mashine;
 use App\Models\MashineSet;
 use App\Models\Order;
 use App\Models\Set;
+use App\Models\User;
 
 class ShowByCategoryController extends BaseController
 {
@@ -24,8 +25,9 @@ class ShowByCategoryController extends BaseController
         $den_orders = Order::all()->where('category_id', '=','3')->where('content', '!=', '');
         $sets = Set::all();
         $mashine_sets = MashineSet::all();
+        $users = User::all();
      
-        return view('admin.order.showByCategory', compact('mashines', 'sets', 'mashine_sets', 'cur_orders', 'exc_orders', 'den_orders', 'orders', 'order_cat'));
+        return view('admin.order.showByCategory', compact('mashines', 'sets', 'mashine_sets', 'cur_orders', 'exc_orders', 'den_orders', 'orders', 'order_cat', 'users'));
     }
 
 }

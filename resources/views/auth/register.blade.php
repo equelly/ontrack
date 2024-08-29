@@ -56,11 +56,14 @@
                                 </div>
                                 <div class="md-form">
                                 <label for="role" id="roles"></label>
-                                <select name="role" id="role"class="browser-default custom-select custom-select-lg mb-3">
-                                        <option selected class="option">Категория персонала</option>
+                                <select name="role" id="role" class="form-control @error('role') is-invalid @enderror"">
+                                        <option value="" selected class="option">Категория персонала</option>
                                         <option value="эксплуатационный">эксплуатационный</option>
                                         <option value="обслуживающий">обслуживающий</option>
                                     </select>
+                                    @error('role')
+                                        <div class="alert alert-danger">{{ $message }}</div>
+                                    @enderror
                                 </div>
                                 <div class="md-form">
                                   <i class="fas fa-lock prefix text-light active"></i>
