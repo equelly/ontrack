@@ -15,14 +15,19 @@
                 <div class="card-body">
                     <div class="flex justify-content-between mt-1">
                         <h4 class="card-title"><strong>ЭКГ№{{$order->mashine->number}}</strong></h4>
-                        @if(auth()->user()->id == $order->user_id_req || auth()->user()->role == 'обслуживающий')    
+                        @if(auth()->user()->id == $order->user_id_req || auth()->user()->role == 'обслуживающий'|| auth()->user()->role == 'admin')    
                         <a href="{{route('order.edit', $order->id)}}"><small class="text-muted">обработать ></small></a>
                         @endif
                     </div>  
                     <hr> 
                   
                     <small class="text-muted">Добавлена: {{$order->dateAsCarbon->diffForHumans()}}</small><br>
+                    
                     <small class="text-muted">автор: {{$order->user->name}}</small>
+                    @if(isset($order->userExec->name) && $order->userExec->name != '') <br>
+                        <small class="text-muted">изменено: {{$order->updated_at->diffForHumans()}}</small><br>
+                        <small class="text-muted">пользователем: {{$order->userExec->name}}</small> 
+                    @endif
                         <p class="card-text">{{$order->content}}</p>
                 </div>
 

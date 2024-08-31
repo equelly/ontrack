@@ -6,9 +6,11 @@
     <div class="row justify-content-center">
         <div class="col-md-8 mt-5">
             <div class="card mt-10 shadow rounded"">
-                <div class="card-header flex justify-content-between" style="font-size: 1.3rem ;color: white;">
-                    <div>{{ __('Панель входа') }}</div>
-                    <div>{{Auth::user()->name}}</div>
+                <div class="card-header" style="font-size: 1.3rem; color: white;">
+                    <h2 class="justify-content-center">{{ __('Панель входа') }}</h2>
+                    <div>{{('пользователь: ')}}{{Auth::user()->name}}<br>
+                    {{('персонал: ')}}{{Auth::user()->role}}
+                </div>
                 </div>
                 
                 <div class="card-body">
