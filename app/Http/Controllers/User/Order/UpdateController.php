@@ -16,7 +16,7 @@ class UpdateController extends BaseController
     
  
         $data = $request->validated();
-       
+      
      //сохраним массив sets  из полученных данных в отдельном массиве $sets для передачи в модель MashineSet и последующей записи в БД табл.mashine_sets
      if(isset($data['sets'])){
     

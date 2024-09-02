@@ -30,7 +30,7 @@
                   <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;font-size: 1rem" placeholder="{{(isset($error)) ? $error : 'Текст заявки...'}}"></textarea><br>
                   <div class="flex justify-between"> 
                   <label for="foto" class="pt-3">фото</label>
-                  <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="text" name="image" id="foto" placeholder="вставить"  value="" style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
+                  <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="file" name="image" id="foto" placeholder="вставить"  value="" style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
                   </div>
           </div>
                   <div class="col-md-5 complect">

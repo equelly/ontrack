@@ -17,8 +17,14 @@
                     <div class="flex justify-content-between mt-1">
                         <h5 class="card-title">ЭКГ№{{$order->mashine->number}}</h5><a href="{{route('admin.order.edit', $order->id)}}"><small class="text-muted">обработать ></small></a>
                     </div>  
-                    <hr>  
-                    <small class="text-muted">Добавлена: {{$order->created_at}}</small>
+                    <hr>
+                    <small class="text-muted">Добавлена: {{$order->dateAsCarbon->diffForHumans()}}</small><br>
+                    
+                    <small class="text-muted">автор: {{$order->user->name}}</small><hr>
+                    @if(isset($order->userExec->name) && $order->userExec->name != '')
+                        <small class="text-muted">изменено: {{$order->updated_at->diffForHumans()}}</small><br>
+                        <small class="text-muted">пользователем: {{$order->userExec->name}}</small><hr>
+                    @endif
                         <p class="card-text">{{$order->content}}</p>
                 </div>
                 </div>

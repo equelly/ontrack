@@ -23,10 +23,10 @@
                   
                     <small class="text-muted">Добавлена: {{$order->dateAsCarbon->diffForHumans()}}</small><br>
                     
-                    <small class="text-muted">автор: {{$order->user->name}}</small>
-                    @if(isset($order->userExec->name) && $order->userExec->name != '') <br>
+                    <small class="text-muted">автор: {{$order->user->name}}</small><hr>
+                    @if(isset($order->userExec->name) && $order->userExec->name != '')
                         <small class="text-muted">изменено: {{$order->updated_at->diffForHumans()}}</small><br>
-                        <small class="text-muted">пользователем: {{$order->userExec->name}}</small> 
+                        <small class="text-muted">пользователем: {{$order->userExec->name}}</small><hr>
                     @endif
                         <p class="card-text">{{$order->content}}</p>
                 </div>

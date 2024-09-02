@@ -1,8 +1,10 @@
 @extends('layouts.admin')
 @section('content')
-<form action="{{route('admin.order.update', $order->id)}}" method="POST" class="flex justify-center">
+<form action="{{route('admin.order.update', $order->id)}}" method="POST" class="flex justify-center" enctype="multipart/form-data">
     @csrf
     @method('patch')
+     <!-- добавим скрытое поле input для передачи в базу id пользавателя, который внес изменения -->
+     <input type="hidden" name="user_exec" value="{{(auth()->user()->id)}}">
     <div class="flex justify-content-center mt-1">
 
 <div class="card shadow p-2 m-3 bg-white rounded">
@@ -33,7 +35,7 @@
             <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;" >{{$order->content}}</textarea><br>
             <div class="flex justify-between">  
               <label for="foto" class="pt-3">фото</label>
-              <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="text" name="image" id="foto" placeholder="вставить"  value="{{$order->image}}"style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
+              <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="file" name="image" id="foto" placeholder="вставить"  value="{{$order->image}}"style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
             </div>
         </div> 
         <div class="col-md-5 complect bg-gray-200 ml|mr-2">
