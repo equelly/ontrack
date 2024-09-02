@@ -9,6 +9,7 @@ use App\Models\Mashine;
 use App\Models\Set;
 use App\Models\MashineSet;
 use App\Models\Order;
+use Illuminate\Support\Facades\Storage;
 
 
 class StoreController extends BaseController
@@ -16,7 +17,7 @@ class StoreController extends BaseController
     public function __invoke(StoreRequest $request){
      
         $data = $request->validated();
-           
+        
         //сохраним массив sets  из полученных данных в отдельном массиве $sets для передачи в модель MashineSet и последующей записи в БД табл.mashine_sets
         if(!isset($data['sets']) and $data['content']== ''){
           $sets = Set::all();
@@ -43,6 +44,15 @@ class StoreController extends BaseController
       //   'content'=>$data['content']], $data);
      //-------------------------
       //добавление без провереки на уникальность
+           //добавляем изображение (file) в директорию storage/app/public
+           if(isset($data['image']) && $data['image']!== NULL){
+            //класс Storage метод put добавит изображение (file) в директорию storage/app/<первый аргумент функции>
+          $saveImage = Storage::put('public', $data['image']);
+          //разделим строку по символу "/" и сохраним в БД путь для вывода изображения
+          $pieces = explode("/", $saveImage);
+          
+          $data['image'] = $pieces[1];
+        }
       Order::create($data);
     
       return redirect()->route('admin.order.index');

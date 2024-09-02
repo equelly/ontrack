@@ -29,15 +29,19 @@
                 </div>
                 </div>
                 <div class="col-md-4 complect">
-            <i><h4>комплектация</h4></i><hr>
-          
-            @foreach($mashine_sets->sets as $set)
-            
-                <p>{{$set->name}}</p>
-            @endforeach
-               
-
+                    <i><h4>комплектация</h4></i><hr>
+                
+                    @foreach($mashine_sets->sets as $set)
+                    
+                        <p>{{$set->name}}</p>
+                    @endforeach
                 </div>
+                @if ($order->image !== NULL)
+                <div class="flex justify-content-center mt-4">
+                    <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' ">
+                </div>
+                @endif
+
                 
         </div>
         </div>
