@@ -15,17 +15,14 @@ class UpdateController extends BaseController
     
  
         $data = $request->validated();
+          // удалим старые записи из БД 
+          DB::table('mashine_sets')->where('mashine_id', '=', $order->mashine->id)->delete();
      //сохраним массив sets  из полученных данных в отдельном массиве $sets для передачи в модель MashineSet и последующей записи в БД табл.mashine_sets
      if(isset($data['sets'])){
     
       $sets = $data['sets'];
         //a из массива $data удалим
           unset($data['sets']);  
-          
-             // удалим старые записи из БД 
-              DB::table('mashine_sets')->where('mashine_id', '=', $order->mashine->id)->delete(); 
-              
-    
           foreach($sets as $set){
             MashineSet::firstOrCreate([
             'mashine_id'=>$order->mashine_id,
