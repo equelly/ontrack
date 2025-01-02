@@ -38,21 +38,23 @@ class StoreController extends BaseController
               }
         
         }
+        //добавляем изображение (file) в директорию storage/app/public
+        if(isset($data['image']) && $data['image']!== NULL){
+          //класс Storage метод put добавит изображение (file) в директорию storage/app/<первый аргумент функции>
+        $saveImage = Storage::put('public', $data['image']);
+        //разделим строку по символу "/" и сохраним в БД путь для вывода изображения
+        $pieces = explode("/", $saveImage);
+        
+        $data['image'] = $pieces[1];
+      }
       //добавление уникального значения по ключам в массиве первого аргумента метода firstOrCreate()
       //-------------------------
       // $order = Order::firstOrCreate ([
       //   'content'=>$data['content']], $data);
      //-------------------------
-      //добавление без провереки на уникальность
-           //добавляем изображение (file) в директорию storage/app/public
-           if(isset($data['image']) && $data['image']!== NULL){
-            //класс Storage метод put добавит изображение (file) в директорию storage/app/<первый аргумент функции>
-          $saveImage = Storage::put('public', $data['image']);
-          //разделим строку по символу "/" и сохраним в БД путь для вывода изображения
-          $pieces = explode("/", $saveImage);
-          
-          $data['image'] = $pieces[1];
-        }
+      
+           
+        //добавление без провереки на уникальность
       Order::create($data);
     
       return redirect()->route('admin.order.index');

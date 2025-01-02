@@ -2,7 +2,7 @@
 @section('content')
     <div class="flex justify-content-center mt-10">
 
-        <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
+        <div class="card shadow p-3 m-3 bg-white rounded">
         <div class="flex justify-content-between">
             <p class="card-text"><small class="text-muted">{{$order->cteated_at}}</small></p>
            
@@ -33,7 +33,7 @@
 
             </div>
             <div class="col-md-4 complect">
-                <i><h4>комплектация</h4></i><hr>
+                <i><h4>Необходимо укомплектовать:</h4></i><hr>
             
                 @foreach($mashine_sets->sets as $set)
                 
@@ -44,7 +44,7 @@
             </div>
             @if ($order->image !== NULL)
         <div class="flex justify-content-center mt-4">
-             <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' ">
+             <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' >
         </div>
             @endif
             <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 

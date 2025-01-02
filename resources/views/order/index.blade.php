@@ -31,7 +31,7 @@
                         </div>
                     </div>
                     <div class="col-md-4 complect bg-gray-200">
-                    <i><h4>комплектация</h4></i><hr>
+                    <i><h4>ЭКГ№{{$mashine->number}} необходимо укомплектовать</h4></i><hr>
                             <ul> 
                             @foreach($mashine->sets as $set)
                                
