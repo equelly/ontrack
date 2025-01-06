@@ -26,7 +26,7 @@
             
              
                 
-                  <div class="flex justify-end">
+                  <div class="flex justify-start">
                     <div class="mr-3"><label class="pt-3 text-lg" for="mashine_id">ЭКГ№: </label></div>
                     <div><input class="border-blue-500 focus:outline-none focus:ring focus:border-blue-500 mt-3 w-20" style="width: 5rem; float: right; border-bottom: 2px solid #14B8A6;  border-right: 2px solid #14B8A6" type="text" name="machine_id" id="mashine_id" value="{{$order->mashine->number}}" readonly></div>
                   </div>  

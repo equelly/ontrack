@@ -43,9 +43,11 @@
 
             </div>
             @if ($order->image !== NULL)
-        <div class="flex justify-content-center mt-4">
-             <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' >
-        </div>
+            <div class="border-double border-4 border-grey-900">
+                <div class="flex justify-content-center m-2">
+                    <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' >
+                </div>
+            </div>
             @endif
             <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 
                     @csrf
