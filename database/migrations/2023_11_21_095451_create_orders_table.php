@@ -31,7 +31,7 @@ return new class extends Migration
                 table: 'mashines', indexName: 'orders_mashine_id');
 
             $table->foreignId('user_id_req')->constrained(
-                table: 'users', indexName: 'users_mashine_id');
+                table: 'users', indexName: 'users_mashine_id')->onDelete('cascade');
             
          
         });
