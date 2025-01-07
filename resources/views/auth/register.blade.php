@@ -38,9 +38,7 @@
                                     <i class="fas fa-user prefix text-light active"></i>
                                     <input id="name" type="text" class="form-control @error('email') is-invalid @enderror" name="name" value="{{ old('name') }}" required autocomplete="name" autofocus>
                                         @error('name')
-                                        <span class="invalid-feedback" role="alert">
-                                                <strong>{{ $message }}</strong>
-                                        </span>
+                                        <div class="alert alert-danger">{{ $message }}</div>
                                         @enderror
                                 <label for="name" class="active">Ваше имя</label>
                                 </div>
@@ -48,9 +46,7 @@
                                 <i class="fas fa-envelope prefix text-light active"></i>
                                     <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" autofocus>
                                         @error('email')
-                                            <span class="invalid-feedback" role="alert">
-                                                <strong>{{ $message }}</strong>
-                                            </span>
+                                        <div class="alert alert-danger">{{ $message }}</div>
                                         @enderror
                                 <label for="email" class="active">Ваш email</label>
                                 </div>
@@ -69,9 +65,7 @@
                                   <i class="fas fa-lock prefix text-light active"></i>
                                     <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password" placeholder="Пароль">
                                       @error('password')
-                                        <span class="invalid-feedback" role="alert">
-                                          <strong>{{ $message }}</strong>
-                                        </span>
+                                      <div class="alert alert-danger">{{ $message }}</div>
                                       @enderror
                                       <div class="remember  callout d-flex justify-content-end">
                                         <label for="pass" id="check" class="mt-2">показать пароль</label>

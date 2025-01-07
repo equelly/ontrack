@@ -39,7 +39,7 @@
                     </div>
                 </div> 
                 <div class="col-md-5 complect bg-gray-200 ml|mr-2">
-                    <i><h4><label for="sets">комплектация</label></h4></i><hr>
+                    <i><h4>комплектация</h4></i><hr>
                     <div class="form-check">
                         
                         @foreach($sets as $set)   
