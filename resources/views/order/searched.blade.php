@@ -27,7 +27,7 @@
                             <h5 class="card-title"><strong>ЭКГ№{{$order->mashine->number}}</strong></h5></a>
                              </div> <hr>      
 
-                                        <small class="text-muted">от {{$order->createCarbon->day}} {{$order->createCarbon->translatedFormat('F')}} {{$order->createCarbon->year}}</small><br>
+                                        <small class="text-muted">от </small>{{$order->createCarbon->day}} {{$order->createCarbon->translatedFormat('F')}} {{$order->createCarbon->year}}<br>
                                         <small class="text-muted">автор:</small>{{$order->user->name}}<br>
                                        
                                         
