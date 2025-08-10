@@ -49,11 +49,13 @@
                 </div>
             </div>
             @endif
+            @if(auth()->user()->id == $order->user_id_req)
             <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 
                     @csrf
                     @method('DELETE')
                 <button type="submit" class="btn m-3" data-bs-dismiss="toast" aria-label="Close">удалить заявку</button>
-                </form>
+            </form>
+            @endif
         </div>
      
             
