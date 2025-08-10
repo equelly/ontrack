@@ -36,7 +36,8 @@
                             </div>
                                 <div class="md-form ">
                                     <i class="fas fa-user prefix text-light active"></i>
-                                    <input id="name" type="text" class="form-control @error('email') is-invalid @enderror" name="name" value="{{ old('name') }}" required autocomplete="name" autofocus>
+                                    <input id="name" type="text" class="form-control @error('email') is-invalid @enderror" name="name" value="{{ old('name') }}" 
+                                    required autocomplete="name" autofocus placeholder="Фамилия И.О.">
                                         @error('name')
                                         <div class="alert alert-danger">{{ $message }}</div>
                                         @enderror
