@@ -24,11 +24,24 @@ class StoreRequest extends FormRequest
         return [
             //
             'content'=>'',
-            'image'=>'file',
+            'image'=>'image|mimes:svg',//,jpeg,png,jpg,gif,
             'mashine_id'=>'string',
             'category_id'=>'',
             'user_id_req'=>'string',
             'sets'=>'array',
         ];
     }
+    /** 
+         * Get the error messages for the defined validation rules.
+     *
+     * @return array
+     */
+    // public function messages()
+    // {
+    //     return [
+            
+    //         'image.image' => 'Загружаемый файл должен быть изображением.',
+    //         'image.mimes' => 'Изображение должно быть в формате: jpeg, png, jpg, gif, svg.',
+    //     ];
+    // }
 }
