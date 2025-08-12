@@ -27,9 +27,10 @@
                 </div>  
                 <hr>  
                 <label for="content_id"> заявка на выполнение работ,<br>доставку ТМЦ:</label><br>
-                  <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;font-size: 1rem" placeholder="{{(isset($error)) ? $error : 'Текст заявки...'}}"></textarea><br>
-                  <div class=""> 
-                  <label for="foto" class="pt-3">фото</label><br>
+                  <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;font-size: 1rem" 
+                  placeholder="{{(isset($error)) ? $error : 'Каждую заявку оформляйте отдельно ...'}}"></textarea><br>
+                  <div class="mb-3"> 
+                  <label for="foto" class="pt-3">добавить фото (по необходимости)</label><br>
                   <input class="" type="file" name="image" id="foto">
                   </div>
           </div>

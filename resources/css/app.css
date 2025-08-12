@@ -8,6 +8,9 @@
     word-wrap: break-word;
     background-color: #ced4da59;
 }
+html{
+  font-size: 1.2rem;
+}
 html,
 body,
 header,
