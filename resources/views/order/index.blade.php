@@ -4,7 +4,7 @@
 <h4  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  {{count($orders)}}</h4>
 </div>    
 @foreach($mashines as $mashine) 
-    @foreach($mashine->orders as $order)  
+      
     <div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
                 <div class="row g-0">
@@ -16,7 +16,7 @@
                             <a href="{{route('order.create')}}">    
                             <h5 class="card-title"><strong>ЭКГ№{{$mashine->number}}</strong></h5></a>
                              </div> <hr>  
-                                
+                                @foreach($mashine->orders as $order)
                                     
                                     
                                         @if($order->category_id==1 and $order->content != '')
@@ -26,7 +26,7 @@
                                         
                                         <a href="{{route('order.show', $order->id)}}"><small class="text-muted">подробнее ></small></a><hr>
                                         @endif
-                                    
+                                    @endforeach 
                               
                         </div>
                     </div>
@@ -44,7 +44,7 @@
                 </div>
         </div>
     </div> 
-    @endforeach    
+       
 @endforeach      
 
 @endsection

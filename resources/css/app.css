@@ -120,3 +120,6 @@ input.nav-item {
   background-color: transparent;
   text-decoration: none;
 }
+small {
+    font-size: 100%;
+}
