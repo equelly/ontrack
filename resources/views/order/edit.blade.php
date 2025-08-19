@@ -30,9 +30,16 @@
                     <div class="mr-3"><label class="pt-3 text-lg" for="mashine_id">ЭКГ№: </label></div>
                     <div><input class="border-blue-500 focus:outline-none focus:ring focus:border-blue-500 mt-3 w-20" style="width: 5rem; float: right; border-bottom: 2px solid #14B8A6;  border-right: 2px solid #14B8A6" type="text" name="machine_id" id="mashine_id" value="{{$order->mashine->number}}" readonly></div>
                   </div>  
-                <hr>  
+                <hr>
+                @if((auth()->user()->role)=='admin' || auth()->user()->id == $order->user_id_req)  
                   <label class="pt-3 text-lg" for="content_id"> Вы можете изменить текст заявки,<br>и информацию о доставке ТМЦ:</label><hr>
-                    <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" class="border m-3" style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;" >{{$order->content}}</textarea><br>
+                @else
+                  <label class="pt-3 text-lg" for="content_id"> Вы не можете изменить содержимое заявки,<br>измените ее статус и комплектацию</label><hr>
+                @endif
+                    <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" 
+                      style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;" {{(auth()->user()->role)=='обслуживающий'  && auth()->user()->id != $order->user_id_req ? 'readonly':''}}>
+                      {{$order->content}}
+                    </textarea><br>
                     <div class="flex justify-between">  
                       <label for="foto" class="pt-3 text-lg">добавить фото из файла</label>
                       <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="file" name="image" id="foto" placeholder="вставить!"  value="{{$order->image}}"style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
