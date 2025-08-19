@@ -22,7 +22,7 @@ class StoreController extends BaseController
         if(!isset($data['sets']) and $data['content']== ''){
           $sets = Set::all();
           $mashines = Mashine::all();
-            $error = 'Заполните поле заявки или выберите необходимый пункт в комплектации';
+            $error = "Заполните поле заявки или выберите необходимый пункт в комплектации";
             return view('order.create', compact('error', 'sets', 'mashines'));
             
         }elseif(isset($data['sets'])){
