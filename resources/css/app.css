@@ -4,9 +4,9 @@
 
 .complect{
     padding: 8px 12px; 
-    border-left: 2px solid #7db4d280;
+    border-left: 4px solid #ea081e;
     word-wrap: break-word;
-    background-color: #ced4da59;
+    background-color: #7db4d28a;
 }
 html{
   font-size: 1.2rem;

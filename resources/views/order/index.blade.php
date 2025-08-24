@@ -30,8 +30,10 @@
                               
                         </div>
                     </div>
-                    <div class="col-md-4 complect bg-gray-200">
-                    <i><h4>ЭКГ№{{$mashine->number}} необходимо укомплектовать</h4></i><hr>
+                    <div class="col-md-4 complect">
+
+                        @if(count($mashine->sets)!= null)
+                        <i><h4>ЭКГ№{{$mashine->number}} необходимо укомплектовать</h4></i><hr>
                             <ul> 
                             @foreach($mashine->sets as $set)
                                
@@ -39,6 +41,7 @@
                             
                             @endforeach
                             </ul>
+                        @endif
                     </div>
                     
                 </div>

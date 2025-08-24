@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+
           <!-- Full Page Intro -->
           
           <div class="view" style="background-image: url('dist/img/quarry.jpg'); background-repeat: no-repeat; background-size: cover; background-position: center center;">
@@ -13,7 +14,7 @@
                   <!--Grid column-->
                   <div class="col-md-6 mb-5 mt-md-0 mt-5 white-text text-center text-md-left">
                     <h1 class="m-3 h1-responsive font-weight-bold wow fadeInLeft" data-wow-delay="0.3s">Система мониторинга сервиса</h1>
-                    
+                  
 					<hr class="bg-white wow fadeInLeft" data-wow-delay="0.3s">
                     <div class="mb-4 wow fadeInLeft" data-wow-delay="0.3s">
 					<h2 class="text-light">Проект для взаимодействия между эксплуатационным персоналом и персоналом занятым обслуживанием и ремонтом оборудования.</h2>
@@ -117,3 +118,4 @@
         </main>
 
 @endsection
+<!-- <?php phpinfo(); ?>  для получения служебной инфорамации при отладке приложения -->
