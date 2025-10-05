@@ -40,7 +40,7 @@
                   @if(!(auth()->user()) and Route::has('login'))
                       
                           
-                              <a class="nav-link" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
+                              <a class="nav-link  hover:bg-violet-400" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
                         
                       @endif
                   </li>
@@ -49,28 +49,28 @@
                   <li class="nav-item active">
                   <form action="{{ route('logout') }}" method="POST">    
                       @csrf
-                      <input class="nav-link" type="submit" value="{{ __('Выйти из аккаунта') }}">  
+                      <input class="nav-link hover:bg-violet-400" type="submit" value="{{ __('Выйти из аккаунта') }}">  
                   </form>
                   </li>
                 </ul> 
                 <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
                 <li class="nav-item ml-3">
-                    <a href="{{route('order.index')}}" class="nav-link">
+                    <a href="{{route('order.index')}}" class="nav-link hover:bg-violet-400">
                         К заявкам
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('order.create')}}" class="nav-link">
+                    <a href="{{route('order.create')}}" class="nav-link hover:bg-violet-400">
                         Сформировать заявку
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('order.search')}}" class="nav-link">
+                    <a href="{{route('order.search')}}" class="nav-link hover:bg-violet-400">
                         Поиск 
                     </a></li>
                 
                     @if(auth()->user()->role == 'admin')
                 <li class="nav-item item ml-3">   
                     
-                    <a href="{{route('admin.order.index')}}" class="nav-link">
+                    <a href="{{route('admin.order.index')}}" class="nav-link hover:bg-violet-400">
                         Admin 
                     </a></li>
                     @endif

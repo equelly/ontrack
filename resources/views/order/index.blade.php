@@ -24,7 +24,7 @@
                                         <small class="text-muted"> {{$order->carbon->day}} {{$order->carbon->translatedFormat('F')}} {{$order->carbon->year}} ({{$order->carbon->diffForHumans()}})</small>
                                         <p class="card-text">{{$order->content}}</p>
                                         
-                                        <a href="{{route('order.show', $order->id)}}"><small class="text-muted">подробнее ></small></a><hr>
+                                        <a href="{{route('order.show', $order->id)}}"><small class="btn">смотреть подробнее ></small></a><hr>
                                         @endif
                                     @endforeach 
                               

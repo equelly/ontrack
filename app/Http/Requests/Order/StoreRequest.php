@@ -24,7 +24,7 @@ class StoreRequest extends FormRequest
         return [
             //
             'content'=>'',
-            'image'=>'image|mimes:svg',//,jpeg,png,jpg,gif,
+            'image'=>'image|mimes:jpeg,png,jpg,gif,svg|min:10,max:5120',
             'mashine_id'=>'string',
             'category_id'=>'',
             'user_id_req'=>'string',
@@ -36,12 +36,13 @@ class StoreRequest extends FormRequest
      *
      * @return array
      */
-    // public function messages()
-    // {
-    //     return [
+    public function messages()
+    {
+        return [
             
-    //         'image.image' => 'Загружаемый файл должен быть изображением.',
-    //         'image.mimes' => 'Изображение должно быть в формате: jpeg, png, jpg, gif, svg.',
-    //     ];
-    // }
+            'image.image' => 'Загружаемый файл должен быть изображением.',
+            'image.mimes' => 'Изображение должно быть в формате: jpeg, png, jpg, gif, svg.',
+            'image.max' => 'Максимальный размер изображения: 5MB.',
+        ];
+    }
 }

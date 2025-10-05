@@ -35,7 +35,8 @@
                   <br>
                   <div class="mb-3"> 
                   <label for="foto" class="pt-3">добавить фото (по необходимости)</label><br>
-                  <input class="" type="file" name="image" id="foto">
+                  <input class="" type="file" name="image" id="foto" accept="image/*" onchange="previewImage(event)">
+                  <div id="preview" style="margin-top: 10px;"></div>
                   </div>
           </div>
                   <div class="col-md-5 complect">
@@ -75,5 +76,29 @@
         </ul>
     </div>
 @endif
+<script>
+function previewImage(event) {
+  const preview = document.getElementById('preview');
+  preview.innerHTML = '';
+  const files = document.getElementById('foto').files;
+  
+  if (!files || files.length === 0) return;
+  
+ 
+  
+  
 
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = document.createElement('img');
+    img.src = e.target.result;
+    img.style.maxWidth = '100px';
+    img.style.border = '1px solid #ddd';
+    preview.appendChild(img);
+  };
+  
+  
+  reader.readAsDataURL(files.item(0));//берем первыи элемент списка объекта FileList
+}
+</script>
 @endsection
