@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
+        Schema::table('routes', function (Blueprint $table) {
             //
+            $table->foreignId('miner_id')->after('id')->constrained()->onDelete('cascade');
         });
     }
 
@@ -21,8 +22,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
+        Schema::table('routes', function (Blueprint $table) {
             //
+            $table->dropColumn('miner_id');
         });
     }
 };

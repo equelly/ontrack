@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
+        Schema::table('routes', function (Blueprint $table) {
             //
+            $table->unique('name_route'); // добавляем уникальный индекс к колонке name_route
         });
     }
 
@@ -21,8 +22,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
+        Schema::table('routes', function (Blueprint $table) {
             //
+            $table->dropUnique(['name_route']); // откат — удаляем индекс
         });
     }
 };
