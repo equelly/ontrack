@@ -30,6 +30,15 @@ Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middl
         Route::delete('/orders/{order}', 'DestroyController')->name('order.destroy');
         Route::get('/search', 'SearchController')->name('order.search');
     });
+    Route::group(['namespace'=>'Dump'], function(){
+        Route::get('/dumps', 'IndexController')->name('dump.index');
+         Route::get('/dumps/create', 'CreateController')->name('dump.create');
+         Route::post('/dump', 'StoreController')->name('dump.store');
+         Route::get('/dump/{dump}', 'ShowController')->name('dump.show');
+         Route::get('/dump/{dump}/edit', 'EditController')->name('dump.edit');
+         Route::patch('/dump/{dump}', 'UpdateController')->name('dump.update');
+         Route::delete('/dump/{dump}', 'DestroyController')->name('dump.delete');
+    });
   
 });
 Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'middleware'=>'admin'], function (){

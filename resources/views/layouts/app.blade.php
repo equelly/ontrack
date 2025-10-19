@@ -66,6 +66,10 @@
                     <a href="{{route('order.search')}}" class="nav-link hover:bg-violet-400">
                         Поиск 
                     </a></li>
+                <li class="nav-item item ml-3">
+                    <a href="{{route('dump.index')}}" class="nav-link hover:bg-violet-400">
+                        Грузопотоки 
+                    </a></li>
                 
                     @if(auth()->user()->role == 'admin')
                 <li class="nav-item item ml-3">   

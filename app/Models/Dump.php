@@ -19,4 +19,20 @@ class Dump extends Model
         return $this->hasMany(Route::class);
     }
 
+        public function zones()
+    {
+        return $this->hasMany(Zone::class);
+    }
+
+    public function lastEditor()
+    {
+        return $this->belongsTo(User::class, 'last_updated_by');
+    }
+
+    protected $casts = [
+    'last_updated_at' => 'datetime',
+    ];
+
+
+
 }
