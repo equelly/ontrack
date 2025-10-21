@@ -2,18 +2,17 @@
 
 namespace App\Http\Controllers\User\Dump;
 
+use App\Models\Dump;
 use Illuminate\Routing\Controller as BaseController;
-use App\Models\Mashine;
-use App\Models\Order;
 
 class ShowController extends BaseController
 {
-    public function __invoke(Order $order){
+    public function __invoke(Dump $dump){
     
-        $order = Order::FindOrFail($order->id);
-        $mashine_sets = Mashine::find($order->mashine_id);
+        $dump = Dump::FindOrFail($dump->id);
+        
         
      
-        return view('order.show', compact('order', 'mashine_sets'));
+        return view('dump.show', compact('dump'));
     }
 }

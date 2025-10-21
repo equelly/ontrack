@@ -1,82 +1,153 @@
 @extends('layouts.app')
 @section('content')
-<form class="mt-5" action="{{route('order.update', $order->id)}}" method="POST" class="flex justify-center" enctype="multipart/form-data">
+@php
+  $map = [
+    'вскрыша' => 'V',
+    'руда' => 'R',
+    'песчаник' => 'Kvp',
+    'руда_S' => 'Rs',
+      ];
+  $colorMap = [
+    'вскрыша' => 'green',
+    'руда' => 'red',
+    'песчаник' => 'yellow',
+    'руда_S' => 'red',
+      ];
+@endphp
+<form class="mt-5" action="{{route('dump.update', $dump->id)}}" method="POST" class="flex justify-center" >
     @csrf
     @method('patch')
-    <!-- добавим скрытое поле input для передачи в базу id пользавателя, который внес изменения -->
-    <input type="hidden" name="user_exec" value="{{(auth()->user()->id)}}">
-    <div class="flex justify-content-center mt-1">
+        <div class="flex justify-content-center mt-1">
+        <div class="card shadow p-1 m-1 bg-white rounded" style="width: 40rem">
+                <div class="row g-0">
+                    <div class="col-md-8">
+                        <div class="card-body pl-1 pr-1">
+                          <div class="flex justify-between" >
+                                <a href="{{route('dump.edit', $dump->id)}}">    
+                                <h5 class="card-title"><strong>перегрузка №{{$dump->name_dump}}</strong></h5></a>
+                                
+                                <div>отгрузка
+                                    @foreach($dump->zones as $zone)
+                                        @foreach($zone->rocks as $rock)
+                                            {{ $zone->ship == true ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
+                                        @endforeach
+                                    @endforeach
 
-        <div class="card shadow p-3 m-3 bg-white rounded">
-          <div class="row g-0">
-            <div class="col-md-6 mr-3">
-              
-                <div class="flex justify-between">
-                  <div class=""><small class="text-muted">от {{$order->created_at}}</small></div>
-                  <div>
-                    <select class = "form-control" name = "category_id" id="category">
-                      <option>{{$order->category->title}}</option>
-                      @foreach($categories as $category)
-                      <option value="{{$category->id}}"{{$order->category->id != $category->id ? '' : 'selected'}}>{{$category->title}}</option>
-                      @endforeach
-                    </select>
-                  </div>
-                </div>
-              
-            
-             
-                
-                  <div class="flex justify-start">
-                    <div class="mr-3"><label class="pt-3 text-lg" for="mashine_id">ЭКГ№: </label></div>
-                    <div><input class="border-blue-500 focus:outline-none focus:ring focus:border-blue-500 mt-3 w-20" style="width: 5rem; float: right; border-bottom: 2px solid #14B8A6;  border-right: 2px solid #14B8A6" type="text" name="machine_id" id="mashine_id" value="{{$order->mashine->number}}" readonly></div>
-                  </div>  
-                <hr>
-                @if((auth()->user()->role)=='admin' || auth()->user()->id == $order->user_id_req)  
-                  <label class="pt-3 text-lg" for="content_id"> Вы можете изменить текст заявки,<br>и информацию о доставке ТМЦ:</label><hr>
-                @else
-                  <label class="pt-3 text-lg" for="content_id"> Вы не можете изменить содержимое заявки,<br>измените ее статус и комплектацию</label><hr>
-                @endif
-                    <textarea class="w-100 focus:outline-none focus:ring focus:border-blue-500" rows="7" name="content" id="content_id" 
-                      style="border-bottom: 2px solid #14B8A6; border-right: 2px solid #14B8A6;" {{(auth()->user()->role)=='обслуживающий'  && auth()->user()->id != $order->user_id_req ? 'readonly':''}}>
-                      {{$order->content}}
-                    </textarea><br>
-                    <div class="flex justify-between">  
-                      <label for="foto" class="pt-3 text-lg">добавить фото из файла</label>
-                      <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="file" name="image" id="foto" placeholder="вставить!"  value="{{$order->image}}"style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
+                                    <br>
+                                    завозка
+                                    @foreach($dump->zones as $zone)
+                                        @foreach($zone->rocks as $rock)
+                                            {{ $zone->delivery == true ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
+                                        @endforeach 
+                                    @endforeach
+                                </div>
+                           </div>
+                            <div class="flex justify-content-between mt-1">
+                            <small class="text-muted">обновил: <br>{{ $dump->lastEditor->name?? 'неизвестный' }}</small>
+                            <small class="text-muted">
+                                {!! $dump->last_updated_at? $dump->last_updated_at->format('d.m. H:i'). '<br>('. $dump->last_updated_at->diffForHumans(). ')': 'нет данных'!!}
+                            </small>
+
+                             </div> 
+                             <table class="table-fixed w-full border-collapse border border-gray-400">
+                                
+                                <tbody>
+                                  @foreach($dump->zones as $zone) 
+                                    <tr>
+                                    
+                                        <td  class="w-[15px] border border-gray-300">
+                                          <input 
+                                        type="text" 
+                                        id="zone_id({{ $zone->id }})"
+                                        name="name_zone[{{ $zone->name_zone }}]" 
+                                        value="{{ $zone->name_zone }}" 
+                                        class="rounded-sm border-3 border-sky-500 w-[40px] focus:outline-none focus:ring"/>
+                                        
+                                        <!-- @foreach ($zone->rocks as $rock) 
+                                            
+
+                                                @foreach($zone->rocks as $rock)
+                                                    {{ $map[$rock->name_rock]?? $rock->name_rock }}
+                                                @endforeach
+
+                                                
+                                         -->
+                                        </td>
+                                        <td class="w-[15px] border border-gray-300">
+                                            <select class = "form-control" name = "rock_id" id="rock">
+                                              
+                                              <option></option>
+                                              
+                                              @foreach($rocks as $Rock)
+                                              @foreach ($zone->rocks as $rock_selected)
+                                              <option value="" {{$rock_selected->id != $Rock->id ? '' : 'selected'}}>{{$Rock->name_rock}}</option>
+                                              @endforeach
+                                              @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="w-[15px] border border-gray-300"><input 
+                                        type="number" 
+                                        id="slider_{{ $zone->id }}" 
+                                        min="0" 
+                                        max="30" 
+                                        name="volume[{{ $zone->id }}]" 
+                                        value="{{ $zone->volume }}" 
+                                        class="rounded-sm border-3 border-sky-500 focus:outline-none focus:ring"/></td>
+                                        <td  class="w-[15px] border border-gray-300"><span id="value_{{ $zone->id }}" class="diagramm inline-block h-5"
+                                        style= "width: {{ $zone->volume * 0.1 }}rem;
+                                                background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};">
+                                        </span></td>
+                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input class="m-auto" type="checkbox" name="delivery" {{ $zone->delivery==true?'checked':'' }} /></td>
+                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input type="radio" name="ship_{{$dump->id}}" value="1" {{ $zone->ship==true?'checked':'' }}/></td>
+                                    @endforeach
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                                    
+                                
+                            </table>     
+                                       
+                                        
+                                        <a class="flex justify-content-end" href="{{route('dump.edit', $dump->id)}}"><small class="btn mt-2">обновить информацию</small></a>
+                                        
+                                    
+                              
+                        </div>
                     </div>
-                </div> 
-                <div class="col-md-5 complect bg-gray-200 ml|mr-2">
-                    <i><h4>комплектация</h4></i><hr>
-                    <div class="form-check">
-                        
-                        @foreach($sets as $set)   
-                        <p  style="font-size: 1rem;"><label class="form-check-label hover:font-cyan-300  hover:text-blue-400" for="{{$set->id}}">
-                            <input class="form-check-input checked:bg-cyan-300 hover:border-blue-300" type="checkbox" name = "sets[]" value="{{$set->id}}" id="{{$set->id}}" 
-                            @foreach($mashine_sets as $mashine_set)
-                            @if ($set ->id == $mashine_set->set_id and $mashine_set->mashine_id == $order->mashine->id)
-                            {{'checked'}}
-                            @endif
-                            @endforeach
-                              >
-                              {{$set->name}}
-                          </label>
-                        </p>
-                        @endforeach
-                      
-                    </div>
+                 
+                    
                 </div>
-                
-                
-                <div class="flex justify-end">
-                  <button type="submit" style="background-color: rgb(59 130 246 / 0.7);" class="inline-block text-sm px-4 py-2 leading-none border rounded text-white border-teal-400 hover:text-teal-500 hover:bg-cyan-300 mt-4 lg:mt-0 callout mb-1 w-90">обновить</button>
-                </div>
-            
-          
-        </div>
-          
-            
-        </div>
         </div>
     </div> 
+
 </form> 
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+  // Получаем все input с id, начинающимся на "slider_"
+  document.querySelectorAll('input[id^="slider_"]').forEach(input => {
+    input.addEventListener('input', function() {
+        const max = 30;
+        let value = Number(this.value);
+        if (value > max) {
+        alert(`Максимальное значение — ${max}. Значение будет установлено в ${max}.`);
+        value = max;
+        this.value = max;
+        } else if (value < 0) {
+        value = 0;
+        this.value = 0;
+        }
+        
+      const zoneId = this.id.split('_'); // получаем id зоны slider из полученного массива (второй элемент с индексом 1) 
+       
+                   
+      const span = document.getElementById(`value_${zoneId[1]}`); 
+      if(span) {
+          const value = Number(this.value);
+          span.style.width = (value * 0.1) + 'rem'; // длина столбика
+        //span.textContent = this.value;                     // обновляем значение span рядом
+      }
+    });
+  });
+});
+</script>
 @endsection

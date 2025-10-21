@@ -1,66 +1,84 @@
 @extends('layouts.app')
 @section('content')
-    <div class="flex justify-content-center mt-10">
 
-        <div class="card shadow p-3 m-3 bg-white rounded">
-        <div class="flex justify-content-between">
-            <p class="card-text"><small class="text-muted">{{$order->cteated_at}}</small></p>
-           
-            @if(auth()->user() && (auth()->user()->id == $order->user_id_req))
+        <div class="flex justify-content-center mt-1">
+        <div class="card shadow p-1 m-1 bg-white rounded" style="width: 40rem">
+                <div class="row g-0">
+                    <div class="col-md-8">
+                        <div class="card-body pl-1">
+                           
+                            <a href="{{route('dump.show', $dump->id)}}">    
+                            <h5 class="card-title"><strong>перегрузка №{{$dump->name_dump}}</strong></h5></a>
+                            <div class="flex justify-content-between mt-1">
+                            <small class="text-muted">обновил: <br>{{ $dump->lastEditor->name?? 'неизвестный' }}</small>
+                            <small class="text-muted">
+                                {!! $dump->last_updated_at? $dump->last_updated_at->format('d.m. H:i'). '<br>('. $dump->last_updated_at->diffForHumans(). ')': 'нет данных'!!}
+                            </small>
 
-            @endif
-        </div>
-        <div class="row g-0">
-            <div class="col-md-8">
-                <div class="card-body">
-                    <div class="flex justify-content-between mt-1">
-                        <h4 class="card-title"><strong>ЭКГ№{{$order->mashine->number}}</strong></h4>
-                        @if(auth()->user()->id == $order->user_id_req || auth()->user()->role == 'обслуживающий'|| auth()->user()->role == 'admin')    
-                        <a href="{{route('order.edit', $order->id)}}"><small class="text-muted">обработать ></small></a>
-                        @endif
-                    </div>  
-                    <hr> 
-                  
-                    <small class="text-muted">Добавлена: {{$order->dateAsCarbon->diffForHumans()}}</small><br>
+                             </div> 
+                             <table class="table-fixed w-full border-collapse border border-gray-400">
+                                @php
+                                    $map = [
+                                        'вскрыша' => 'V',
+                                        'руда' => 'R',
+                                        'песчаник' => 'Kvp',
+                                        'руда_S' => 'Rs',
+                                        ];
+                                    $colorMap = [
+                                        'вскрыша' => 'green',
+                                        'руда' => 'red',
+                                        'песчаник' => 'yellow',
+                                        'руда_S' => 'red',
+                                            ];
+                                @endphp
+                                
+                                <tbody>
+                                  @foreach($dump->zones as $zone) 
+                                    <tr>
+                                    
+                                        <td  class="w-[20px] border border-gray-300">{{ $zone->name_zone }}
+                                        @foreach ($zone->rocks as $rock) 
+                                            
+
+                                                @foreach($zone->rocks as $rock)
+                                                    {{ $map[$rock->name_rock]?? $rock->name_rock }}
+                                                @endforeach
+
+                                                
+                                        
+                                        </td>
+                                        <td class="w-[15px] border border-gray-300"><input 
+                                        type="number" 
+                                        id="slider_{{ $zone->id }}" 
+                                        min="0" 
+                                        max="30" 
+                                        name="volume[{{ $zone->id }}]" 
+                                        value="{{ $zone->volume }}" 
+                                        class="rounded-sm border-3 border-sky-500 focus:outline-none focus:ring"/></td>
+                                        <td  class="w-[35px] border border-gray-300"><span id="value_{{ $zone->id }}" class="diagramm inline-block h-5"
+                                        style= "width: {{ $zone->volume * 0.2 }}rem;
+                                                background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};">
+                                        </span></td>
+                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input class="m-auto" type="checkbox" name="delivery" {{ $zone->delivery==true?'checked':'' }} /></td>
+                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input type="radio" name="ship_{{$dump->id}}" value="1" {{ $zone->ship==true?'checked':'' }}/></td>
+                                    @endforeach
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                                    
+                                
+                            </table>     
+                                       
+                                        
+                                        <a href="{{route('dump.edit', $dump->id)}}"><small class="btn mt-2">обновить</small></a>
+                                        
+                                    
+                              
+                        </div>
+                    </div>
+                 
                     
-                    <small class="text-muted">автор: {{$order->user->name}}</small><hr>
-                    @if(isset($order->userExec->name) && $order->userExec->name != '')
-                        <small class="text-muted">изменено: {{$order->updated_at->diffForHumans()}}</small><br>
-                        <small class="text-muted">пользователем: {{$order->userExec->name}}</small><hr>
-                    @endif
-                        <p class="card-text">{{$order->content}}</p>
                 </div>
-
-            </div>
-            <div class="col-md-4 complect">
-                <i><h4>Необходимо укомплектовать:</h4></i><hr>
-            
-                @foreach($mashine_sets->sets as $set)
-                
-                    <p  style="font-size: 1.1rem;">{{$set->name}}</p>
-                @endforeach
-                
-
-            </div>
-            @if ($order->image !== NULL)
-            <div class="border-double border-4 border-grey-900">
-                <div class="flex justify-content-center m-2">
-                    <img src="{{asset('storage/'.$order->image)}}" alt='some photo...' >
-                </div>
-            </div>
-            @endif
-            @if(auth()->user()->id == $order->user_id_req)
-            <form action="{{route('order.destroy', $order->id)}}" method="POST" class="flex justify-content-end mr-3"> 
-                    @csrf
-                    @method('DELETE')
-                <button type="submit" class="btn m-3" data-bs-dismiss="toast" aria-label="Close">удалить заявку</button>
-            </form>
-            @endif
-        </div>
-     
-            
-        </div>
-
         </div>
     </div> 
 @endsection

@@ -139,3 +139,59 @@ small {
   vertical-align: middle;
   border-radius: 4px;
 }
+input[type="radio"],
+input[type="checkbox"] {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #007bff; /* яркий цвет */
+  background-color: white;
+  cursor: pointer;
+  position: relative;
+}
+input[type="radio"]{
+  border-radius: 50%;
+}
+
+/* Отметка для радио */
+input[type="radio"]:checked::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #007bff;
+}
+
+/* Отметка для чекбокса */
+input[type="checkbox"]:checked::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 6px;
+  height: 12px;
+  border: solid #007bff;
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+
+/* disabled яркий, без полупрозрачности */
+input[type="radio"]:disabled,
+input[type="checkbox"]:disabled {
+  border-color: #007bff;   /* яркий оранжевый */
+  background-color: #ebe5dd; /* светлый оттенок для disabled */
+  cursor: not-allowed;
+  opacity: 1; /* убрать серость */
+}
+
+/* отмеченные disabled тоже яркие */
+input[type="radio"]:disabled:checked::before {
+  background-color: #007bff;
+}
+
+input[type="checkbox"]:disabled:checked::before {
+  border-color: #007bff;
+}

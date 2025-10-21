@@ -2,20 +2,19 @@
 
 namespace App\Http\Controllers\User\Dump;
 
-use App\Models\Category;
+
+use App\Models\Dump;
 use Illuminate\Routing\Controller as BaseController;
-use App\Models\Set;
-use App\Models\MashineSet;
-use App\Models\Order;
+use App\Models\Rock;
 
 class EditController extends BaseController
 {
-    public function __invoke(Order $order){
+    public function __invoke(Dump $dump){
         // 
-          $sets = Set::all();
-          $categories = Category::all();
-          $mashine_sets = MashineSet::all();
+          
+          $rocks = Rock::all();
+          
       
-            return view('order.edit', compact('order', 'sets', 'categories', 'mashine_sets'));
+            return view('dump.edit', compact('dump', 'rocks'));
     }
 }
