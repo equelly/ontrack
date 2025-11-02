@@ -195,3 +195,17 @@ input[type="radio"]:disabled:checked::before {
 input[type="checkbox"]:disabled:checked::before {
   border-color: #007bff;
 }
+.error-message {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    margin-top: 2px;
+    font-size: 0.875em;  /* small размер */
+    color: #dc3545;      /* красный цвет */
+    background-color: rgb(220 53 69 / 25%);
+    border-radius: 5px;
+}.form-group {
+    position: relative;  /* для всех групп */
+    margin-bottom: 1.5rem;  /* фиксированный отступ */
+}

@@ -32,7 +32,7 @@
                                 <div>отгрузка
                                     @foreach($dump->zones as $zone)
                                         @foreach($zone->rocks as $rock)
-                                            {{ $zone->ship == true ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
+                                            {{ $dump->loader_zone_id == $zone->id ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
                                         @endforeach
                                     @endforeach
 
@@ -75,8 +75,12 @@
                                         style= "width: {{ $zone->volume * 0.2 }}rem;
                                                 background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};">
                                         </span></td>
-                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input disabled class="m-auto" type="checkbox" name="delivery" {{ $zone->delivery==true?'checked':'' }} /></td>
-                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input disabled type="radio" name="ship_{{$dump->id}}" value="1" {{ $zone->ship==true?'checked':'' }}/></td>
+                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> 
+                                            <input disabled class="m-auto" type="checkbox" name="delivery" 
+                                            {{ $zone->delivery==true?'checked':'' }} /></td>
+                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> 
+                                            <input disabled type="radio" name="ship_{{$dump->id}}" value="1" 
+                                            {{ $dump->loader_zone_id==$zone->id?'checked':'' }}/></td>
                                     @endforeach
                                     </tr>
                                     @endforeach

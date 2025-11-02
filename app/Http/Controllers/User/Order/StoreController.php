@@ -16,8 +16,6 @@ class StoreController extends BaseController
     public function __invoke(StoreRequest $request){
      
         $data = $request->validated();
-      
-           
         //сохраним массив sets  из полученных данных в отдельном массиве $sets для передачи в модель MashineSet и последующей записи в БД табл.mashine_sets
         if(!isset($data['sets']) and $data['content']== ''){
           $sets = Set::all();
@@ -38,11 +36,7 @@ class StoreController extends BaseController
               }
         
         }
-      //добавление уникального значения по ключам в массиве первого аргумента метода firstOrCreate()
-      //-------------------------
-      // $order = Order::firstOrCreate ([
-      //   'content'=>$data['content']], $data);
-     //-------------------------
+      
      //добавляем изображение (file) в директорию storage/app/public
       if(isset($data['image']) && $data['image']!== NULL){
         //класс Storage метод put добавит изображение (file) в директорию storage/app/<первый аргумент функции>
@@ -52,7 +46,7 @@ class StoreController extends BaseController
       
       $data['image'] = $pieces[1];
     }
-      //добавление без провереки на уникальность
+      
       Order::create($data);
     
       return redirect()->route('order.index');

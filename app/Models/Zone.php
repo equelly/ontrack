@@ -9,6 +9,22 @@ class Zone extends Model
 {
     use HasFactory;
 
+    protected $fillable = [
+        'dump_id',        // Связь с dump
+        'name_zone',      // Название зоны
+        'volume',         // Объём
+        'ship',           // Отгрузка (boolean)
+        'delivery',       //завозка (boolean)
+    ];
+
+    protected $casts = [
+        'ship' => 'boolean',
+        'delivery' => 'boolean',
+        'volume' => 'decimal:2',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
     public function dump() {
         return $this->belongsTo(Dump::class);
     }

@@ -23,12 +23,15 @@ class StoreRequest extends FormRequest
     {
         return [
             //
-            'content'=>'',
-            'image'=>'image|mimes:jpeg,png,jpg,gif,svg|min:10,max:5120',
-            'mashine_id'=>'string',
-            'category_id'=>'',
+            'content' => 'nullable|required_without_all:sets|string|max:1000',
+            'image'=>'nullable|image|mimes:jpeg,png,jpg,gif,svg|min:10,max:5120',
+            'mashine_id' => 'required|exists:mashines,id',
+            'category_id'=> 'required|exists:categories,id',
             'user_id_req'=>'string',
-            'sets'=>'array',
+            'sets' => 'required_without:content|array|min:1',
+            'sets.*' => 'exists:sets,id',
+
+            'content.max' => 'Описание не должно превышать 1000 символов.',
         ];
     }
     /** 
@@ -43,6 +46,13 @@ class StoreRequest extends FormRequest
             'image.image' => 'Загружаемый файл должен быть изображением.',
             'image.mimes' => 'Изображение должно быть в формате: jpeg, png, jpg, gif, svg.',
             'image.max' => 'Максимальный размер изображения: 5MB.',
+            'mashine_id.required' => 'Пожалуйста, выберите машину!',
+            'mashine_id.exists' => 'Выбранная машина не найдена!',
+            'content.required_without_all' => 'Заполните заявку или добавьте позиции комплектации!',
+            'sets.required_without' => 'Добавьте хотя бы один пункт комплектации или заполните заявку',
+            'sets.min' => 'Выберите минимум 1 позицию комплекткции.',
+            'sets.*.exists' => 'Некоторые позиции не найдены.',
+
         ];
     }
 }

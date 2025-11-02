@@ -55,26 +55,26 @@
                 </ul> 
                 <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
                 <li class="nav-item ml-3">
-                    <a href="{{route('order.index')}}" class="nav-link hover:bg-violet-400">
+                    <a href="{{route('order.index')}}" class="nav-link border-1 m-1 border-solid hover:bg-sky-600/50 pl-2">
                         К заявкам
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('order.create')}}" class="nav-link hover:bg-violet-400">
+                    <a href="{{route('order.create')}}" class="nav-link border-1 m-1 border-solid hover:bg-sky-600/50 pl-2">
                         Сформировать заявку
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('order.search')}}" class="nav-link hover:bg-violet-400">
+                    <a href="{{route('order.search')}}" class="nav-link border-1 m-1 border-solid hover:bg-sky-600/50 pl-2">
                         Поиск 
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('dump.index')}}" class="nav-link hover:bg-violet-400">
+                    <a href="{{route('dump.index')}}" class="nav-link border-1 m-1 border-solid hover:bg-sky-600/50 pl-2">
                         Грузопотоки 
                     </a></li>
                 
                     @if(auth()->user()->role == 'admin')
                 <li class="nav-item item ml-3">   
                     
-                    <a href="{{route('admin.order.index')}}" class="nav-link hover:bg-violet-400">
+                    <a href="{{route('admin.order.index')}}" class="nav-link border-1 m-1 border-solid hover:bg-sky-600/50 pl-2">
                         Admin 
                     </a></li>
                     @endif

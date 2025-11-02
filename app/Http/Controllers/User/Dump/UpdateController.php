@@ -2,50 +2,52 @@
 
 namespace App\Http\Controllers\User\Dump;
 
-use App\Http\Requests\Order\UpdateRequest;
+use App\Http\Requests\Dump\UpdateRequest;
+use App\Models\Dump;
+use App\Models\Zone;
 use Illuminate\Routing\Controller as BaseController;
-use App\Models\MashineSet;
-use App\Models\Order;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+
 
 class UpdateController extends BaseController
 {
-    public function __invoke(UpdateRequest $request, Order $order){
+    public function __invoke(UpdateRequest $request, Dump $dump){
 
-    
- 
-        $data = $request->validated();
-        // удалим старые записи из БД 
-        DB::table('mashine_sets')->where('mashine_id', '=', $order->mashine->id)->delete(); 
-      //dd($data);
-     //сохраним массив sets  из полученных данных в отдельном массиве $sets для передачи в модель MashineSet и последующей записи в БД табл.mashine_sets
-     if(isset($data['sets'])){
-    
-      $sets = $data['sets'];
-        //a из массива $data удалим
-          unset($data['sets']);  
-          foreach($sets as $set){
-            MashineSet::firstOrCreate([
-            'mashine_id'=>$order->mashine_id,
-            'set_id'=>$set,
-    
-            ]);
-          }
+      
+
+    $dump->update(
+      ['name_dump' => $request->name_dump,
+      'loader_zone_id' => $request->loader_zone_id,
+    ]);
+
+    // Обновляем зоны
+    if ($request->has('zones')) {
+        foreach ($request->zones as $zoneData) {
+            // Создаём/находим зону
+            $zone = Zone::updateOrCreate(
+                ['id' => $zoneData['id']?? null],
+                [
+                    'dump_id' => $dump->id,  // ← Автоматически!
+                    'name_zone' => $zoneData['name_zone'],
+                    'volume' => $zoneData['volume'],
+                    'ship' => $request->boolean('zones.*.ship'),
+                    'delivery' => $zoneData['delivery']?? 0,
+                ]
+            );
+
+            // Rocks (sync) — теперь $zone существует!
+            if (isset($zoneData['rocks'])) {
+                $rockIds = collect($zoneData['rocks'])->pluck('id')->filter();
+                $zone->rocks()->sync($rockIds);
+            }
         }
-             //обновляем изображение (file) в директорию storage/app/public
-      if(isset($data['image']) && $data['image']!== NULL){
-        //класс Storage метод put добавит изображение (file) в директорию storage/app/<первый аргумент функции>
-      $saveImage = Storage::put('public', $data['image']);
-      //разделим строку по символу "/" и сохраним в БД путь для вывода изображения
-      $pieces = explode("/", $saveImage);
-      
-      $data['image'] = $pieces[1];
     }
-      
-          $order->update($data);
-          
-    
-          return redirect()->route('order.index');
-    }
+
+    return redirect()->route('dump.show', $dump)
+                    ->with([
+                    'success' => true,
+                    'message' => $dump->name_dump. ' обновлёны!',
+                    'type' => 'success'
+                ]);
+
+  }
 }
