@@ -21,62 +21,91 @@
     <h3 class="m-2" >📊 Объёмы на перегрузках</h3>
     <!-- Блок фильтров -->
     <div class="filters-panel mb-4 p-3 bg-light rounded">
-        <small>фильтр вывода информации</small><hr>
+        <small>фильтр вывода информации по прегрузкам</small><hr>
         <form method="GET" action="{{ route('dump.index') }}">
             <div class="row align-items-center">
                 <!-- Чекбокс "Завозка" -->
-                <div class="col-md-6 mb-2">
+                <div class="col-md-10 mb-2">
                     <div class="form-check">
                         <input class="form-check-input" 
-                            type="checkbox" 
-                            name="delivery" 
+                            type="radio" 
+                            name="filter_mode" 
                             id="delivery_filter"
-                            value="1"
-                            {{ request('delivery')? 'checked': '' }}>
+                            value="all_delivery"
+                            {{ request('filter_mode') == 'all_delivery'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
                         <label class="form-check-label" for="delivery_filter">
-                            🚛 Только подготовленные к завозке
+                            🚛 Все подготовленные к завозке 
                         </label>
                     </div>
-                    
-                        <div class="form-check">
-                            <input class="form-check-input" 
-                                type="checkbox" 
-                                name="has_rock" 
-                                id="has_rock_filter"
-                                value="1"
-                                {{ request('has_rock')? 'checked': '' }}>
-                            <label class="form-check-label" for="has_rock_filter">
-                                🪨⛏️ Только с рудой
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" 
-                                type="checkbox" 
-                                name="rock_shipment" 
-                                id="rock_shipment_filter"
-                                value="1"
-                                {{ request('rock_shipment')? 'checked': '' }}>
-                            <label class="form-check-label fw-medium text-dark mb-0" for="rock_shipment_filter">
-                                🚚 Отгрузка руды
-                            </label>
-                        </div>
-                    
-                </div>
 
-                <!-- ← Пока пусто, добавим другие фильтры позже -->
-                <div class="col-md-6"></div>
+                    <div class="form-check">
+                        <input class="form-check-input" 
+                            type="radio" 
+                            name="filter_mode" 
+                            id="ruda_delivery" 
+                            value="ruda_delivery"
+                            {{ request('filter_mode') == 'ruda_delivery'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
+                        <label class="form-check-label" for="ruda_delivery">
+                            📦 Подготовленные для завозки руды
+                        </label>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" 
+                            type="radio" 
+                            name="filter_mode" 
+                            id="has_rock_filter"
+                            value="has_ruda"
+                            {{ request('filter_mode') == 'has_ruda'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
+                        <label class="form-check-label" for="has_rock_filter">
+                            🪨⛏️ Рудные перегрузки
+                        </label>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" 
+                            type="radio" 
+                            name="filter_mode" 
+                            id="rock_shipment_filter"
+                            value="ruda_shipment"
+                            {{ request('filter_mode') == 'ruda_shipment'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
+                        <label class="form-check-label fw-medium text-dark mb-0" for="rock_shipment_filter">
+                            🚚 производится отгрузка руды
+                        </label>
+                    </div>
+                </div>
 
                 <!-- Кнопки управления -->
                 <div class="flex justify-content-between">
                     <button type="submit" class="p-1" style="background-color:#dddddd;">
                         🔍 Применить
                     </button>
-                    <a href="{{ route('dump.index') }}" class="p-1" style="background-color:#dddddd;" >
+                    <a href="{{ route('dump.index') }}" class="p-1" style="background-color:#dddddd;">
                         ❌ Сбросить
                     </a>
                 </div>
             </div>
         </form>
+        @if($activeFilter && $activeFilter!== 'all')
+<div class="alert alert-info mt-3">
+    <strong> Применен фильтр:</strong> 
+    @switch($activeFilter)
+        @case('all_delivery')
+            🚛 выведены зоны подготовленные к завозке ({{ $dumps->count() }})
+            @break
+        @case('ruda_delivery')
+            📦 выведены зоны для завозки руды ({{ $dumps->count() }})
+            @break
+        @case('has_ruda')
+            🪨 показаны рудные перегрузки ({{ $dumps->count() }})
+            @break
+        @case('ruda_shipment')
+            🚚 Показаны точки отгрузки руды ({{ $dumps->count() }})
+            @break
+    @endswitch
+</div>
+@endif
+
     </div>
 </div>
     <!-- /filters-panel -->
@@ -224,7 +253,7 @@
                                                 background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};">
                                         </span></td>
                                         <td  class="w-[10px] text-center align-middle border border-gray-300"> 
-                                            <input disabled class="m-auto" type="checkbox" name="delivery" 
+                                            <input disabled class="m-auto" type="radio" name="filter_mode" 
                                             {{ $zone->delivery==true?'checked':'' }} /></td>
                                         <td  class="w-[10px] text-center align-middle border border-gray-300"> 
                                             <input disabled type="radio" name="ship_{{$dump->id}}" value="1" 

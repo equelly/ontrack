@@ -4,6 +4,7 @@ namespace App\Http\Controllers\User\Dump;
 
 
 use App\Models\Dump;
+use App\Models\Zone;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -11,49 +12,55 @@ use Illuminate\Support\Facades\Log;
 class IndexController extends BaseController
 {
     public function __invoke(Request $request){
+    // НАЧИНАЕМ С ЧИСТОГО ЗАПРОСА
+    $query = Dump::with(['zones.rocks', 'loaderZone.rocks']);
 
-        
-                // Базовый запрос с фильтром по завозке и eager loading уменьшает количество запросов 
-       
-        $query = Dump::with(['zones.rocks', 'loaderZone.rocks']);
-
-
-        // ФИЛЬТР ПО ЗАВОЗКЕ
-        if ($request->filled('delivery') && $request->boolean('delivery')) {
-            $query->whereHas('zones', function($q) {  // whereHas() — стандартный метод Laravel для фильтрации по связанным моделям
-                $q->where('delivery', true);
-            });
-        }
-            // ФИЛЬТР ПО РУДЕ
-        if ($request->filled('has_rock') && $request->boolean('has_rock')) {
-            $query->whereHas('zones.rocks', function($q) {
-                $q->where('name_rock', 'руда');
-            });
-        }
-        
-        // ФИЛЬТР: ОТГРУЗКА РУДЫ (loader_zone_id не null И рудой)
-        
-        if ($request->filled('rock_shipment') && $request->boolean('rock_shipment')) {
-            // ← ОТЛАДКА: сколько дампов с loader_zone_id
-            $dumpsWithShipment = Dump::whereNotNull('loader_zone_id')->count();
-
-            // ← ФИЛЬТР: дампы с назначенной зоной отгрузки
-            $query->whereNotNull('loader_zone_id')
-                ->whereHas('loaderZone.rocks', function($rockQuery) {
-                    $rockQuery->where('name_rock', 'руда');  // ← И есть руда
-                });
-
-            // ← ОТЛАДКА: результат фильтра
-            $filteredCount = $query->count();
-            Log::info("🚚 ФИЛЬТР ОТГРУЗКИ: найдено дампов = ". $filteredCount);
-        }
+    // ПОЛУЧАЕМ РЕЖИМ ФИЛЬТРА ИЗ RADIO
+    $filterMode = $request->get('filter_mode');
+    $activeFilter = $filterMode?: 'all';
 
 
+    // ПРИМЕНЯЕМ ФИЛЬТРЫ ПО РЕЖИМУ
+    switch ($filterMode) {
+    case 'all_delivery':
+        // Все подготовленные к завозке (loader_zone_id не null)
+        $query->whereNotNull('loader_zone_id');
+        break;
 
-        $dumps = $query->get();
+    case 'ruda_delivery':
+        $query->whereHas('zones', function($zoneQuery) {
+            $zoneQuery->where('delivery', true)
+                      ->whereHas('rocks', function($rockQuery) {
+                          $rockQuery->where('name_rock', 'руда');
+                      });
+        });
+        break;
+
+    case 'has_ruda':
+        // 🪨 Рудные перегрузки (дампы с рудой)
+        $query->whereHas('zones.rocks', function($q) {
+            $q->where('name_rock', 'руда');
+        });
+        break;
+
+    case 'ruda_shipment':
+        // Производится отгрузка руды (loader_zone_id + руда)
+        $query->whereNotNull('loader_zone_id')
+              ->whereHas('loaderZone.rocks', function($rockQuery) {
+                  $rockQuery->where('name_rock', 'руда');
+              });
+        break;
+
+    default:
+        // Все дампы (без фильтра)
+        break;
+}
 
 
-        // ← ДОБАВЬ: суммируем объёмы зон для каждого дампа
+    // ← 6. ВЫПОЛНЯЕМ ЗАПРОС ОДИН РАЗ!
+    $dumps = $query->get();
+
+        // суммируем объёмы зон для каждого дампа
         $dumpsWithVolumes = $dumps->map(function ($dump) {
             // Общий объём (все зоны)
             $totalVolume = $dump->zones->sum('volume');
@@ -110,7 +117,7 @@ class IndexController extends BaseController
     });
 
         
-        return view('dump.index', compact('dumps', 'sortedDumps'));
+        return view('dump.index', compact('dumps', 'sortedDumps', 'activeFilter'));
         
     }
 }
