@@ -29,13 +29,13 @@ class Dump extends Model
         // При СОЗДАНИИ новой записи
         static::creating(function ($dump) {
             $dump->last_updated_at = now();  // Текущее время
-            $dump->last_updated_by = Auth::id()?? 1;  // ID пользователя или 1 (admin)
+            $dump->last_updated_by = Auth::id();  // ID пользователя или 1 (admin)
         });
 
         // При КАЖДОМ ОБНОВЛЕНИИ
         static::updating(function ($dump) {
             $dump->last_updated_at = now();
-            $dump->last_updated_by = Auth::id()?? 1;
+            $dump->last_updated_by = Auth::id();
         });
     }
 

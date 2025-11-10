@@ -14,8 +14,156 @@
         'руда_S' => 'red',
             ];
 @endphp
-<div class="mt-4 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
-<h4  class="flex justify-content-end p-2" style="width: 40rem">Всего точек разгрузки автомобилей:  {{count($dumps)}}</h4>
+<div class="bg-gray-50 rounded-lg p-4 mt-5 shadow-sm border border-gray-200 mx-2 sm:mx-4">
+
+<!-- ПРОСТАЯ ТАБЛИЦА С ОБЪЁМАМИ -->
+<div style="background: #f0f0f0;max-width:500px;" class="card mb-2" >
+    <h3 class="m-2" >📊 Объёмы на перегрузках</h3>
+    <!-- Блок фильтров -->
+    <div class="filters-panel mb-4 p-3 bg-light rounded">
+        <small>фильтр вывода информации</small><hr>
+        <form method="GET" action="{{ route('dump.index') }}">
+            <div class="row align-items-center">
+                <!-- Чекбокс "Завозка" -->
+                <div class="col-md-6 mb-2">
+                    <div class="form-check">
+                        <input class="form-check-input" 
+                            type="checkbox" 
+                            name="delivery" 
+                            id="delivery_filter"
+                            value="1"
+                            {{ request('delivery')? 'checked': '' }}>
+                        <label class="form-check-label" for="delivery_filter">
+                            🚛 Только подготовленные к завозке
+                        </label>
+                    </div>
+                    
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                type="checkbox" 
+                                name="has_rock" 
+                                id="has_rock_filter"
+                                value="1"
+                                {{ request('has_rock')? 'checked': '' }}>
+                            <label class="form-check-label" for="has_rock_filter">
+                                🪨⛏️ Только с рудой
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                type="checkbox" 
+                                name="rock_shipment" 
+                                id="rock_shipment_filter"
+                                value="1"
+                                {{ request('rock_shipment')? 'checked': '' }}>
+                            <label class="form-check-label fw-medium text-dark mb-0" for="rock_shipment_filter">
+                                🚚 Отгрузка руды
+                            </label>
+                        </div>
+                    
+                </div>
+
+                <!-- ← Пока пусто, добавим другие фильтры позже -->
+                <div class="col-md-6"></div>
+
+                <!-- Кнопки управления -->
+                <div class="flex justify-content-between">
+                    <button type="submit" class="p-1" style="background-color:#dddddd;">
+                        🔍 Применить
+                    </button>
+                    <a href="{{ route('dump.index') }}" class="p-1" style="background-color:#dddddd;" >
+                        ❌ Сбросить
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+    <!-- /filters-panel -->
+
+    @if(isset($sortedDumps))
+        <table class="flex" style="border-collapse: collapse;">
+            <tr style="background: #ddd;">
+                <th style="padding: 8px; border: 1px solid #ccc;">Перегрузка</th>
+                <th style="padding: 8px; border: 1px solid #ccc;">Объём</th>
+                <th style="padding: 12px; border: 1px solid #ccc; font-weight: bold; background-color: #fff3cd;">
+                     Руда
+                </th>
+                <th style="padding: 8px; border: 1px solid #ccc;">Завозка</th>
+
+            </tr>
+
+            @foreach($sortedDumps as $item)
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ccc;">
+                        <a href="{{route('dump.edit', $item['dump']->id)}}">{{ $item['dump']->name_dump }}</a>
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ccc; text-align: right; font-weight: bold;">
+                        {{ $item['total_volume'] }} м³
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #ccc; text-align: right; background-color: #fff3cd;">
+                        @if(isset($item['has_rock_zones']) && $item['has_rock_zones'])
+                        {{-- Дамп ИМЕЕТ зоны с рудой --}}
+                        @if($item['rock_volume'] > 0)
+                            <strong style="color: #856404;">
+                                {{ number_format($item['rock_volume'], 0) }} м³
+                            </strong>
+                        @else
+                            <span style="color: #dc3545; font-weight: bold;">
+                                0 м³ ⚠️
+                            </span>
+                        @endif
+                    @else
+                        {{-- Дамп НЕ ИМЕЕТ зон с рудой --}}
+                        <span style="color: #6c757d; font-style: italic;">
+                            —
+                        </span>
+                    @endif
+
+                    </td>
+
+                    <td style="padding: 8px; border: 1px solid #ccc; text-align: left;">
+                        @if(isset($item['has_delivery']) && $item['has_delivery'] && isset($item['delivery_zone_rocks']) && count($item['delivery_zone_rocks']) > 0)
+                            <span style="color: #28a745; font-weight: bold;">
+                                ✅ <br>
+                                @foreach($item['delivery_zone_rocks'] as $zoneData)
+                                    
+                                    @php
+                                        $shortRocks = [];
+                                        if(isset($zoneData['rocks']) && is_array($zoneData['rocks'])) {
+                                            foreach($zoneData['rocks'] as $rockName) {
+                                                $shortRocks[] = $map[$rockName]?? substr($rockName, 0, 3);
+                                            }
+                                        }
+                                        $rockString = implode('/', $shortRocks);
+                                    @endphp
+                                    @if(!empty($rockString))
+                                        <small style="color: #6c757d;">{{ $rockString }}{{ $zoneData['name'] }}</small>
+                                    @endif
+                                    @if(!$loop->last) @endif
+                                    
+                                @endforeach
+                            </span>
+                        @else
+                            <span style="color: #dc3545; font-weight: bold;">❌ Нет</span>
+                        @endif
+                    </td>
+
+
+
+
+                </tr>
+            @endforeach
+        </table>
+
+        <p style="margin: 10px 0; font-size: 0.9em; color: #666;">
+            Всего: {{ $sortedDumps->count() }} перегрузок
+        </p>
+    @else
+        <p>Нет данных с объёмами</p>
+    @endif
+</div>
+
 </div>    
 
 @foreach($dumps as $dump) 

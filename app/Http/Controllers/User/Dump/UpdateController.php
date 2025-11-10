@@ -14,10 +14,12 @@ class UpdateController extends BaseController
 
       
 
-    $dump->update(
-      ['name_dump' => $request->name_dump,
-      'loader_zone_id' => $request->loader_zone_id,
-    ]);
+        // ✅ Изменяем свойства модели
+    $dump->name_dump = $request->name_dump;
+    $dump->loader_zone_id = $request->loader_zone_id;
+
+    // ✅ save() вызовет boot()!
+    $dump->save();
 
     // Обновляем зоны
     if ($request->has('zones')) {
