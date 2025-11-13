@@ -24,7 +24,9 @@ class IndexController extends BaseController
     switch ($filterMode) {
     case 'all_delivery':
         // Все подготовленные к завозке (loader_zone_id не null)
-        $query->whereNotNull('loader_zone_id');
+        $query->whereHas('zones', function($zoneQuery) {
+            $zoneQuery->where('delivery', true);
+            });
         break;
 
     case 'ruda_delivery':
@@ -50,6 +52,30 @@ class IndexController extends BaseController
                   $rockQuery->where('name_rock', 'руда');
               });
         break;
+    case 'priority_zones':
+    // 🎯 БАЗОВЫЙ ФИЛЬТР: дампы с неподготовленными зонами с рудой
+    $query->whereHas('zones', function($zoneQuery) {
+        $zoneQuery->where('delivery', false)     // ← Неподготовленные
+                  
+                  ->whereHas('rocks', function($rockQuery) {
+                      $rockQuery->where('name_rock', 'руда');  // ← С рудой
+                  });
+    });
+
+    // 🎯 ПРОСТОЕ ПОДГРУЗКА ЗОН (БЕЗ СЛОЖНЫХ УСЛОВИЙ)
+    $query->with(['zones' => function($zoneQuery) {
+        $zoneQuery->where('delivery', false)
+                  
+                  ->with('rocks')  // ← Загружаем все породы, фильтр в Blade
+                  ->orderBy('volume', 'ASC')  // ← Сортируем зоны по объёму
+                  ->select('id', 'name_zone', 'dump_id', 'delivery', 'volume');
+    }]);
+
+    // 🎯 ПРОСТАЯ СОРТИРОВКА ДАМПОВ
+    $query->orderBy('id', 'ASC');  // ← Пока просто по ID, сортировку зон в Blade
+
+    Log::info("🎯 ПРИМЕНЁН ФИЛЬТР: приоритетные зоны для завозки");
+    break;
 
     default:
         // Все дампы (без фильтра)

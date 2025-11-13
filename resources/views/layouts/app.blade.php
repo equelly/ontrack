@@ -68,7 +68,11 @@
                     </a></li>
                 <li class="nav-item item ml-3">
                     <a href="{{route('dump.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Грузопотоки 
+                        Перегрузки 
+                    </a></li>
+                <li class="nav-item item ml-3">
+                    <a href="{{route('distribution.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                        Грузопотоки
                     </a></li>
                 
                     @if(auth()->user()->role == 'admin')

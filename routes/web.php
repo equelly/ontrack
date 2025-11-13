@@ -3,7 +3,7 @@
 use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-
+use App\Http\Controllers\User\Dump\DistributionController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -39,7 +39,12 @@ Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middl
          Route::patch('/dump/{dump}', 'UpdateController')->name('dump.update');
          Route::delete('/dump/{dump}', 'DestroyController')->name('dump.delete');
     });
-  
+        // РОУТЫ ДЛЯ РАСПРЕДЕЛЕНИЯ
+    Route::get('/distribution-status', [DistributionController::class, 'status']);
+    Route::get('/distribute', [DistributionController::class, 'distribute']);
+    Route::post('/distribute', [DistributionController::class, 'distribute']);  // ← Для AJAX
+    Route::get('/test-optimal-zone/{minerId}', [DistributionController::class, 'testOptimalZone']);
+    Route::get('/distribution', [DistributionController::class, 'index'])->name('distribution.index');
 });
 Route::group(['namespace'=>'App\Http\Controllers\Admin', 'prefix'=>'admin', 'middleware'=>'admin'], function (){
     Route::group(['namespace'=>'Order'], function(){

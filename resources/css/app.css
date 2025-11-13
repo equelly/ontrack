@@ -36,6 +36,10 @@ header,
   .card{
     width: 80%;
   }
+  .card table {
+  width: 100%;
+  table-layout: fixed; /* Опционально: для равной ширины столбцов */
+}
 }
 @media (min-width: 922px) {
 
@@ -65,7 +69,7 @@ header,
 .card {
   background-color: rgba(125,180,210,0.5);
   
-  margin: auto;
+  margin: 1rem;
 }
 .card-text {
   
