@@ -14,11 +14,10 @@
         'руда_S' => 'red',
             ];
 @endphp
-<div class="bg-gray-50 rounded-lg p-4 mt-5 shadow-sm border border-gray-200 mx-2 sm:mx-4">
-
+<div class="flex justify-content-center mt-1">
 <!-- ПРОСТАЯ ТАБЛИЦА С ОБЪЁМАМИ -->
 <div style="background: #f0f0f0;max-width:500px;" class="card mb-2" >
-    <h3 class="m-2" >фильтр для вывода информации по прегрузкам</h3>
+    <h3 class="m-2" >фильтр для вывода информации по перегрузкам</h3>
     <!-- Блок фильтров -->
     <div class="filters-panel mb-4 p-3 bg-light rounded">
         <hr>
@@ -81,7 +80,7 @@
                             value="priority_zones"
                             {{ request('filter_mode') == 'priority_zones'? 'checked': '' }}>
                         <label class="form-check-label" for="priority_zones_filter">
-                             Приоритетные зоны для завозки (по объёму)
+                             Приоритетные зоны для завозки (по объёму руды)
                         </label>
                     </div>
                 </div>
@@ -124,10 +123,11 @@
 
     </div>
 </div>
+</div>
     <!-- /filters-panel -->
 
     @if(isset($sortedDumps))
-        
+    <div class="flex justify-content-center mt-1">
         <div style="background: #f0f0f0;max-width:500px;" class="card mb-2" >
             <h3 class="m-2" >📊 Объёмы на выбранных перегрузках</h3>
             <table style="border-collapse: collapse;">
@@ -210,11 +210,11 @@
                 <p>Нет данных с объёмами</p>
             @endif
         </div>
+    </div>
 
 
 
-
-</div>    
+    
 
 @foreach($dumps as $dump) 
 
