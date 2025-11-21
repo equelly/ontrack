@@ -213,3 +213,57 @@ input[type="checkbox"]:disabled:checked::before {
     position: relative;  /* для всех групп */
     margin-bottom: 1.5rem;  /* фиксированный отступ */
 }
+
+/* 🎛️ СТИЛИ ДЛЯ SELECT */
+#sort-mode {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+#sort-mode:hover {
+    border-color: #0d47a1;
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.3);
+}
+
+#sort-mode:focus {
+    outline: none;
+    border-color: #1976d2;
+    box-shadow: 0 0 12px rgba(33, 150, 243, 0.4);
+}
+
+/* 📱 АДАПТИВНОСТЬ */
+@media (max-width: 600px) {
+    #sort-mode {
+        width: 100%;
+        max-width: 250px;
+        margin: 10px 0;
+    }
+}
+/* STICKY SELECT .sticky-top {
+    position: sticky;
+    top: 70px;
+    z-index: 100;
+    background-color: #f8f9fa!important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 1rem;
+    padding: 1rem 0;
+}.sticky-top.form-select {
+    font-weight: 500;
+    border-radius: 0.375rem;
+}.sticky-top.alert {
+    margin: 0;
+    border-radius: 0.375rem;
+    font-size: 0.9em;
+}
+
+/* Цвета режимов ////.sticky-top.alert-info { background-color: #d1ecf1; border-color: #bee5eb; }.sticky-top.alert-warning { background-color: #fff3cd; border-color: #ffeaa7; }.sticky-top.alert-success { background-color: #d4edda; border-color: #c3e6cb; }
+
+/* Адаптивность ////
+@media (max-width: 800px) {.sticky-top {
+        padding: 0.75rem;
+    }.sticky-top.row > div {
+        margin-bottom: 0.5rem;
+    }
+}*/
+

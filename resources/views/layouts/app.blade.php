@@ -95,6 +95,41 @@
 <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
- 
+<script>
+// ✅ ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ РЕЖИМА
+function changeSortMode() {
+    const select = document.getElementById('sort-mode');
+    const newMode = select.value;
+
+    // ✅ ЛОАДИНГ
+    select.innerHTML = '<option>⏳ Загрузка...⏳⏳⏳</option>';
+
+    // ✅ ЧИСТЫЙ URL - только mode
+    const baseUrl = window.location.pathname; // /dump/distribution
+    const newUrl = baseUrl + '?mode=' + newMode;
+
+    window.location.href = newUrl;
+}
+
+// ✅ ЦВЕТА ДЛЯ РЕЖИМОВ
+function getModeColor(mode) {
+    const colors = {
+        'balance': '#e3f2fd',    // ← Голубой
+        'volume': '#e8f5e8',     // ← Зелёный
+        'distance': '#fff3e0'    // ← Оранжевый
+    };
+    return colors[mode] || '#f3e5f5';
+}
+
+// ✅ ЛОАДИНГ (опционально)
+function showLoading() {
+    const select = document.getElementById('sort-mode');
+    const originalText = select.innerHTML;
+    select.innerHTML = '<option>⏳ Загрузка...</option>';
+    setTimeout(() => {
+        select.innerHTML = originalText;
+    }, 500);
+}
+</script>
 </body>
 </html>                
