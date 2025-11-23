@@ -239,6 +239,65 @@ input[type="checkbox"]:disabled:checked::before {
         margin: 10px 0;
     }
 }
+
+/* Мобильная оптимизация таблицы */
+@media (max-width: 768px) {.mobile-table {
+        font-size: 0.85rem;
+    }.mobile-table th,.mobile-table td {
+        padding: 0.5rem 0.25rem;
+        white-space: nowrap;
+    }
+
+    /* Скрываем столбец дампов на маленьких экранах */.hide-on-mobile {
+        display: none;
+    }
+}
+/* Иконки для кнопок - адаптивные размеры */
+@media (max-width: 768px) {.btn-icon {
+        font-size: 0.5rem!important;  /* Меньше на мобилках */
+        width: 28px;
+        height: 28px;
+        padding: 0.25rem;
+    }.btn-group-sm.fas {
+        font-size: 0.75rem;  /* FontAwesome иконки */
+    }
+}
+/* Единообразные углы для всех кнопок действий */.btn-action {
+    border-radius: 0.375rem!important;  /* Стандартный Bootstrap radius */
+    border: 1px solid transparent;       /* Убираем двойные границы */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Tailwind не переопределяет */.btn-action:hover {
+    border-radius: 0.375rem!important;
+}
+
+/* Для мобильных - чуть больше закругления */
+@media (max-width: 768px) {.btn-action {
+        border-radius: 0.25rem!important;  /* Меньше на мобилках */
+    }
+}
+
+@media (min-width: 769px) {.btn-icon {
+        font-size: 0.875rem!important;  /* Стандартный размер */
+        width: 32px;
+        height: 32px;
+        padding: 0.375rem;
+    }
+}
+.text-end {
+    text-align: right!important;
+}
+form-check-label {
+    transition: all 0.2s ease;
+}
+
+#activeText {
+    transition: color 0.2s ease;
+}.text-success { color: #28a745!important; }.text-muted { color: #6c757d!important; }
+
 /* STICKY SELECT .sticky-top {
     position: sticky;
     top: 70px;

@@ -130,6 +130,57 @@ function showLoading() {
         select.innerHTML = originalText;
     }, 500);
 }
+ document.addEventListener('DOMContentLoaded', () => {
+  // Получаем все input с id, начинающимся на "slider_"
+  document.querySelectorAll('input[id^="slider_"]').forEach(input => {
+    input.addEventListener('input', function() {
+        const max = 30;
+        let value = Number(this.value);
+        if (value > max) {
+        alert(`Максимальное значение — ${max}. Значение будет установлено в ${max}.`);
+        value = max;
+        this.value = max;
+        } else if (value < 0) {
+        value = 0;
+        this.value = 0;
+        }
+        
+      const zoneId = this.id.split('_'); // получаем id зоны slider из полученного массива (второй элемент с индексом 1) 
+       
+                   
+      const span = document.getElementById(`value_${zoneId[1]}`); 
+      if(span) {
+          const value = Number(this.value);
+          span.style.width = (value * 0.1) + 'rem'; // длина столбика
+        //span.textContent = this.value;                     // обновляем значение span рядом
+      }
+    });
+  });
+});
+//checkbox active в работе / не в работе
+document.addEventListener('DOMContentLoaded', function() {
+        const checkbox = document.getElementById('active');
+        const textSpan = document.getElementById('activeText');
+
+        // Функция для обновления текста
+        function updateLabel() {
+            if (checkbox.checked) {
+                textSpan.textContent = 'в работе';
+                textSpan.classList.remove('text-muted');
+                textSpan.classList.add('text-success');
+            } else {
+                textSpan.textContent = 'не в работе';
+                textSpan.classList.remove('text-success');
+                textSpan.classList.add('text-muted');
+            }
+        }
+
+        // Обновляем при загрузке
+        updateLabel();
+
+        // Обновляем при клике
+        checkbox.addEventListener('change', updateLabel);
+    });
 </script>
 </body>
 </html>                

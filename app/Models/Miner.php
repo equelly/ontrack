@@ -14,9 +14,15 @@ class Miner extends Model
     //снимем защиту для возможности записи атрубутов модели в БД
     protected $guarded = []; // ... или false
 
-    public function routes()
-{
-    return $this->hasMany(Route::class);
-}
+        public function routes()
+    {
+        return $this->hasMany(Route::class);
+    }
+        public function dumps()
+    {
+        return $this->belongsToMany(Dump::class, 'miner_dump_distances')
+                    ->withPivot(['distance_km']) // поля из промежуточной таблицы
+                    ->withTimestamps();
+    }
 
 }

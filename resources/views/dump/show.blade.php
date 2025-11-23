@@ -63,16 +63,9 @@
                                                 
                                         
                                         </td>
-                                        <td class="w-[15px] border border-gray-300"><input 
-                                        type="number" 
-                                        id="slider_{{ $zone->id }}" 
-                                        min="0" 
-                                        max="30" 
-                                        name="volume[{{ $zone->id }}]" 
-                                        value="{{ $zone->volume }}" 
-                                        class="rounded-sm border-3 border-sky-500 focus:outline-none focus:ring"/></td>
+                                        <td class="w-[15px] border border-gray-300">{{ $zone->volume }}</td>
                                         <td  class="w-[35px] border border-gray-300"><span id="value_{{ $zone->id }}" class="diagramm inline-block h-5"
-                                        style= "width: {{ $zone->volume * 0.2 }}rem;
+                                        style= "width: {{ $zone->volume * 0.2 }} rem;
                                                 background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};">
                                         </span></td>
                                         <td  class="w-[10px] text-center align-middle border border-gray-300"> <input class="m-auto" type="checkbox" name="delivery" 

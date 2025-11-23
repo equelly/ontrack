@@ -4,6 +4,8 @@ use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\User\Dump\DistributionController;
+use App\Http\Controllers\User\Miner\MinersController;
+
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -39,6 +41,11 @@ Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middl
          Route::patch('/dump/{dump}', 'UpdateController')->name('dump.update');
          Route::delete('/dump/{dump}', 'DestroyController')->name('dump.delete');
     });
+
+    Route::group(['namespace' => 'Miner'], function () {
+        Route::resource('miners', 'MinersController');   // Создает: miners.index, miners.create, miners.store и т.д.
+
+        });    
         // РОУТЫ ДЛЯ РАСПРЕДЕЛЕНИЯ
     Route::get('/distribution-status', [DistributionController::class, 'status']);
     Route::get('/distribute', [DistributionController::class, 'distribute']);

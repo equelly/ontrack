@@ -63,6 +63,12 @@ class Dump extends Model
     'last_updated_at' => 'datetime',
     ];
 
+    public function miners()
+    {
+        return $this->belongsToMany(Miner::class, 'miner_dump_distances')
+                    ->withPivot(['distance_km', 'name_miner'])
+                    ->withTimestamps();
+    }
 
 
 }
