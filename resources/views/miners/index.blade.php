@@ -18,7 +18,7 @@
                         </div>
                     @endif
                     <div class="table-responsive">
-        <table class="table table-striped table-hover">
+    <table class="table table-striped table-hover">
             <thead class="table-dark">
             <tr class="mobile-table td">
                 
@@ -26,8 +26,8 @@
                 <th>Маршруты и расстояния</th>
                 <th class="hide-on-mobile">Создан</th>
             </tr>
-        </thead>
-        <tbody>
+            </thead>
+            <tbody>
             @forelse($miners as $miner)
                 <tr class="mobile-table td">
                     
@@ -65,26 +65,34 @@
                                     <button type="submit" 
                                             class="btn btn-outline-danger btn-icon btn-action" 
                                             title="Удалить"
-                                            onclick="return confirm('Удалить майнер \'{{ $miner->name }}\'?')">
+                                            onclick="return confirm(`Удалить оборудование {{ $miner->name_miner }} из системы?`)">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </form>
                             </div>
                         </div>
-                    </td>
-
-
-                    
+                    </td>             
                     <td class="text-end">
                         @if($miner->dumps->count() > 0)
-                            <ul class="list-unstyled mb-0">
+                            <ol class="list-unstyled mb-0">
                                 @foreach($miner->dumps as $dump)
                                     <li class="small">
-                                        <i class="fas fa-map-marker-alt text-muted"></i>
-                                        <strong>{{ $dump->pivot->distance_km }}</strong> км до п.п.№<strong>{{ $dump->name_dump }}</strong>
+                                         @if($dump->distance_km!== null)
+                                         <!-- $loop объект класса CompilesLoops, который laravel создает для циклов foreach -->
+                                         @if($loop->first)
+                                            <small class="text-success ms-2">ближний</small>
+                                         @endif
+                                        <strong>до п/п №{{ $dump->name_dump }}</strong>
+                                        <span class="badge bg-green-600">
+                                            {{ $dump->distance_km }} км
+                                        </span>
+                                        
+                                        @else
+                                            <span class="badge bg-light text-muted">не данных</span>
+                                        @endif
                                     </li>
                                 @endforeach
-                            </ul>
+                            </ol>
                         @else
                             <span class="text-muted">не установлены!</span>
                         @endif

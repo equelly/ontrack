@@ -10,7 +10,6 @@ use App\Models\Zone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 class DistributionController extends Controller
 {
@@ -177,12 +176,13 @@ $finalResult = [
 
 
         // Загружаем расстояния между miners и dumps
-        $distances = MinerDumpDistance::with([
-            'miner', 
-            // 'dump.zones' => function($q) {
-            //     $q->where('delivery', true);  // Только доступные зоны
-            //}
-        ])->get()->groupBy('miner_id');
+    $distances = MinerDumpDistance::with(['miner'])
+        ->whereHas('miner', function ($q) {
+            $q->where('active', true);
+        })
+        ->get()
+        ->groupBy('miner_id');
+
         // Добавляем в статистику
         $stats['total_miners_with_distances'] = $distances->keys()->count();
     // ← ЧАСТЬ 1/4: ПОДГОТОВКА УНИВЕРСАЛЬНОГО ЦИКЛА

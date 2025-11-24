@@ -6,7 +6,7 @@
         <div class="col-md-8 offset-md-2">
             <div class="card">
                 <div class="card-header">
-                    <h4>Добавить майнера</h4>
+                    <h4>Добавить оборудование для погрузки в автотранспорт</h4>
                 </div>
                 <div class="card-body">
                     <form action="{{ route('miners.store') }}" method="POST">
@@ -22,15 +22,16 @@
                             </div>
                         @endif
                         <div class="mb-3">
-                            <label class="form-label">Название</label>
+                            <label class="form-label">Наименование</label>
                             <input type="text" name="name_miner" class="form-control" 
                                    value="{{ old('name') }}" required>
                             @error('name')
                                 <div class="text-danger">{{ $message }}</div>
                             @enderror
                         </div>
-<div class="mb-3">
+<div class="mb-3">статус
                             <div class="form-check form-switch">
+                                  
                                 <input class="form-check-input" 
                                        type="checkbox" 
                                        id="active" 
@@ -43,6 +44,7 @@
                                   </span>
                                 </label>
                             </div>
+                            будет установлен (можно изменить)
                         </div>
 
 

@@ -47,6 +47,11 @@ header,
     max-width: 1024px;
   }
 }
+.table > :not(caption) > * > * {
+  
+  background-color: #c9d2dbe6;
+ 
+}
 .top-nav-collapse {
   background-color: #7db4d280 !important;
 }

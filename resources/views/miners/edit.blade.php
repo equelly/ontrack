@@ -1,21 +1,21 @@
 @extends('layouts.app')
 @section('content')
-<!-- В resources/views/miners/edit.blade.php -->
+
   <form action="{{ route('miners.update', $miner) }}" method="POST">
     @csrf
     @method('PUT')                     
 
-      <div class="mt-4 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
-        <p style="min-width: 150px;" class="mr-3">Расстояния от <input type="text" 
+      <div class="mt-4 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1rem">
+        <input type="text" style="max-width: 100px;"
                       name="name_miner" 
                       class="form-control @error('name') is-invalid @enderror" 
                       value="{{ old('name_miner', $miner->name_miner) }}" 
-                      required> </p>
+                      required>
                       @error('name')
                         <div class="text-danger">{{ $message }}</div>
                       @enderror
                                 <!-- ПОЛЕ ACTIVE -->
-                        <div class="mb-3">
+                        <div class="mb-3 ml-3">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" 
                                        type="checkbox" 
@@ -23,7 +23,7 @@
                                        name="active" 
                                        value="1" 
                                        {{ old('active', $miner->active)? 'checked': '' }}>
-                                <label class="form-check-label" for="active" id="activeLabel" style="min-width: 120px;">
+                                <label class="form-check-label" for="active" id="activeLabel" style="min-width: 120px; font-size: 1rem">
                                    <span id="activeText">
                                       {{ old('active', $miner->active)? 'в работе': 'не в работе' }}
                                   </span>
@@ -32,6 +32,7 @@
                         </div>
 
       </div>
+      <p  class="m-1 p-2">Форма редактирования расстояний маршрутов от забоя {{ $miner->name_miner }} </p>
       <div class="row">
       @foreach($allDumps as $dump)
         <div class="col-md-6 mb-3">
@@ -52,7 +53,10 @@
       </div>
       <div class="flex justify-around">
         <button type="submit" class="btn btn-primary">Сохранить</button>
-        <a href="{{ route('miners.index') }}" class="btn btn-secondary">Отмена</a>
+        <a href="{{ route('miners.index') }}" class="btn btn-secondary">
+          <i class="fas fa-arrow-left me-2"></i>
+                            Назад к списку
+        </a>
       </div>
       </form>
 
