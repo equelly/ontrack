@@ -12,7 +12,7 @@ class CreateController extends BaseController
 
         $sets = Set::all();
         $mashines = Mashine::all();
-          return view('order.create', compact('sets', 'mashines'));
+          return view('dump.create', compact('sets', 'mashines'));
         
     }
 }

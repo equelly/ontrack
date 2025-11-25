@@ -14,10 +14,22 @@
         'руда_S' => 'red',
             ];
 @endphp
+<div class="container mt-4">
+    <div class="card-header d-flex justify-content-center align-items-center mb-2">
+        <a href="{{ route('dump.create') }}" class="btn btn-primary w-100">
+            <i class="fas fa-plus"></i> Добавить перегрузку
+        </a>
+    </div>
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            {{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    @endif
+</div>
 <div class="flex justify-content-center mt-1">
-<!-- ПРОСТАЯ ТАБЛИЦА С ОБЪЁМАМИ -->
 <div style="background: #f0f0f0;max-width:500px;" class="card mb-2" >
-    <h3 class="m-2" >фильтр для вывода информации по перегрузкам</h3>
+    <h3 class="m-2" >фильтр вывода информации по перегрузкам</h3>
     <!-- Блок фильтров -->
     <div class="filters-panel mb-4 p-3 bg-light rounded">
         <hr>
@@ -33,7 +45,7 @@
                             value="all_delivery"
                             {{ request('filter_mode') == 'all_delivery'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
                         <label class="form-check-label" for="delivery_filter">
-                             Все подготовленные к завозке 
+                             Все подготовленные для приема горной массы
                         </label>
                     </div>
 
@@ -114,7 +126,7 @@
                         @break
                     @case('priority_zones')
                         ПРИОРИТЕТНЫЕ ЗОНЫ ДЛЯ ЗАВОЗКИ руды ({{ $dumps->count() }})
-                        <p><strong>Начните с верхних</strong> — у них меньше всего руды!</p>
+                        <p><strong>Начните с верхних</strong> — где меньше всего руды!</p>
                         @break
                 @endswitch
             </div>
@@ -151,7 +163,7 @@
                         </td>
                         <td style="padding: 8px; border: 1px solid #ccc; text-align: right; background-color: #fff3cd;">
                             @if(isset($item['has_rock_zones']) && $item['has_rock_zones'])
-                            {{-- Дамп ИМЕЕТ зоны с рудой --}}
+                            {{--ИМЕЕТ зоны с рудой --}}
                             @if($item['rock_volume'] > 0)
                                 <strong style="color: #856404;">
                                     {{ number_format($item['rock_volume'], 0) }} м³
@@ -162,7 +174,7 @@
                                 </span>
                             @endif
                         @else
-                            {{-- Дамп НЕ ИМЕЕТ зон с рудой --}}
+                            {{-- НЕ ИМЕЕТ зон с рудой --}}
                             <span style="color: #6c757d; font-style: italic;">
                                 —
                             </span>

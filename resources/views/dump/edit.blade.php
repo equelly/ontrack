@@ -143,9 +143,17 @@
                                        
                                         
                                         <div class="flex justify-content-between">
-                                          <button  type="submit" class="btn mt-2">обновить информацию</button>
+                                          <button  type="submit" class="btn mt-2">обновить</button>
+
+</form>                                         
+                                          <form method="POST" action="{{ route('dump.delete', $dump) }}" 
+                                                class="d-inline" onsubmit="return confirm('Удалить дамп #{{ $dump->name_dump }}? Это действие нельзя отменить!')">
+                                              @csrf
+                                              @method('DELETE')
+                                              <button type="submit" class="btn mt-2">удалить</button>
+                                          </form>
                                               <a href="{{ route('dump.index') }}" class="btn mt-2">
-                                                  Отмена
+                                                  отмена
                                               </a>
                                         </div>
                                         
@@ -159,8 +167,7 @@
     </div>
   </div>
  
-
-</form> 
+ 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
   // Получаем все input с id, начинающимся на "slider_"
