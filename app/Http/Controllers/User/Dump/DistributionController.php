@@ -269,7 +269,7 @@ if (!empty($suitableDumps)) {
 
         } elseif ($mode === 'volume') {
             // ✅ ПРИОРИТЕТ МЕНЬШИМ ОБЪЁМАМ (маленькие зоны первыми!)
-            $inverseVolume = (1 / ($volume + 1)) * 100; // 1/объём (маленький = большой score)
+            $inverseVolume = (1 / ($volume + 1)) * 1000; // 1/объём (маленький = большой score)
             $distancePenalty = $distance * 3; // небольшой штраф за расстояние
             $score = $inverseVolume - $distancePenalty;
         } else { // distance - ПРОСТО!
@@ -295,7 +295,7 @@ if (!empty($suitableDumps)) {
     usort($dumpOptions, function($a, $b) {
         return $b['score'] <=> $a['score']; // По убыванию score
     });
-
+    
     // ✅ БЕРЁМ ТОЛЬКО ПЕРВЫЙ (лучший!)
     if (!empty($dumpOptions)) {
         $bestOption = $dumpOptions[0];
@@ -313,13 +313,15 @@ if (!empty($suitableDumps)) {
             'last_volume' => $bestOption['last_volume'],
             'score' => round($bestOption['score'], 2)
         ];
-
-        $assignments[$minerId] = [$distribution[$minerId]];
+        
+        $assignments[$minerId] = $distribution[$minerId];
         $bestDistancies += $bestOption['distance'];
         $totalTime += $bestOption['travel_time_hours'];
         $totalAssignments++;
+        $stats['assignments'] = $assignments;
         $stats['total_assignments']++;
     }
+ 
 }
 
       
@@ -357,7 +359,7 @@ if (!empty($suitableDumps)) {
         $stats['average_distance'] = $assignments? round($bestDistancies / count($assignments), 2): 0;
         $stats['average_time'] = $assignments? round($totalTime / count($assignments), 2): 0;
         $stats['distribution'] = $distribution;
-        $stats['assignments'] = $assignments;
+        
         $stats['total_dump_capacity'] = $totalCapacity;      // Общая ёмкость
         $stats['dump_count'] = $dumpCount;                   // Количество dumps
         $stats['average_dump_capacity'] = $averageCapacity;  // Средняя ёмкость
@@ -377,6 +379,12 @@ if (!empty($suitableDumps)) {
         };
         $stats['total_miners'] = Miner::count();
         $stats['total_dumps'] = Dump::count();
+// В DistributionController.php - перед return view
+
+// Сортируем по score (от большего к меньшему)
+uasort($assignments, function($a, $b) {
+    return ($b['score']?? 0) <=> ($a['score']?? 0);
+});
 
      
         // Передаём данные в представление

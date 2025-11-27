@@ -72,21 +72,20 @@
         
             <div style="margin: 15px 0; padding: 12px; background: #f8f9fa; border-radius: 8px;
             border: 1px solid #007bff;  border-left: 4px solid #007bff;" class="col-12">
-                <strong>{{ $assignment[0]['miner_name'] }} 
+                <strong>{{ $assignment['miner_name'] }} 
                 
-                → перегрузка №{{ $assignment[0]['name_dump'] }}</strong>
+                → перегрузка №{{ $assignment['name_dump'] }}</strong>
 
                 <br>
-                <div>приоритет {{ $assignment[0]['score'] }} 
+                <div>приоритет {{ $assignment['score'] }} 
                 <small class="text-muted">{{$stats['mode_name']}} </small></div>
-                📏 {{ $assignment[0]['distance_km'] }} км | ⏱️ {{ $assignment[0]['travel_time_hours'] }} ч<br>
-                📦 Общая емкость: {{ $assignment[0]['dump_volume'] }} | 
-                Текущие объемы: {{ $assignment[0]['total_zone_volume'] }} остаточная емкость {{$assignment[0]['last_volume']}}
+                📏 {{ $assignment['distance_km'] }} км | ⏱️ {{ $assignment['travel_time_hours'] }} ч<br>
+                📦 Общая емкость: {{ $assignment['dump_volume'] }} | 
+                Текущие объемы: {{ $assignment['total_zone_volume'] }} остаточная емкость {{$assignment['last_volume']}}
             </div>
             
         @endforeach
 
     </div>
-
 @endsection
 
