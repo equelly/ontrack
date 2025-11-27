@@ -34,7 +34,7 @@
 <form class="mt-5" action="{{route('dump.update', $dump)}}" method="POST" class="flex justify-center" >
   @csrf
   @method('PATCH')
-  
+  <input type="hidden" id="zone-counter" value="{{ count($dump->zones) }}">
   <div class="flex justify-content-center mt-1">
     <div class="card shadow p-1 m-1 bg-white rounded" style="width: 40rem">
       <div class="row g-0">
@@ -73,34 +73,43 @@
                 <table class="table-fixed w-full border-collapse border border-gray-400">
                   <tbody>
                     @foreach($dump->zones as $index => $zone) 
-                      <tr>
+                      <tr  data-zone-id="{{ $zone->id }}">
                         <input type="hidden" name="zones[{{ $index }}][id]" value="{{ $zone->id }}">
                         <td  class="w-[15px] border border-gray-300">
-                          <input 
-                            type="text" 
-                            id="zone_id({{ $zone->id }})"
-                            name="zones[{{ $index }}][name_zone]" 
-                            value="{{ old('zones.'. $index. '.name_zone', $zone->name_zone) }}" 
-                            class="rounded-sm border-3 border-sky-500 w-[40px] focus:outline-none focus:ring"/>            
+                              <div class="d-flex align-items-center">
+                          <input type="text" 
+                                name="zones[{{ $index }}][name_zone]" 
+                                value="{{ $zone->name_zone }}" 
+                                class="form-control me-2" 
+                                required>
+
+                                <!-- ✅ ПРОСТАЯ КНОПКА С ВСТРОЕННЫМ JS -->
+                          <button type="button" 
+                                  class="p-1 mark-for-delete"
+                                  onclick="markZoneForDeletion('{{ $zone->id }}')">
+                              🗑️
+                          </button>
+
+                          </div>            
                           @error('zones.'. $index. '.name_zone')
                               <span class="text-danger">{{ $message }}</span>
                           @enderror              
                         </td>
+                        <!-- ✅ ПРОСТОЙ SELECT -->
                         <td class="w-[15px] border border-gray-300">
-                        
-                          @foreach($zone->rocks as $rockIndex => $rock)
-                          <select class = "form-control" name="zones[{{ $index }}][rocks][{{ $rockIndex }}][id]" required>  
-                            
-                            <option disabled>порода</option>
-                            @foreach ($allRocks as $rockOption)   
-                            <option value="{{ $rockOption->id }} " 
-                                {{$rock->id != $rockOption->id ? '' : 'selected'}}>
-                                {{$rockOption->name_rock}}</option>
-                              @endforeach
-                            
-                          </select>
-                          @endforeach
+                            <select name="zones[{{ $index }}][rocks][]" 
+                                    class="form-control" 
+                                    style="width: 100%;">
+                                <option value="" disabled>Выберите породы</option>
+                                @foreach($allRocks as $rockOption)
+                                    <option value="{{ $rockOption->id }}" 
+                                            {{ $zone->rocks->contains($rockOption->id)? 'selected': '' }}>
+                                        {{ $rockOption->name_rock }}
+                                    </option>
+                                @endforeach
+                            </select>
                         </td>
+
                         <td class="w-[15px] border border-gray-300">
                           <input 
                             type="number" 
@@ -109,7 +118,7 @@
                             max="30" 
                             name="zones[{{ $index }}][volume]" 
                             value="{{ old('zones.'. $index. '.volume', $zone->volume) }}"
-                            class="rounded-sm border-3 border-sky-500 focus:outline-none focus:ring"/></td>
+                            class="form-control zone-volume"/></td>
                         <td  class="w-[15px] border border-gray-300"><span id="value_{{ $zone->id }}" class="diagramm inline-block h-5"
                              style= "width: {{ $zone->volume * 0.1 }}rem;
                               background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};"></span>
@@ -132,14 +141,63 @@
                               <span class="text-danger">{{ $message }}</span>
                           @enderror
                         </td>
-                           
-                        
-                    </tr>
-                      @endforeach
+                      </tr>    
+                    @endforeach 
+                    
+                      
+                      {{-- ✅ ШАБЛОН НОВОЙ ЗОНЫ (скрытый) --}}
+                      <tr data-zone-id="" class="zone-template d-none" style="display: none;">
+                          <input type="hidden" name="zones[new][id]" value="">
+                          <td class="w-[15px] border border-gray-300">
+                              <input type="text" 
+                                    class="form-control zone-name" 
+                                    name="zones[new][name_zone]" 
+                                    placeholder="Название зоны"
+                                    class="rounded-sm border-3 border-sky-500 w-[40px] focus:outline-none focus:ring">
+                          </td>
+                          <td class="w-[15px] border border-gray-300">
+                              {{-- ✅ SELECT ДЛЯ ПОРОД --}}
+                              <select class="form-control zone-rocks" name="zones[new][rocks][id]" required>
+                                  <option disabled selected>порода</option>
+                                  @foreach ($allRocks as $rockOption)
+                                      <option value="{{ $rockOption->id }}">{{ $rockOption->name_rock }}</option>
+                                  @endforeach
+                              </select>
+                          </td>
+                          <td class="w-[15px] border border-gray-300">
+                              <input type="number" 
+                                    class="form-control zone-volume" 
+                                    min="0" max="30" 
+                                    value="0"
+                                    class="rounded-sm border-3 border-sky-500 focus:outline-none focus:ring">
+                          </td>
+                          <td class="w-[15px] border border-gray-300">
+                              <span class="zone-diagram diagramm inline-block h-5" 
+                                    style="width: 0rem; background-color: gray;"></span>
+                          </td>
+                          <td class="w-[10px] text-center align-middle border border-gray-300">
+                              <input class="m-auto zone-delivery" type="checkbox" 
+                                    name="zones[new][delivery]" value="1">
+                          </td>
+                          <td class="w-[10px] text-center align-middle border border-gray-300">
+                              <input type="radio" class="zone-loader" 
+                                    name="loader_zone_id" value="new">
+                          </td>
+                      </tr>
+
                   </tbody>
-                                    
+                  
+                  {{-- ✅ КНОПКА ДОБАВЛЕНИЯ --}}
+                  <div class="mt-3">
+                      <button type="button" id="add-zone" class="btn btn-success">
+                          + Добавить зону
+                      </button>
+
+
+
+          
                                 
-                            </table>     
+              </table>     
                                        
                                         
                                         <div class="flex justify-content-between">
@@ -147,7 +205,7 @@
 
 </form>                                         
                                           <form method="POST" action="{{ route('dump.delete', $dump) }}" 
-                                                class="d-inline" onsubmit="return confirm('Удалить дамп #{{ $dump->name_dump }}? Это действие нельзя отменить!')">
+                                                class="d-inline" onsubmit="return confirm('Удалить перегрузку №{{ $dump->name_dump }}? Это действие нельзя отменить!')">
                                               @csrf
                                               @method('DELETE')
                                               <button type="submit" class="btn mt-2">удалить</button>

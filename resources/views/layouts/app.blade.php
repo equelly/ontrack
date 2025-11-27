@@ -160,9 +160,8 @@ function showLoading() {
       }
     });
   });
-});
 //checkbox active в работе / не в работе
-document.addEventListener('DOMContentLoaded', function() {
+
         const checkbox = document.getElementById('active');
         const textSpan = document.getElementById('activeText');
 
@@ -184,7 +183,157 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Обновляем при клике
         checkbox.addEventListener('change', updateLabel);
+ });
+document.addEventListener('DOMContentLoaded', function() {
+    // ✅ НАЙДЁМ ВСЕ INPUT'Ы ОБЪЁМА ЗОН
+    let volumeInputs = document.querySelectorAll('input[name*="][volume]"]');
+
+    volumeInputs.forEach(function(input) {
+        // ✅ ПРИ ФОКУСЕ - ОЧИЩАЕМ VALUE!
+        input.addEventListener('focus', function() {
+            // Сохраняем позицию курсора (если нужно)
+            let cursorPos = this.selectionStart;
+
+            // ✅ ОЧИЩАЕМ СТАРОЕ ЗНАЧЕНИЕ
+            this.value = '';
+
+            // Возвращаем курсор в начало
+            this.setSelectionRange(0, 0);
+        });
+
+        // ✅ ПРИ КЛИКЕ (если фокус через клик)
+        input.addEventListener('click', function() {
+            // Если значение не пустое - очищаем
+            if (this.value && this.value!== '') {
+                this.value = '';
+            }
+        });
+
+        // ✅ ОПЦИОНАЛЬНО: ПРОВЕРКА НА ПУСТОЕ ПОЛЕ ПРИ ПОТЕРЕ ФОКУСА
+        input.addEventListener('blur', function() {
+            // Если поле пустое после редактирования - можно оставить пустым или восстановить
+            if (!this.value || this.value === '') {
+                // this.value = '0'; // или оставить пустым для обязательной проверки
+            }
+        });
     });
+
+});
+
+
+// добавление новых зон
+$(document).ready(function() {
+    window.zoneCounter = window.zoneCounter || 0;
+
+    $('#add-zone').click(function() {
+
+        let template = $('.zone-template').first();
+        if (template.length === 0) {
+            
+            return;
+        }
+
+        // ✅ КЛОНИРУЕМ
+        let cloned = template.clone();
+        cloned.removeClass('d-none zone-template').addClass('new-zone');
+        cloned.show();
+
+        // ✅ ПРАВИЛЬНЫЕ ИМЕНА ДЛЯ НОВЫХ ЗОН
+        let index = window.zoneCounter;
+
+        // Название зоны
+        cloned.find('.zone-name').attr('name', `zones[new_${index}][name_zone]`);
+        cloned.find('.zone-name').attr('id', `zone_id_new_${index}`);
+
+        // Объем
+        cloned.find('.zone-volume').attr('name', `zones[new_${index}][volume]`);
+        cloned.find('.zone-volume').attr('id', `slider_new_${index}`);
+
+        // Порода (один select)
+        cloned.find('.zone-rocks').attr('name', `zones[new_${index}][rocks][]`);
+
+        // Доставка
+        cloned.find('.zone-delivery').attr('name', `zones[new_${index}][delivery]`);
+
+        // Лоадер
+        cloned.find('.zone-loader').attr('value', `new_${index}`);
+
+        // ✅ ОЧИЩАЕМ ПОЛЯ
+        cloned.find('.zone-name').val('');
+        cloned.find('.zone-volume').val('0');
+        cloned.find('.zone-rocks option:first').prop('selected', true);
+        cloned.find('.zone-delivery').prop('checked', false);
+        cloned.find('.zone-loader').prop('checked', false);
+
+        // ✅ ДОБАВЛЯЕМ В КОНЕЦ
+        $('tbody').append(cloned);
+
+        window.zoneCounter++;
+
+        
+    }); 
+});
+// удаление зон 
+function markZoneForDeletion(zoneId) {
+    
+
+    // Добавляем скрытое поле для удаления
+    let form = document.querySelector('form');
+    let hiddenInput = document.createElement('input');
+    hiddenInput.type = 'hidden';
+    hiddenInput.name = 'delete_zones[]';
+    hiddenInput.value = zoneId;
+    form.appendChild(hiddenInput);
+
+    // Визуально скрываем строку
+    let row = document.querySelector(`tr[data-zone-id="${zoneId}"]`);
+    if (row) {
+
+                // ✅ ПОЛУПРОЗРАЧНОСТЬ + КРАСНЫЙ ФОН
+        row.style.opacity = '1';
+        row.style.backgroundColor = '#f8d7da'; // Светло-красный фон
+        row.style.transition = 'opacity 0.3s, background-color 0.3s'; // Плавная анимация
+       
+        let deleteBtn = row.querySelector('.mark-for-delete');
+        
+                // ✅ КНОПКА С НАДПИСЬЮ - С Z-INDEX!
+        deleteBtn.innerHTML = '<small style="white-space: nowrap; opacity: 1!important;">после обновления зона будет удалена</small>';
+        deleteBtn.disabled = true;
+
+        // ✅ ПРАВИЛЬНЫЕ СТИЛИ С Z-INDEX
+        deleteBtn.style.cssText = `
+            background-color: #dc3545!important;
+            color: white!important;
+            opacity: 1!important;
+            border: 1px solid #dc3545;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: nowrap;
+            min-width: fit-content;
+            max-width: 200px;
+
+            /* ✅ Z-INDEX РАБОТАЕТ ТОЛЬКО С POSITION! */
+            position: relative!important;
+            z-index: 1000!important;
+        `;
+
+        // ✅ ТЕКСТ В КНОПКЕ ТОЖЕ С Z-INDEX
+        let smallText = deleteBtn.querySelector('small');
+        if (smallText) {
+            smallText.style.cssText = `
+                opacity: 1!important;
+                color: white!important;
+                font-size: 11px;
+                white-space: nowrap;
+                position: relative;
+                z-index: 1000;
+            `;
+        }
+    }
+
+}
 </script>
 </body>
 </html>                

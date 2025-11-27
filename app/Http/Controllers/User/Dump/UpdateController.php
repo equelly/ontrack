@@ -6,50 +6,120 @@ use App\Http\Requests\Dump\UpdateRequest;
 use App\Models\Dump;
 use App\Models\Zone;
 use Illuminate\Routing\Controller as BaseController;
-
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class UpdateController extends BaseController
 {
-    public function __invoke(UpdateRequest $request, Dump $dump){
+    public function __invoke(Request $request, Dump $dump)
+{
+    // ✅ ВАЛИДАЦИЯ В КОНТРОЛЛЕРЕ
+    $request->validate([
+        'name_dump' => 'required|string|max:255',
+    ], [
+        'name_dump.required' => 'Название дампа обязательно!',
+    ]);
 
-      
+    // ✅ УДАЛЕНИЕ ПОМЕЧЕННЫХ ЗОН
+    $deletedZones = 0;
+    if ($request->has('delete_zones')) {
+        $deleteZoneIds = $request->input('delete_zones', []);
+        $deletedZones = $dump->zones()->whereIn('id', $deleteZoneIds)->delete();
 
-        // ✅ Изменяем свойства модели
-    $dump->name_dump = $request->name_dump;
-    $dump->loader_zone_id = $request->loader_zone_id;
+    }
 
-    // ✅ save() вызовет boot()!
-    $dump->save();
 
-    // Обновляем зоны
-    if ($request->has('zones')) {
-        foreach ($request->zones as $zoneData) {
-            // Создаём/находим зону
-            $zone = Zone::updateOrCreate(
-                ['id' => $zoneData['id']?? null],
-                [
-                    'dump_id' => $dump->id,  // ← Автоматически!
+    $validated = $request->all();
+
+    // ✅ ВАЛИДАЦИЯ НОВЫХ ЗОН В КОНТРОЛЛЕРЕ
+    $newZonesCreated = 0;
+    $updatedZones = 0;  // ✅ СЧЁТЧИК ОБНОВЛЁННЫХ ЗОН
+    if (isset($validated['zones'])) {
+        foreach ($validated['zones'] as $index => $zoneData) {
+
+                   // ✅ ПРОВЕРКА: СУЩЕСТВУЮЩАЯ ЗОНА (ИМЕЕТ ID)
+        if (isset($zoneData['id']) &&!empty($zoneData['id']) && $zoneData['id']!= 'null') {
+            // ✅ ОБНОВЛЯЕМ СУЩЕСТВУЮЩУЮ ЗОНУ
+            $zone = $dump->zones()->find($zoneData['id']);
+            if ($zone) {
+                $zone->update([
+                    'name_zone' => $zoneData['name_zone'],
+                    'volume' => (float)$zoneData['volume'],
+                    'delivery' => isset($zoneData['delivery'])? 1: 0,
+                ]);
+
+                // ✅ ОБНОВЛЯЕМ ПОРОДЫ
+                $rocks = $zoneData['rocks']?? [];
+                $zone->rocks()->sync($rocks);
+
+                $updatedZones++;
+            }
+        }
+        // ✅ КОД ДЛЯ НОВЫХ ЗОН 
+        elseif (strpos($index, 'new_') === 0) {
+                // Проверяем обязательные поля
+                if (empty($zoneData['name_zone'])) {
+                    return back()->withErrors(['zones' => 'Название зоны обязательно!']);
+                }
+                // ✅ ШАГ 1: ПРОВЕРКА НА СУЩЕСТВОВАНИЕ
+                if (!isset($zoneData['volume'])) {
+                    return back()->withErrors(['zones' => 'Объем зоны не указан!']);
+                }
+
+                // ✅ ШАГ 2: ПРОВЕРКА НА ПУСТОТУ
+                if ($zoneData['volume'] === '' || $zoneData['volume'] === null) {
+                    return back()->withErrors(['zones' => 'Объем зоны не может быть пустым!']);
+                }
+
+                // ✅ ШАГ 3: ПРОВЕРКА НА ЧИСЛО
+                if (!is_numeric($zoneData['volume'])) {
+                    return back()->withErrors(['zones' => 'Объем зоны должен быть числом!']);
+                }
+
+                // ✅ ШАГ 4: ПРОВЕРКА НА ≥ 0
+                if ((float)$zoneData['volume'] < 0) {
+                    return back()->withErrors(['zones' => 'Объем зоны не может быть отрицательным!']);
+                }
+
+
+                // Создаем зону
+                $newZone = $dump->zones()->create([
                     'name_zone' => $zoneData['name_zone'],
                     'volume' => $zoneData['volume'],
-                    'ship' => $request->boolean('zones.*.ship'),
-                    'delivery' => $zoneData['delivery']?? 0,
-                ]
-            );
+                    'delivery' => isset($zoneData['delivery'])? 1: 0,
+                ]);
 
-            // Rocks (sync) — теперь $zone существует!
-            if (isset($zoneData['rocks'])) {
-                $rockIds = collect($zoneData['rocks'])->pluck('id')->filter();
-                $zone->rocks()->sync($rockIds);
+                // Породы
+                $rocks = [];
+                if (isset($zoneData['rocks']) && is_array($zoneData['rocks'])) {
+                    foreach ($zoneData['rocks'] as $rockId) {
+                        if ($rockId) {
+                            $rocks[] = $rockId;
+                        }
+                    }
+                }
+                $newZone->rocks()->attach($rocks);
+
+                $newZonesCreated++;
             }
         }
     }
 
-    return redirect()->route('dump.show', $dump)
-                    ->with([
-                    'success' => true,
-                    'message' => $dump->name_dump. ' обновлёны!',
-                    'type' => 'success'
-                ]);
+    // Обновляем дамп
+    $dump->update([
+        'name_dump' => $validated['name_dump']?? $dump->name_dump,
+    ]);
 
-  }
+    $message = "Информация по перегрузочному пункту №{$dump->dump_name} обновлена! ";
+    if ($updatedZones > 0) $message.= "✏️ Обновление: {$updatedZones} зону(ы). ";
+    if ($newZonesCreated > 0) $message.= "➕ Добавлено: {$newZonesCreated} новую зону. ";
+    if ($deletedZones > 0) $message.= "🗑️ Удалено: {$deletedZones} зону(ы). ";
+
+
+
+    return redirect()->route('dump.index')
+        ->with('success', $message);
+}
+
+
 }

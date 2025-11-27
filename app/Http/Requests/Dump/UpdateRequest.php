@@ -12,24 +12,25 @@ class UpdateRequest extends FormRequest
     }
 
     
-    public function rules(): array
-    {
-        return [
-            // Dump
-            'name_dump' => 'required',
+   public function rules()
+{
+    return [
+        'name_dump' => 'required|string|max:255',
 
-            // Зоны (массив)
-            'zones' => 'array|min:1',
-            'zones.*.id' => 'nullable|exists:zones,id',
-            'zones.*.name_zone' => 'required|string|max:255',
-            'zones.*.volume' => 'required|numeric|min:0',
-            'zones.*.ship' => 'boolean',
-            'zones.*.delivery' => 'nullable|string|max:100',
-            //'zones.*.dump_id' => 'required|exists:dumps,id',
+        // // Существующие зоны
+        // 'zones.*.name_zone' => 'sometimes|required|string|max:255',
+        // 'zones.*.volume' => 'sometimes|required|numeric|min:0|max:30',
+        // 'zones.*.rocks.*.id' => 'sometimes|required|exists:rocks,id',
+        // 'zones.*.delivery' => 'sometimes|boolean',
 
-            // Rocks
-            'zones.*.rocks' => 'array|min:1',
-            'zones.*.rocks.*.id' => 'required|exists:rocks,id',
-        ];
-    }
+        // // Новые зоны
+        // 'zones.new_*' => 'sometimes|array',
+        // 'zones.new_*.name_zone' => 'sometimes|required|string|max:255',
+        // 'zones.new_*.volume' => 'sometimes|required|numeric|min:0|max:30',
+        // 'zones.new_*.rocks' => 'sometimes|array',
+        // 'zones.new_*.rocks.*' => 'sometimes|exists:rocks,id',
+        // 'zones.new_*.delivery' => 'sometimes|boolean',
+    ];
+}
+
 }
