@@ -48,19 +48,6 @@
                              Все подготовленные для приема горной массы
                         </label>
                     </div>
-
-                    <div class="form-check">
-                        <input class="form-check-input" 
-                            type="radio" 
-                            name="filter_mode" 
-                            id="ruda_delivery" 
-                            value="ruda_delivery"
-                            {{ request('filter_mode') == 'ruda_delivery'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
-                        <label class="form-check-label" for="ruda_delivery">
-                             Подготовленные для завозки руды
-                        </label>
-                    </div>
-
                     <div class="form-check">
                         <input class="form-check-input" 
                             type="radio" 
@@ -69,7 +56,19 @@
                             value="has_ruda"
                             {{ request('filter_mode') == 'has_ruda'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
                         <label class="form-check-label" for="has_rock_filter">
-                             Рудные перегрузки
+                             Рудные перегрузки:
+                        </label>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" 
+                            type="radio" 
+                            name="filter_mode" 
+                            id="ruda_delivery" 
+                            value="ruda_delivery"
+                            {{ request('filter_mode') == 'ruda_delivery'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
+                        <label class="form-check-label pt-1" for="ruda_delivery">
+                             → подготовленные для завозки 
                         </label>
                     </div>
 
@@ -80,8 +79,8 @@
                             id="rock_shipment_filter"
                             value="ruda_shipment"
                             {{ request('filter_mode') == 'ruda_shipment'? 'checked': '' }}>  <!-- ← ИСПРАВЛЕНО -->
-                        <label class="form-check-label fw-medium text-dark mb-0" for="rock_shipment_filter">
-                             производится отгрузка руды
+                        <label class="form-check-label pt-1" for="rock_shipment_filter">
+                            → производится отгрузка 
                         </label>
                     </div>
                     <div class="form-check">
@@ -91,18 +90,18 @@
                             id="priority_zones_filter"
                             value="priority_zones"
                             {{ request('filter_mode') == 'priority_zones'? 'checked': '' }}>
-                        <label class="form-check-label" for="priority_zones_filter">
-                             Приоритетные зоны для завозки (по объёму руды)
+                        <label class="form-check-label pt-1" for="priority_zones_filter">
+                            → приоритетные зоны для завозки
                         </label>
                     </div>
                 </div>
 
                 <!-- Кнопки управления -->
                 <div class="flex justify-content-between">
-                    <button type="submit" class="p-1" style="background-color:#dddddd;">
+                    <button type="submit" class="p-1 rounded-md" style="background-color:#dddddd;">
                         🔍 Применить
                     </button>
-                    <a href="{{ route('dump.index') }}" class="p-1" style="background-color:#dddddd;">
+                    <a href="{{ route('dump.index') }}" class="p-1 rounded-md" style="background-color:#dddddd;">
                         ❌ Сбросить
                     </a>
                 </div>
@@ -116,7 +115,7 @@
                         🚛 выведены перегрузки с подготовленными к завозке зонами - всего: {{ $dumps->count() }}
                         @break
                     @case('ruda_delivery')
-                        выведены зоны для завозки руды ({{ $dumps->count() }})
+                        подготовленные зоны для завозки руды ({{ $dumps->count() }})
                         @break
                     @case('has_ruda')
                         показаны рудные перегрузки ({{ $dumps->count() }})
@@ -125,7 +124,7 @@
                         Показаны точки отгрузки руды ({{ $dumps->count() }})
                         @break
                     @case('priority_zones')
-                        ПРИОРИТЕТНЫЕ ЗОНЫ ДЛЯ ЗАВОЗКИ руды ({{ $dumps->count() }})
+                        Приоритетные зоны для завозки руды ({{ $dumps->count() }})
                         <p><strong>Начните с верхних</strong> — где меньше всего руды!</p>
                         @break
                 @endswitch
@@ -159,14 +158,14 @@
                             <a href="{{route('dump.edit', $item['dump']->id)}}">{{ $item['dump']->name_dump }}</a>
                         </td>
                         <td style="padding: 8px; border: 1px solid #ccc; text-align: right; font-weight: bold;">
-                            {{ $item['total_volume'] }} м³
+                            {{ $item['total_volume'] }} 
                         </td>
                         <td style="padding: 8px; border: 1px solid #ccc; text-align: right; background-color: #fff3cd;">
                             @if(isset($item['has_rock_zones']) && $item['has_rock_zones'])
                             {{--ИМЕЕТ зоны с рудой --}}
                             @if($item['rock_volume'] > 0)
                                 <strong style="color: #856404;">
-                                    {{ number_format($item['rock_volume'], 0) }} м³
+                                    {{ number_format($item['rock_volume'], 1) }} 
                                 </strong>
                             @else
                                 <span style="color: #dc3545; font-weight: bold;">
@@ -269,15 +268,8 @@
                                     <tr>
                                     
                                         <td  class="w-[20px] border border-gray-300">{{ $zone->name_zone }}
-                                        @foreach ($zone->rocks as $rock) 
-                                            
-
-                                                @foreach($zone->rocks as $rock)
-                                                    {{ $map[$rock->name_rock]?? $rock->name_rock }}
-                                                @endforeach
-
-                                                
-                                        
+                                        @foreach ($zone->rocks as $rock)                                                 
+                                            {{ $map[$rock->name_rock]?? $rock->name_rock }}
                                         </td>
                                         <td class="w-[15px] border border-gray-300"><div>{{ $zone->volume }}</div> 
                                         </td>

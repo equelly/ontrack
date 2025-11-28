@@ -14,8 +14,10 @@ class UpdateController extends BaseController
     public function __invoke(Request $request, Dump $dump)
 {
     // ✅ ВАЛИДАЦИЯ В КОНТРОЛЛЕРЕ
+   
     $request->validate([
         'name_dump' => 'required|string|max:255',
+        'loader_zone_id' => 'numeric',
     ], [
         'name_dump.required' => 'Название дампа обязательно!',
     ]);
@@ -33,7 +35,7 @@ class UpdateController extends BaseController
 
     // ✅ ВАЛИДАЦИЯ НОВЫХ ЗОН В КОНТРОЛЛЕРЕ
     $newZonesCreated = 0;
-    $updatedZones = 0;  // ✅ СЧЁТЧИК ОБНОВЛЁННЫХ ЗОН
+   
     if (isset($validated['zones'])) {
         foreach ($validated['zones'] as $index => $zoneData) {
 
@@ -46,14 +48,14 @@ class UpdateController extends BaseController
                     'name_zone' => $zoneData['name_zone'],
                     'volume' => (float)$zoneData['volume'],
                     'delivery' => isset($zoneData['delivery'])? 1: 0,
+                    'ship' => isset($zoneData['loader_zone_id'])? 1: 0,
                 ]);
 
                 // ✅ ОБНОВЛЯЕМ ПОРОДЫ
                 $rocks = $zoneData['rocks']?? [];
                 $zone->rocks()->sync($rocks);
 
-                $updatedZones++;
-            }
+                }
         }
         // ✅ КОД ДЛЯ НОВЫХ ЗОН 
         elseif (strpos($index, 'new_') === 0) {
@@ -87,6 +89,7 @@ class UpdateController extends BaseController
                     'name_zone' => $zoneData['name_zone'],
                     'volume' => $zoneData['volume'],
                     'delivery' => isset($zoneData['delivery'])? 1: 0,
+                    'ship' => isset($zoneData['loader_zone_id'])? 1: 0,
                 ]);
 
                 // Породы
@@ -108,11 +111,12 @@ class UpdateController extends BaseController
     // Обновляем дамп
     $dump->update([
         'name_dump' => $validated['name_dump']?? $dump->name_dump,
+        'loader_zone_id' => $validated['loader_zone_id']?? $dump->loader_zone_id,
     ]);
 
-    $message = "Информация по перегрузочному пункту №{$dump->dump_name} обновлена! ";
-    if ($updatedZones > 0) $message.= "✏️ Обновление: {$updatedZones} зону(ы). ";
-    if ($newZonesCreated > 0) $message.= "➕ Добавлено: {$newZonesCreated} новую зону. ";
+    $message = "Информация по перегрузочному пункту №{$dump->name_dump} обновлена! ";
+    
+    if ($newZonesCreated > 0) $message.= "➕ Добавлено зон: {$newZonesCreated} . ";
     if ($deletedZones > 0) $message.= "🗑️ Удалено: {$deletedZones} зону(ы). ";
 
 

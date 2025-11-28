@@ -16,7 +16,7 @@ class UpdateRequest extends FormRequest
 {
     return [
         'name_dump' => 'required|string|max:255',
-
+        // не стаботала валидация  пришлось делеть в контроллере по зонам
         // // Существующие зоны
         // 'zones.*.name_zone' => 'sometimes|required|string|max:255',
         // 'zones.*.volume' => 'sometimes|required|numeric|min:0|max:30',

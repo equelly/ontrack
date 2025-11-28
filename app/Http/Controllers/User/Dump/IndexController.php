@@ -74,7 +74,7 @@ class IndexController extends BaseController
     // 🎯 ПРОСТАЯ СОРТИРОВКА ДАМПОВ
     $query->orderBy('id', 'ASC');  // ← Пока просто по ID, сортировку зон в Blade
 
-    Log::info("🎯 ПРИМЕНЁН ФИЛЬТР: приоритетные зоны для завозки");
+   
     break;
 
     default:
@@ -142,7 +142,7 @@ class IndexController extends BaseController
         return $rockVolume * 10000 + $totalVolume;
     });
 
-        
+     Log::info(json_encode($dumps, JSON_PRETTY_PRINT));  
         return view('dump.index', compact('dumps', 'sortedDumps', 'activeFilter'));
         
     }

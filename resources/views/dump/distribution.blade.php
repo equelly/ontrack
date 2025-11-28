@@ -3,7 +3,7 @@
 @section('content')
     <div class="container mt-4">
                 <!-- Заголовок -->
-            <div class="bg-gray-200 text-center mb-4">🧑‍🔧 Система Распределения грузопотоков </div>
+            <div class="bg-gray-200 text-center mb-4"> Система Распределения грузопотоков </div>
                 <div style="text-align: center; margin: 20px 0; padding: 15px; background: #e3f2fd; 
                     border-radius: 8px;" class="">
                     <label for="sort-mode" style="font-weight: bold; font-size: 15px; margin-right: 10px; color: #1976d2;">
@@ -15,13 +15,13 @@
 
                         {{-- ✅ ВЫБОР ТЕКУЩЕГО РЕЖИМА --}}
                         <option value="balance" {{ ($mode?? 'balance') == 'balance'? 'selected': '' }}>
-                            ⚖️ Balance (по балансу)
+                            ⚖️  (по балансу)
                         </option>
                         <option value="volume" {{ ($mode?? 'balance') == 'volume'? 'selected': '' }}>
-                            📏 Volume (по объёму)
+                            📏  (по объёму)
                         </option>
                         <option value="distance" {{ ($mode?? 'balance') == 'distance'? 'selected': '' }}>
-                            🗺️ Distance (по расстоянию)
+                            🗺️  (по расстоянию)
                         </option>
                     </select>
                 </div>

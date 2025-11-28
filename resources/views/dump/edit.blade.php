@@ -73,6 +73,7 @@
                 <table class="table-fixed w-full border-collapse border border-gray-400">
                   <tbody>
                     @foreach($dump->zones as $index => $zone) 
+                   
                       <tr  data-zone-id="{{ $zone->id }}">
                         <input type="hidden" name="zones[{{ $index }}][id]" value="{{ $zone->id }}">
                         <td  class="w-[15px] border border-gray-300">
@@ -112,17 +113,28 @@
 
                         <td class="w-[15px] border border-gray-300">
                           <input 
-                            type="number" 
+                            type="text" 
                             id="slider_{{ $zone->id }}" 
                             min="0" 
                             max="30" 
                             name="zones[{{ $index }}][volume]" 
                             value="{{ old('zones.'. $index. '.volume', $zone->volume) }}"
-                            class="form-control zone-volume"/></td>
+                            class="form-control zone-volume"/>
+                          
+                          
+                        </td>
+                        
+                          
+                        @foreach($zone->rocks as $rock) 
                         <td  class="w-[15px] border border-gray-300"><span id="value_{{ $zone->id }}" class="diagramm inline-block h-5"
+                             
                              style= "width: {{ $zone->volume * 0.1 }}rem;
                               background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};"></span>
-                        </td>
+                        @endforeach
+                      </td>
+                          
+                          
+                        
                         <td  class="w-[10px] text-center align-middle border border-gray-300"> 
                           <input class="m-auto" type="checkbox" 
                             name="zones[{{ $index }}][delivery]" 
@@ -133,6 +145,7 @@
                           @enderror
                         </td>
                         <td  class="w-[10px] text-center align-middle border border-gray-300"> 
+                          <input type="hidden" name="ship" value="1">
                           <input type="radio" 
                             name="loader_zone_id" 
                             value="{{ $zone->id }}"
@@ -188,7 +201,7 @@
                   </tbody>
                   
                   {{-- ✅ КНОПКА ДОБАВЛЕНИЯ --}}
-                  <div class="mt-3">
+                  <div class="m-2">
                       <button type="button" id="add-zone" class="btn btn-success">
                           + Добавить зону
                       </button>
