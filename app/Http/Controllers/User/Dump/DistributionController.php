@@ -372,7 +372,7 @@ if (!empty($suitableDumps)) {
         $stats['total_available_zones'] = $zonesByRock->sum(fn($group) => $group->count());
         $stats['selected_mode'] = $mode;
         $stats['mode_name'] = match($mode) {
-            'volume' => '📦 Приоритет по объёму',
+            'volume' => 'Приоритет по объёму',
             'distance' => '🏃 Приоритет по расстоянию', 
             'balance' => '⚖️ Баланс объёма и расстояния (30/70)',
             default => '⚖️ Баланс'
