@@ -16,7 +16,8 @@ class DistributionController extends Controller
 
         public function index(Request $request)
     {
-// Чтение параметров и базовая статистика
+        // В начале установим режимы для сортировки
+    // Чтение параметров и базовая статистика
     $mode = $request->input('mode', 'balance'); // volume, distance, balance
 
                // ✅ ВАЛИДАЦИЯ (только разрешённые режимы)
@@ -24,10 +25,159 @@ class DistributionController extends Controller
         if (!in_array($mode, $allowedModes)) {
             $mode = 'balance'; // по умолчанию
         }
+        // Загружаем расстояния между miners и dumps
+    $distances = MinerDumpDistance::with(['miner'])
+        ->whereHas('miner', function ($q) {
+            $q->where('active', true);
+        })
+        ->get()
+        ->groupBy('miner_id');
 
-        // ✅ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ (временно)
-        Log::info('Выбран режим сортировки: '. $mode);
+        // Добавляем в статистику
+        $stats['total_miners_with_distances'] = $distances->keys()->count();
+    
+    // Инициализация переменных
+    // ← СТАТИСТИКА МАРШРУТОВ (для среднего расстояния)
+    $totalDistance = 0;  // ← Сумма расстояний ЛУЧШИХ маршрутов
+    $totalAssignments = 0;  // ← Количество назначенных miner'ов
+    $stats = [
+        'total_assignments' => 0,
+        'total_distance' => 0,
+        'average_distance' => 0
+    ];
+    $distribution = [];
+    $assignments = [];
+    $totalDistance = 0;
+    $totalTime = 0;
+    $allOptions = [];
+    $bestDistancies = 0;
+    $stats['total_assignments'] = 0;
+    // Базовый цикл: проходим по всем miners
 
+    foreach ($distances as $minerId => $minerDistances) {
+
+        $miner = $minerDistances->first()->miner;
+
+        // Фильтруем только dumps с зонами 
+        $suitableDumps = $minerDistances
+            ->filter(function($record) {
+                return $record->dump->zones;//->isNotEmpty()
+            })
+            ->map(function($record) {
+                $dump = $record->dump;
+                $totalZoneVolume = $dump->zones->sum('volume');
+
+                return [
+                    'dump' => $dump,
+                    'distance' => $record->distance_km,
+                    'total_zone_volume' => $totalZoneVolume,
+                    //емкость перегрузки (вместимость всех зон) принята условно 60 
+                    //-конкретно можно для каждой зоны создать колонку capacity в табл. zones и затем ссумировать их как 'total_zone_volume'
+                    'dump_volume' => $dump->capacity?? 60
+                ];
+            });
+            // ОТЛАДКА 1: КАКОЕ РАССТОЯНИЕ У КАЖДОГО MINER'А ДО КАЖДОГО DUMP'А
+        // Log::info("🔍 Miner '{$miner->name_miner}' (ID: {$minerId}):  dumps с расстояниями:");
+        foreach ($suitableDumps as $option) {
+            $dumpName = $option['dump']->name_dump;
+            $distance = $option['distance'];
+        // Log::info("🔍 Перегрузка '{$dumpName}' (ID: {$miner->name_miner}): {$distance}");
+        }
+
+
+
+        if ($suitableDumps->isEmpty()) {
+          
+            continue;
+        }
+
+                // ← ЧАСТЬ 2.1/4: ПОДГОТОВКА ЛОГИКИ РЕЖИМОВ
+        $suitableDumpCount = $suitableDumps->count();
+        $minerName = $miner->name_miner?? 'не установлен';
+        // Проверяем режим и логируем
+
+
+        if (!empty($suitableDumps)) {
+            $dumpOptions = [];  
+
+            // ✅ ОБЩИЕ РАСЧЁТЫ (для всех режимов)
+            foreach ($suitableDumps as $index => $option) {
+                $travelTimeHours = $option['distance'] / 20;
+                $volume = $option['total_zone_volume'];
+                $dumpCapacity = $option['dump']->capacity?? 60;
+                $distance = $option['distance'];
+
+                // ✅ SCORE ПО РЕЖИМУ СОРТИРОВКИ
+                if ($mode === 'balance') {
+                    // ТВОЯ ЛОГИКА БАЛАНСА (как у тебя)
+                    $volumePercent = ($volume / $dumpCapacity) * 100;
+                    $volumeScore = max(0, 100 - $volumePercent);
+                    $distancePenalty = $distance * 10;
+                    $distanceScore = max(0, 100 - $distancePenalty);
+                    $score = round(($volumeScore * 0.3) + ($distanceScore * 0.7), 2);
+
+                } elseif ($mode === 'volume') {
+                    // ✅ ПРИОРИТЕТ МЕНЬШИМ ОБЪЁМАМ (маленькие зоны первыми!)
+                    $inverseVolume = (1 / ($volume + 1)) * 1000; // 1/объём (маленький = большой score)
+                    $distancePenalty = $distance * 3; // небольшой штраф за расстояние
+                    $score = $inverseVolume - $distancePenalty;
+                } else { // distance - ПРОСТО!
+                    // Score обратно пропорционален расстоянию
+                    $score = round((1 / ($distance + 0.1)) * 100, 2);
+                    // 0.1км = 1000 баллов, 1км = 100, 10км = 10
+                }
+
+
+                $dumpOptions[] = [
+                    'dump' => $option['dump'],
+                    'distance' => $distance,
+                    'total_zone_volume' => $volume,
+                    'total_available_zones' => $option['total_available_zones']?? 0,
+                    'score' => $score,
+                    'travel_time_hours' => round($travelTimeHours, 2),
+                    'dump_volume' => $dumpCapacity,
+                    'last_volume' => $dumpCapacity - $volume
+                ];
+            }
+
+            // ✅ СОРТИРУЕМ (лучший первый)
+            usort($dumpOptions, function($a, $b) {
+                return $b['score'] <=> $a['score']; // По убыванию score
+            });
+            
+            // ✅ БЕРЁМ ТОЛЬКО ПЕРВЫЙ (мы отсортировали массив и теперь он лучший!)
+            if (!empty($dumpOptions)) {
+                $bestOption = $dumpOptions[0];
+                $allOptions[$minerId] = $dumpOptions;// сохраним этот массив с данными dump: расстояниями до него, score соответствующему режиму сортировки и т.д. 
+
+                
+                // ТВОЙ КОД СОЗДАНИЯ РЕЗУЛЬТАТА (как у тебя)
+                $distribution[$minerId] = [
+                    'miner_name' => $miner->name_miner?? $minerId,
+                    'dump_id' => $bestOption['dump']->id,
+                    'name_dump' => $bestOption['dump']->name_dump,
+                    'total_available_zones' => $bestOption['total_available_zones'],
+                    'total_zone_volume' => $bestOption['total_zone_volume'],
+                    'distance_km' => $bestOption['distance'],
+                    'travel_time_hours' => $bestOption['travel_time_hours'],
+                    'dump_volume' => $bestOption['dump_volume'],
+                    'last_volume' => $bestOption['last_volume'],
+                    'score' => round($bestOption['score'], 2)
+                ];
+                
+                $assignments[$minerId] = $distribution[$minerId];
+                $bestDistancies += $bestOption['distance'];
+                $totalTime += $bestOption['travel_time_hours'];
+                $totalAssignments++;
+                $stats['assignments'] = $assignments;
+                $stats['total_assignments']++;
+            }
+        
+        }
+
+      
+
+    }
         
         $availableZones = Zone::where('delivery', true)->get(['id', 'name_zone']);
         
@@ -39,12 +189,13 @@ class DistributionController extends Controller
         $zonesByRock = DB::table('zones')
             ->join('rock_zone', 'zones.id', '=', 'rock_zone.zone_id')  
             ->join('rocks', 'rock_zone.rock_id', '=', 'rocks.id')      
-            ->where('zones.delivery', true)                            
+            //->where('zones.delivery', true)                            
             ->select(
                     'zones.id', 
                     'zones.name_zone', 
                     'zones.dump_id',          
                     'zones.volume',            
+                    'zones.delivery',            
                     'rocks.name_rock as name_rock'  // ← name, а не name_rock
                 )   
             ->orderBy('rocks.name_rock')                               
@@ -84,12 +235,12 @@ $dumpVolumesArray = DB::table('zones')
 // ✅ СОЗДАЁМ ПОРЯДОК ДАМПОВ ПО ОБЁМУ
 $sortedDumpVolumes = $dumpVolumesArray;
 asort($sortedDumpVolumes);  // Сортируем по объёму: от меньшего к большему
-$dumpOrder = array_keys($sortedDumpVolumes);  // массив значений dump_id [5, 1, 2, 3, 6, 4]
+$dumpOrder = array_keys($sortedDumpVolumes);  // массив значений dump_id 
 
 // ✅ СОЗДАЁМ ПОЗИЦИИ ДАМПОВ (для usort)
 $dumpPositions = [];
 foreach ($dumpOrder as $index => $dumpId) {
-    $dumpPositions[$dumpId] = $index;  // 5=>0, 1=>1, 2=>2, 3=>3, 6=>4, 4=>5
+    $dumpPositions[$dumpId] = $index;  
 }
 
 //  Добавляем объем каждой зоне
@@ -97,30 +248,6 @@ $zonesWithWeight = $allZones->map(function($zone) use ($dumpVolumesArray) {
     $zone->dump_total_volume = $dumpVolumesArray[$zone->dump_id]?? 0;
     return $zone;
 });
-
-// // ✅ ТЕСТ 1: Берём ВСЕ ЗОНЫ и сортируем usort()
-// $allZonesArray = $allZones->toArray();
-// Log::info("🔍 ДО usort(): первые дампы: ". 
-//     collect($allZonesArray)->take(3)->pluck('dump_id')->implode(', '));
-
-// // ✅ ПРОСТОЙ usort() ДЛЯ ВСЕХ ЗОН
-// usort($allZonesArray, function($a, $b) use ($dumpPositions) {
-//     $posA = $dumpPositions[$a->dump_id]?? 999;  // Большое число для неизвестных
-//     $posB = $dumpPositions[$b->dump_id]?? 999;
-//     return $posA - $posB;  // Простое вычитание вместо <=> (PHP 7+)
-// });
-
-// $sortedAllZonesTest = collect($allZonesArray);
-// Log::info("🔄 ПОСЛЕ usort(): первые дампы: ". 
-//     $sortedAllZonesTest->take(3)->pluck('dump_id')->implode(', '));
-
-// // ✅ ТЕСТ 2: Проверяем, что dump #5 идёт первым
-// $firstDumpId = $sortedAllZonesTest->first()->dump_id?? 'НЕТ';
-// Log::info("🎯 ПЕРВЫЙ ДАМП: #". $firstDumpId. " (должен быть 5!)");
-
-// // ✅ ТЕСТ 3: Считаем сколько зон для каждого дампа
-// $dumpCounts = $sortedAllZonesTest->groupBy('dump_id')->map->count()->toArray();
-// Log::info("📊 ЗОН ПО ДАМПАМ: ". json_encode($dumpCounts));
 
 // ✅ МИКРО-ШАГ 1: Заменяем sortBy() на usort()
 $zonesArray = $zonesWithWeight->toArray();
@@ -173,160 +300,10 @@ $finalResult = [
 ];
 
 
+;
+// Log::info(json_encode($allOptions[3], JSON_PRETTY_PRINT));
+// Log::info(json_encode($sortedZonesByRock, JSON_PRETTY_PRINT));
 
-
-        // Загружаем расстояния между miners и dumps
-    $distances = MinerDumpDistance::with(['miner'])
-        ->whereHas('miner', function ($q) {
-            $q->where('active', true);
-        })
-        ->get()
-        ->groupBy('miner_id');
-
-        // Добавляем в статистику
-        $stats['total_miners_with_distances'] = $distances->keys()->count();
-    // ← ЧАСТЬ 1/4: ПОДГОТОВКА УНИВЕРСАЛЬНОГО ЦИКЛА
-   
-    // Инициализация переменных
-    // ← СТАТИСТИКА МАРШРУТОВ (для среднего расстояния)
-    $totalDistance = 0;  // ← Сумма расстояний ЛУЧШИХ маршрутов
-    $totalAssignments = 0;  // ← Количество назначенных miner'ов
-    $stats = [
-        'total_assignments' => 0,
-        'total_distance' => 0,
-        'average_distance' => 0
-    ];
-    $distribution = [];
-    $assignments = [];
-    $totalDistance = 0;
-    $totalTime = 0;
-   
-    $bestDistancies = 0;
-    $stats['total_assignments'] = 0;
-    // Базовый цикл: проходим по всем miners
-
-    foreach ($distances as $minerId => $minerDistances) {
-
-        $miner = $minerDistances->first()->miner;
-
-        // Фильтруем только dumps с зонами 
-        $suitableDumps = $minerDistances
-            ->filter(function($record) {
-                return $record->dump->zones;//->isNotEmpty()
-            })
-            ->map(function($record) {
-                $dump = $record->dump;
-                $totalZoneVolume = $dump->zones->sum('volume');
-
-                return [
-                    'dump' => $dump,
-                    'distance' => $record->distance_km,
-                    'total_zone_volume' => $totalZoneVolume,
-                    //емкость перегрузки (вместимость всех зон) принята условно 60 
-                    //-конкретно можно для каждой зоны создать колонку capacity в табл. zones и затем ссумировать их как 'total_zone_volume'
-                    'dump_volume' => $dump->capacity?? 60
-                ];
-            });
-            // ОТЛАДКА 1: КАКОЕ РАССТОЯНИЕ У КАЖДОГО MINER'А ДО КАЖДОГО DUMP'А
-        //Log::info("🔍 Miner '{$miner->name_miner}' (ID: {$minerId}): доступные dumps с расстояниями:");
-        foreach ($suitableDumps as $option) {
-            $dumpName = $option['dump']->name_dump;
-            $distance = $option['distance'];
-
-        }
-
-
-
-        if ($suitableDumps->isEmpty()) {
-          
-            continue;
-        }
-
-                // ← ЧАСТЬ 2.1/4: ПОДГОТОВКА ЛОГИКИ РЕЖИМОВ
-        $suitableDumpCount = $suitableDumps->count();
-        $minerName = $miner->name_miner?? 'не установлен';
-        // Проверяем режим и логируем
-
-
-if (!empty($suitableDumps)) {
-    $dumpOptions = [];  
-
-    // ✅ ОБЩИЕ РАСЧЁТЫ (для всех режимов)
-    foreach ($suitableDumps as $index => $option) {
-        $travelTimeHours = $option['distance'] / 20;
-        $volume = $option['total_zone_volume'];
-        $dumpCapacity = $option['dump']->capacity?? 60;
-        $distance = $option['distance'];
-
-        // ✅ SCORE ПО РЕЖИМУ СОРТИРОВКИ
-        if ($mode === 'balance') {
-            // ТВОЯ ЛОГИКА БАЛАНСА (как у тебя)
-            $volumePercent = ($volume / $dumpCapacity) * 100;
-            $volumeScore = max(0, 100 - $volumePercent);
-            $distancePenalty = $distance * 10;
-            $distanceScore = max(0, 100 - $distancePenalty);
-            $score = round(($volumeScore * 0.3) + ($distanceScore * 0.7), 2);
-
-        } elseif ($mode === 'volume') {
-            // ✅ ПРИОРИТЕТ МЕНЬШИМ ОБЪЁМАМ (маленькие зоны первыми!)
-            $inverseVolume = (1 / ($volume + 1)) * 1000; // 1/объём (маленький = большой score)
-            $distancePenalty = $distance * 3; // небольшой штраф за расстояние
-            $score = $inverseVolume - $distancePenalty;
-        } else { // distance - ПРОСТО!
-            // Score обратно пропорционален расстоянию
-            $score = round((1 / ($distance + 0.1)) * 100, 2);
-            // 0.1км = 1000 баллов, 1км = 100, 10км = 10
-        }
-
-
-        $dumpOptions[] = [
-            'dump' => $option['dump'],
-            'distance' => $distance,
-            'total_zone_volume' => $volume,
-            'total_available_zones' => $option['total_available_zones']?? 0,
-            'score' => $score,
-            'travel_time_hours' => round($travelTimeHours, 2),
-            'dump_volume' => $dumpCapacity,
-            'last_volume' => $dumpCapacity - $volume
-        ];
-    }
-
-    // ✅ СОРТИРУЕМ (лучший первый)
-    usort($dumpOptions, function($a, $b) {
-        return $b['score'] <=> $a['score']; // По убыванию score
-    });
-    
-    // ✅ БЕРЁМ ТОЛЬКО ПЕРВЫЙ (лучший!)
-    if (!empty($dumpOptions)) {
-        $bestOption = $dumpOptions[0];
-
-        // ТВОЙ КОД СОЗДАНИЯ РЕЗУЛЬТАТА (как у тебя)
-        $distribution[$minerId] = [
-            'miner_name' => $miner->name_miner?? $minerId,
-            'dump_id' => $bestOption['dump']->id,
-            'name_dump' => $bestOption['dump']->name_dump,
-            'total_available_zones' => $bestOption['total_available_zones'],
-            'total_zone_volume' => $bestOption['total_zone_volume'],
-            'distance_km' => $bestOption['distance'],
-            'travel_time_hours' => $bestOption['travel_time_hours'],
-            'dump_volume' => $bestOption['dump_volume'],
-            'last_volume' => $bestOption['last_volume'],
-            'score' => round($bestOption['score'], 2)
-        ];
-        
-        $assignments[$minerId] = $distribution[$minerId];
-        $bestDistancies += $bestOption['distance'];
-        $totalTime += $bestOption['travel_time_hours'];
-        $totalAssignments++;
-        $stats['assignments'] = $assignments;
-        $stats['total_assignments']++;
-    }
- 
-}
-
-      
-
-    }
 
 
         // ПРОСТАЯ ЗАГРУЗКА DUMPS
@@ -388,7 +365,7 @@ uasort($assignments, function($a, $b) {
 
      
         // Передаём данные в представление
-        return view('dump.distribution', compact('stats', 'assignments', 'zonesByRock', 'distances', 'mode' ));
+        return view('dump.distribution', compact('stats', 'assignments', 'mode', 'allOptions' ));
 
 
 
