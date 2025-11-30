@@ -356,12 +356,10 @@ $finalResult = [
         };
         $stats['total_miners'] = Miner::count();
         $stats['total_dumps'] = Dump::count();
-// В DistributionController.php - перед return view
-
-// Сортируем по score (от большего к меньшему)
-uasort($assignments, function($a, $b) {
-    return ($b['score']?? 0) <=> ($a['score']?? 0);
-});
+        // Сортируем по score (от большего к меньшему)
+        uasort($assignments, function($a, $b) {
+            return ($b['score']?? 0) <=> ($a['score']?? 0);
+        });
 
      
         // Передаём данные в представление

@@ -38,7 +38,7 @@ Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middl
          Route::post('/dump', 'StoreController')->name('dump.store');
          Route::get('/dump/{dump}', 'ShowController')->name('dump.show');
          Route::get('/dump/{dump}/edit', 'EditController')->name('dump.edit');
-         Route::patch('/dump/{dump}', 'UpdateController')->name('dump.update');
+         Route::put('/dump/{dump}', 'UpdateController')->name('dump.update');
          Route::delete('/dump/{dump}', 'DestroyController')->name('dump.delete');
     });
 

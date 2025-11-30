@@ -25,15 +25,9 @@
     </div>
 @endif
 
-@if (session('success'))
-    <div class="alert alert-success">
-        {{ session('success') }}
-    </div>
-@endif
-
-<form class="mt-5" action="{{route('dump.update', $dump)}}" method="POST" class="flex justify-center" >
+<form  method="POST" action="{{route('dump.update', $dump)}}" class="mt-5" class="flex justify-center" >
   @csrf
-  @method('PATCH')
+  @method('PUT')
   <input type="hidden" id="zone-counter" value="{{ count($dump->zones) }}">
   <div class="flex justify-content-center mt-1">
     <div class="card shadow p-1 m-1 bg-white rounded" style="width: 40rem">

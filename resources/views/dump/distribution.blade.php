@@ -31,31 +31,39 @@
            
             <div style="color:#2c3e50;">✅Подготовленные зоны для приема горной массы</div>
             <div style="color:#2c3e50;">расположены в порядке возрастания объемов</div>
+           
+            
             
                 @foreach($stats['zones_by_rock'] as $rockName => $zones)
+                        @php
+                            $deliveryCount = $zones->where('delivery', 1)->count();
+                            $totalInRock = $zones->count();
+                        @endphp
                     <div style="margin: 15px 0; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #007bff;  border-left: 4px solid #007bff;">
                         <h3 style="margin: 0 0 10px 0; color: #2c3e50;">
-                            🪨 {{ $rockName }} ({{ $zones->count() }} {{ $zones->count() == 1? 'зона': ($zones->count() < 5? 'зоны': 'зон') }})
-
+                            🪨 <strong>{{ $rockName }}</strong> ({{ $totalInRock }} {{ $totalInRock == 1? 'зона': ($totalInRock < 5? 'зоны': 'зон') }})
+                            @if($deliveryCount != 0)
+                            подготовлено - {{$deliveryCount}} {{ $deliveryCount == 1? 'зона': ($deliveryCount < 5? 'зоны': 'зон') }} 
+                            @else
+                            ⚠️ нет подготовленных зон 
+                            @endif
                         </h3>
 
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                             @foreach($zones as $key=>$zone)
                                 <div class="pt-2">{{$key+1}}.
+                                     <!-- отправим информацию для перехода на страницу с которой зашли 'return_to' => 'index' в session[] -->
+                                <a href="{{route('dump.edit', ['dump' => $zone->dump_id, 'return_to' => 'distribution'])}}">
                                 <span style="background: {{ $zone->delivery == 1? '#1bae2aa3' : '#f34121ac' }};
                                             padding: 6px 12px; border-radius: 20px; font-size: 14px; border: 1px solid #2196f3;">
-                                    {{ $zone->name_zone }}
+                                    {{ $zone->name_zone }} [объем {{$zone->dump_total_volume}}]
                                 </span></div>
+                                </a>
                             @endforeach
                         </div>
                     </div>
                 @endforeach
-
-                @if($stats['total_available_zones'] == 0)
-                    <div style="background: #fff3cd; padding: 12px; border-radius: 5px; border-left: 4px solid #ffc107;">
-                        ⚠️ Нет доступных зон для завозки
-                    </div>
-                @endif
+               
         </div>
         <p>📊 Статистика</p>
         <ul>
@@ -70,7 +78,7 @@
             <li>Среднее время рейса: {{ $stats['average_time'] }} ч</li>
         </ul>
         <h4>🔄 Назначения для {{ count($assignments) }} забоев</h4>
-     
+    
         @foreach($assignments as $key => $assignment)
         
             <div style="margin: 15px 0; padding: 12px; background: #f8f9fa; border-radius: 8px;

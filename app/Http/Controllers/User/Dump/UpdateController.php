@@ -118,10 +118,25 @@ class UpdateController extends BaseController
     
     if ($newZonesCreated > 0) $message.= "➕ Добавлено зон: {$newZonesCreated} . ";
     if ($deletedZones > 0) $message.= "🗑️ Удалено: {$deletedZones} зону(ы). ";
+ 
+    // ✅ ЧИТАЕМ ИЗ SESSION на какую страницу перейти после сохранения
+    $returnTo = session('dump_return_to', 'distribution'); // по умолчанию distribution
 
+    switch ($returnTo) {
+        case 'index':
+            return redirect()->route('dump.index')
+                ->with('success', $message);
 
+        case 'distribution':
+            return redirect()->route('distribution.index')
+                ->with('success', $message);
 
-    return redirect()->route('dump.index')
+        default:
+            return redirect()->back()
+                ->with('success', $message);
+    }
+
+    return redirect()->back()
         ->with('success', $message);
 }
 

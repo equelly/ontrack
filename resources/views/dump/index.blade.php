@@ -20,12 +20,6 @@
             <i class="fas fa-plus"></i> Добавить перегрузку
         </a>
     </div>
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    @endif
 </div>
 <div class="flex justify-content-center mt-1">
 <div style="background: #f0f0f0;max-width:500px;" class="card mb-2" >
@@ -235,7 +229,8 @@
                     <div class="col-md-8">
                         <div class="card-body pl-1">
                            <div class="flex justify-between" >
-                                <a href="{{route('dump.edit', $dump->id)}}">    
+                            <!-- отправим информацию для перехода на страницу с которой зашли 'return_to' => 'index' в session[] -->
+                                <a href="{{route('dump.edit', ['dump' => $dump, 'return_to' => 'index'])}}">    
                                 <h5 class="card-title"><strong>перегрузка №{{$dump->name_dump}}</strong></h5></a>
                                 
                                 <div>отгрузка
