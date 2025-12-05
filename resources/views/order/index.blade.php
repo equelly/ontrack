@@ -1,10 +1,11 @@
 @extends('layouts.app')
 @section('content')
 <div class="mt-4 flex justify-content-center p-2 bg-gray-200 "  style="border-bottom: 2px solid #14B8A6; font-size: 1.2rem">
-<h4  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок:  {{count($orders)}}</h4>
+<h4  class="flex justify-content-end p-2" style="width: 40rem">Всего текущих заявок: {{ $orders? count($orders): 'нет' }}
+</h4>
 </div>    
 @foreach($mashines as $mashine) 
-      
+    @if(count($mashine->sets) != 0 && count($mashine->orders) != 0)
     <div class="flex justify-content-center mt-1">
         <div class="card shadow p-3 m-3 bg-white rounded" style="width: 40rem">
                 <div class="row g-0">
@@ -20,10 +21,10 @@
                                     
                                     
                                         @if($order->category_id==1 and $order->content != '')
-                                        
-                                        <small class="text-muted"> {{$order->carbon->day}} {{$order->carbon->translatedFormat('F')}} {{$order->carbon->year}} ({{$order->carbon->diffForHumans()}})</small>
-                                        <p class="card-text">{{$order->content}}</p>
-                                        
+                                        <div class="bg-gray-200 p-2 rounded-md">
+                                            <small class="text-muted"> {{$order->carbon->day}} {{$order->carbon->translatedFormat('F')}} {{$order->carbon->year}} ({{$order->carbon->diffForHumans()}})</small>
+                                            <p class="card-text">{{$order->content}}</p>
+                                        </div>
                                         <a href="{{route('order.show', $order->id)}}"><small class="btn" style="background-color: white; color:black;">смотреть подробнее ></small></a><hr>
                                         @endif
                                     @endforeach 
@@ -47,7 +48,8 @@
                 </div>
         </div>
     </div> 
-       
+    
+    @endif
 @endforeach      
 
 @endsection

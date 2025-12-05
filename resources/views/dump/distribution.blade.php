@@ -1,30 +1,60 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    $map = [
+       'вскрыша' => 'V',
+       'руда' => 'R',
+       'песчаник' => 'Kvp',
+       'руда_S' => 'Rs',
+            ];
+    $colorMap = [
+        'вскрыша' => 'green',
+        'руда' => 'red',
+        'песчаник' => 'yellow',
+        'руда_S' => 'red',
+            ];
+@endphp
     <div class="container mt-4">
-                <!-- Заголовок -->
-            <div class="bg-gray-200 text-center mb-4"> Система Распределения грузопотоков </div>
-                <div style="text-align: center; margin: 20px 0; padding: 15px; background: #e3f2fd; 
-                    border-radius: 8px;" class="">
-                    <label for="sort-mode" style="font-weight: bold; font-size: 15px; margin-right: 10px; color: #1976d2;">
-                        🛠️ РЕЖИМ СОРТИРОВКИ:
-                    </label>
+        <div class="bg-gray-200 alert-info mb-1 p-1 rounded-md"><p><i class="fas fa-info-circle me-2"></i>Распределение грузопотоков</p><br>
+           
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="active_zones_only" 
+                    id="all-zones" value="0" {{!$activeZonesOnly? 'checked': '' }} onchange="changeActiveZones()">
+                <label class="form-check-label" for="all-zones">
+                     Все перегрузки
+                </label>
+            </div>
 
-                    <select  class="form-select" id="sort-mode" name="mode" onchange="changeSortMode()" 
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="active_zones_only" 
+                    id="active-zones" value="1" {{ $activeZonesOnly? 'checked': '' }} onchange="changeActiveZones()">
+                <label class="form-check-label" for="active-zones">
+                     подготовленные
+                </label>
+            </div>
+            <div class="flex justify-end">пункты разгрузки: {{ $stats['count']}}</div>
+                <div class="flex justify-between">
+                    <label for="sort-mode" style="font-weight: bold; font-size: 15px; margin-right: 10px; color: #1976d2;">
+                        сортировка: 
+                    </label>
+                    <select class="form-select" id="sort-mode" name="mode" onchange="changeSortMode()" 
                             style="padding: 4px 6px; font-size: 14px; border: 2px solid #2196f3; border-radius: 6px; background: white;">
 
-                        {{-- ✅ ВЫБОР ТЕКУЩЕГО РЕЖИМА --}}
                         <option value="balance" {{ ($mode?? 'balance') == 'balance'? 'selected': '' }}>
-                            ⚖️  (по балансу)
+                            ⚖️ По балансу
                         </option>
                         <option value="volume" {{ ($mode?? 'balance') == 'volume'? 'selected': '' }}>
-                            📏  (по объёму)
+                            📏 По объёму
                         </option>
                         <option value="distance" {{ ($mode?? 'balance') == 'distance'? 'selected': '' }}>
-                            🗺️  (по расстоянию)
+                            🗺 По расстоянию
                         </option>
                     </select>
                 </div>
+
+            </div>
+        </div>
         <div class="col-12">
 
                 {{-- ✅ НОВЫЙ SELECT ДЛЯ РЕЖИМОВ --}}
@@ -56,7 +86,7 @@
                                 <a href="{{route('dump.edit', ['dump' => $zone->dump_id, 'return_to' => 'distribution'])}}">
                                 <span style="background: {{ $zone->delivery == 1? '#1bae2aa3' : '#f34121ac' }};
                                             padding: 6px 12px; border-radius: 20px; font-size: 14px; border: 1px solid #2196f3;">
-                                    {{ $zone->name_zone }} [объем {{$zone->dump_total_volume}}]
+                                    {{ $zone->name_zone }}
                                 </span></div>
                                 </a>
                             @endforeach
@@ -65,21 +95,23 @@
                 @endforeach
                
         </div>
-        <p>📊 Статистика</p>
-        <ul>
-            <li>Всего точек погрузки в автотранспорт : {{ $stats['total_miners'] }}</li>
-            <li>Перегрузки: {{ $stats['total_dumps'] }}</li>
-            <li>всего зон: {{ $stats['total_zones'] }}</li>
-            <li>рассчет выполнен в режиме <strong><br> {{ $stats['mode_name'] }}</strong></li>
-            <li>{{ $stats['total_assignments'] }} забоев в работе</li>
-            <li>Общая дистанция рейсов отсортированных маршрутов: {{ $stats['total_distance_km'] }} км</li>
-            <li>Общее время рейсов: {{ $stats['total_time_hours'] }} автом/часов</li>
-            <li>Среднее расстояние рейса: {{ $stats['average_distance'] }} км</li>
-            <li>Среднее время рейса: {{ $stats['average_time'] }} ч</li>
-        </ul>
-        <h4>🔄 Назначения для {{ count($assignments) }} забоев</h4>
+        <div class="container">
+            <p>📊 Статистика</p>
+            <ul>
+                <li>Всего точек погрузки в автотранспорт : {{ $stats['total_miners'] }}</li>
+                <li>Перегрузки: {{ $stats['total_dumps'] }}</li>
+                <li>всего зон: {{ $stats['total_zones'] }}</li>
+                <li>рассчет выполнен в режиме <strong><br> {{ $stats['mode_name'] }}</strong></li>
+                <li>{{ $stats['total_assignments'] }} забоев в работе</li>
+                <li>Общая дистанция рейсов отсортированных маршрутов: {{ $stats['total_distance_km'] }} км</li>
+                <li>Общее время рейсов: {{ $stats['total_time_hours'] }} автом/часов</li>
+                <li>Среднее расстояние рейса: {{ $stats['average_distance'] }} км</li>
+                <li>Среднее время рейса: {{ $stats['average_time'] }} ч</li>
+            </ul>
+        
+            <h4>🔄 Назначения для {{ count($assignments) }} забоев</h4>
     
-        @foreach($assignments as $key => $assignment)
+            @foreach($assignments as $key => $assignment)
         
             <div style="margin: 15px 0; padding: 12px; background: #f8f9fa; border-radius: 8px;
             border: 1px solid #007bff;  border-left: 4px solid #007bff;" class="col-12">
@@ -101,11 +133,29 @@
                                 <th>приоритет</th>
                             </tr>
                         </thead>
-                @foreach(array_slice($allOptions[$key], 1) as $option)
+                @foreach($allOptions[$key] as $option)
+                
                     <tbody>
                         <tr>
-                            <td>{{ $loop->index + 2 }}</td>
-                            <td>№{{$option['dump']['name_dump']}}</td>
+                            <td>{{ $loop->index + 1 }}</td>
+                            
+                            <td>
+                                @php
+                                    $deliveryZones = collect($option['dump']['zones'])->filter(function($zone) {
+                                        return $zone['delivery'] == true;
+                                    });
+                                @endphp
+
+                                @if ($deliveryZones->isNotEmpty())
+                                    @foreach ($deliveryZones as $zone)
+                                        
+                                        ✅ {{ $map[$zone->rocks->first()->name_rock]?? $zone->rocks->first()->name_rock }}{{ $zone['name_zone'] }}<br>
+                                         
+                                    @endforeach
+                                @else
+                                    № {{ $option['dump']['name_dump'] }}
+                                @endif
+                            </td>
                             <td>{{$option['distance']}}</td>
                             <td>{{$option['score']}}</td>
                         </tr>
@@ -116,8 +166,8 @@
                 Текущие объемы: {{ $assignment['total_zone_volume'] }} <br>остаточная емкость {{$assignment['last_volume']}}
             </div>
             
-        @endforeach
-
+            @endforeach
+        </div>
     </div>
 @endsection
 

@@ -103,10 +103,10 @@
         </form>
         @if($activeFilter && $activeFilter!== 'all')
             <div class="alert alert-info mt-3">
-                <strong> Применен фильтр:</strong> 
+                <strong> фильтр:</strong> 
                 @switch($activeFilter)
                     @case('all_delivery')
-                        🚛 выведены перегрузки с подготовленными к завозке зонами - всего: {{ $dumps->count() }}
+                        🚛 перегрузки с подготовленными к завозке зонами - всего: {{ $dumps->count() }}
                         @break
                     @case('ruda_delivery')
                         подготовленные зоны для завозки руды ({{ $dumps->count() }})
@@ -115,7 +115,7 @@
                         показаны рудные перегрузки ({{ $dumps->count() }})
                         @break
                     @case('ruda_shipment')
-                        Показаны точки отгрузки руды ({{ $dumps->count() }})
+                        точки отгрузки руды ({{ $dumps->count() }})
                         @break
                     @case('priority_zones')
                         Приоритетные зоны для завозки руды ({{ $dumps->count() }})
@@ -134,7 +134,7 @@
     @if(isset($sortedDumps))
     <div class="flex justify-content-center mt-1">
         <div style="background: #f0f0f0;max-width:500px;" class="card mb-2" >
-            <h3 class="m-2" >📊 Объёмы на выбранных перегрузках</h3>
+            <h3 class="m-2" ><strong>📊 Объёмы на выбранных перегрузках</strong></h3>
             <table style="border-collapse: collapse;">
                 <tr style="background: #ddd;">
                     <th style="padding: 8px; border: 1px solid #ccc;">П/п</th>
@@ -147,12 +147,22 @@
                 </tr>
 
                 @foreach($sortedDumps as $item)
+                
                     <tr>
                         <td style="padding: 8px; border: 1px solid #ccc;">
                             <a href="{{route('dump.edit', $item['dump']->id)}}">{{ $item['dump']->name_dump }}</a>
                         </td>
-                        <td style="padding: 8px; border: 1px solid #ccc; text-align: right; font-weight: bold;">
-                            {{ $item['total_volume'] }} 
+                       
+                        <td style="white-space: nowrap; padding: 8px; border: 1px solid #ccc; text-align: right;" class="text-muted">
+                            @foreach($item['dump']->zones as $zone)
+                                @foreach($zone->rocks as $rock)
+                                   <span style =" font-weight: bold;{{$zone->delivery == true? 'color:green;' : 'color:red;'}}">
+                                    {!!$zone->delivery == true? '<sup>+</sup>' : '<sup>-</sup>'!!}{{ floor($zone->volume) }}{!!$item['dump']['loader_zone_id'] == $zone->id? '<sup>o</sup>' : ''!!}
+                                    <sub class="text-muted">{{ $map[$rock->name_rock]?? $rock->name_rock }}</sub></span>
+                                @endforeach
+                            @endforeach
+                            <br>
+                            Σ ={{ $item['total_volume'] }} 
                         </td>
                         <td style="padding: 8px; border: 1px solid #ccc; text-align: right; background-color: #fff3cd;">
                             @if(isset($item['has_rock_zones']) && $item['has_rock_zones'])
@@ -233,20 +243,30 @@
                                 <a href="{{route('dump.edit', ['dump' => $dump, 'return_to' => 'index'])}}">    
                                 <h5 class="card-title"><strong>перегрузка №{{$dump->name_dump}}</strong></h5></a>
                                 
-                                <div>отгрузка
-                                    @foreach($dump->zones as $zone)
-                                        @foreach($zone->rocks as $rock)
-                                            {{ $dump->loader_zone_id == $zone->id ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
+                                <div>
+                                <input disabled type="radio" {{ $dump->loader_zone_id != 0?'checked':'' }} /> 
+                                отгрузка
+                                    @if($dump->loader_zone_id != 0)
+                                        @foreach($dump->zones as $zone)
+                                            @foreach($zone->rocks as $rock)
+                                                {{ $dump->loader_zone_id == $zone->id ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
+                                            @endforeach
                                         @endforeach
-                                    @endforeach
-
+                                    @else
+                                    ❌
+                                    @endif
                                     <br>
+                                    <input disabled class="m-auto" type="checkbox" {{ $zone->delivery == true?'checked':'' }}/>
                                     завозка
-                                    @foreach($dump->zones as $zone)
-                                        @foreach($zone->rocks as $rock)
-                                            {{ $zone->delivery == true ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
-                                        @endforeach 
-                                    @endforeach
+                                    @if($zone->delivery == true)
+                                        @foreach($dump->zones as $zone)
+                                            @foreach($zone->rocks as $rock)
+                                                {{ $zone->delivery == true ? ($map[$rock->name_rock]?? $rock->name_rock). $zone->name_zone: '' }}
+                                            @endforeach 
+                                        @endforeach
+                                    @else
+                                    ❌
+                                    @endif
                                 </div>
                            </div>
                             <div class="flex justify-content-between mt-1">

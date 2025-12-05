@@ -10,24 +10,18 @@
         </a>
     </div>
 
-                <div class="card-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    <div class="table-responsive">
+<div class="card-body">
+    <div class="table-responsive">
     <table class="table table-striped table-hover">
-            <thead class="table-dark">
+        <thead class="table-dark">
             <tr class="mobile-table td">
                 
                 <th>Название</th>
                 <th>Маршруты и расстояния</th>
                 <th class="hide-on-mobile">Создан</th>
             </tr>
-            </thead>
-            <tbody>
+        </thead>
+        <tbody>
             @forelse($miners as $miner)
                 <tr class="mobile-table td">
                     

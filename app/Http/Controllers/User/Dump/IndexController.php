@@ -142,7 +142,7 @@ class IndexController extends BaseController
         return $rockVolume * 10000 + $totalVolume;
     });
 
-     Log::info(json_encode($dumps, JSON_PRETTY_PRINT));  
+   
         return view('dump.index', compact('dumps', 'sortedDumps', 'activeFilter'));
         
     }

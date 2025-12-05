@@ -17,7 +17,7 @@
 
         <header>
           <!-- Navbar -->
-          <nav class="navbar navbar-expand-lg navbar-dark fixed-top scrolling-navbar">
+          <nav class="navbar navbar-dark fixed-top scrolling-navbar">
             <div class="container">
               <a class="navbar-brand ml-3" href="/">
                 <strong>SMS</strong>
@@ -106,20 +106,69 @@
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
 <script>
 // ✅ ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ РЕЖИМА
-function changeSortMode() {
+
+function updateFilters(param, value) {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // Обновляем нужный параметр
+    if (value === null || value === undefined || value === '') {
+        urlParams.delete(param);
+    } else {
+        urlParams.set(param, value);
+    }
+
+    // Обновляем значения mode и active_zones_only из элементов формы, если есть
     const select = document.getElementById('sort-mode');
-    const newMode = select.value;
+    if (select && param!== 'mode') {
+        urlParams.set('mode', select.value);
+    }
 
-    // ✅ ЛОАДИНГ
-    select.innerHTML = '<option>⏳ Загрузка...⏳⏳⏳</option>';
+    const radios = document.querySelectorAll('input[name="active_zones_only"]');
+    if (radios.length > 0 && param!== 'active_zones_only') {
+        radios.forEach(radio => {
+            if (radio.checked) {
+                if (radio.value === '0') {
+                    urlParams.delete('active_zones_only'); // удалить если выбрано "все дампы"
+                } else {
+                    urlParams.set('active_zones_only', radio.value);
+                }
+            }
+        });
+    }
 
-    // ✅ ЧИСТЫЙ URL - только mode
-    const baseUrl = window.location.pathname; // /dump/distribution
-    const newUrl = baseUrl + '?mode=' + newMode;
-
+    const newUrl = window.location.pathname + '?' + urlParams.toString();
     window.location.href = newUrl;
 }
 
+// Используем эту функцию для select
+function changeSortMode() {
+    const select = document.getElementById('sort-mode');
+    updateFilters('mode', select.value);
+}
+
+// Используем эту функцию для radio buttons
+function changeActiveZones() {
+    const radios = document.querySelectorAll('input[name="active_zones_only"]');
+    radios.forEach(radio => {
+        if (radio.checked) {
+            if (radio.value === '0') {
+                updateFilters('active_zones_only', null);
+            } else {
+                updateFilters('active_zones_only', radio.value);
+            }
+        }
+    });
+}
+
+// Инициализация select при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentMode = urlParams.get('mode') || 'balance';
+    const select = document.getElementById('sort-mode');
+    if (select) {
+        select.value = currentMode;
+    }
+});
 // ✅ ЦВЕТА ДЛЯ РЕЖИМОВ
 function getModeColor(mode) {
     const colors = {

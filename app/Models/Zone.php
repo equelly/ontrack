@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Rock;
 
 class Zone extends Model
 {
@@ -48,6 +49,6 @@ class Zone extends Model
         return $this->hasMany(Route::class);
     }
     public function rocks() {
-        return $this->belongsToMany(Rock::class, 'rock_zone');
+        return $this->belongsToMany(Rock::class, 'rock_zone', 'zone_id', 'rock_id');
     }
 }

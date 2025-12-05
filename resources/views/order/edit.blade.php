@@ -1,5 +1,15 @@
 @extends('layouts.app')
 @section('content')
+@if ($errors->any())
+    <div class="alert alert-danger">
+        <h6>❌ Ошибки валидации:</h6>
+        <ul class="mb-0">
+            @foreach ($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
 <form class="mt-5" action="{{route('order.update', $order->id)}}" method="POST" class="flex justify-center" enctype="multipart/form-data">
     @csrf
     @method('patch')
@@ -44,6 +54,11 @@
                       <input class="focus:outline-none focus:ring focus:border-blue-500 mt-3 w-30" type="file" name="image" id="foto" placeholder="вставить!"  value="{{$order->image}}"style="width: 10rem; border-bottom: 2px solid #14B8A6;border-right: 2px solid #14B8A6">
                     </div>
                 </div> 
+                @error('content')
+                          <div class="error-message">
+                              <small class="p-2">{{ $message }}</small>
+                          </div>
+                    @enderror
                 <div class="col-md-5 complect bg-gray-200 ml|mr-2">
                     <i><h4>комплектация</h4></i><hr>
                     <div class="form-check">
@@ -61,7 +76,9 @@
                           </label>
                         </p>
                         @endforeach
-                      
+                      @error('sets')
+                            <small class="text-danger">{{ $message }}</small>
+                        @enderror
                     </div>
                 </div>
                 
