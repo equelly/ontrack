@@ -176,8 +176,7 @@ class DistributionController extends Controller
                 $bestOption = $dumpOptions[0];
                 $allOptions[$minerId] = $dumpOptions;// сохраним этот массив с данными dump: расстояниями до него, score соответствующему режиму сортировки и т.д. 
 
-                
-                // ТВОЙ КОД СОЗДАНИЯ РЕЗУЛЬТАТА (как у тебя)
+               
                 $distribution[$minerId] = [
                     'miner_name' => $miner->name_miner?? $minerId,
                     'dump_id' => $bestOption['dump']->id,
@@ -204,6 +203,141 @@ class DistributionController extends Controller
       
 
     }
+    // ✅ Создаём структуру: dump_id => [варианты miners с score]
+$allDumps = [];
+
+// Идём по всем miner_id и их опциям
+foreach ($allOptions as $minerId => $options) {
+    foreach ($options as $option) {
+        // Получаем ID дампа из объекта dump
+        $dumpId = $option['dump']->id;
+
+        // Создаём массив для этого дампа если не существует
+        if (!isset($allDumps[$dumpId])) {
+            $allDumps[$dumpId] = [];
+        }
+
+        // Добавляем вариант для этого дампа
+        $allDumps[$dumpId][] = [
+            'miner_id' => $minerId,
+            'score' => $option['score'],
+            'distance' => $option['distance'],
+            'travel_time' => $option['travel_time_hours'],
+            'volume' => $option['total_zone_volume'],
+            'dump_volume' => $option['dump_volume'],
+            'last_volume' => $option['last_volume'],
+            'dump' => $option['dump']
+        ];
+    }
+}
+
+// ✅ Все уникальные miners
+$allMiners = array_keys($allOptions);
+$minersLeft = $allMiners; // копия для отслеживания
+
+// Сортируем варианты внутри каждого дампа по убыванию score
+foreach ($allDumps as &$dumpOptions) {
+    usort($dumpOptions, function ($a, $b) {
+        return $b['score'] <=> $a['score'];
+    });
+}
+unset($dumpOptions);
+// Инициализация
+//  получение всех имен забоев
+$allMinersNames = Miner::whereIn('id', array_keys($allOptions))
+    ->pluck('name_miner', 'id')
+    ->toArray();
+
+
+$assignmentsPoints = [];
+$minersLeft = $allMiners;
+$round = 1;
+
+// Цикл распределения
+do {
+    $minersAssignedThisRound = [];
+
+    foreach ($allDumps as $dumpId => &$dumpOptions) {
+        if (empty($dumpOptions)) {
+            continue; // нет вариантов
+        }
+
+        foreach ($dumpOptions as $idx => $option) {
+            $minerId = $option['miner_id'];
+
+            // Если miner нуждается в дампе и не назначен в этом раунде
+            if (in_array($minerId, $minersLeft) &&!in_array($minerId, $minersAssignedThisRound)) {
+                // Назначаем дамп miner'у
+                $assignmentsPoints[$minerId][] = [
+                    'dump_id' => $dumpId,
+                    'score' => $option['score'],
+                    'distance' => $option['distance'],
+                    'travel_time' => $option['travel_time'],
+                    'volume' => $option['volume'],
+                    'dump_volume' => $option['dump_volume'],
+                    'last_volume' => $option['last_volume'],
+                    'dump' => $option['dump'],
+                    'assigned_round' => $round,
+                    //  ПОЛЯ С ИМЕНАМИ:
+                    'miner_name' => $allMinersNames[$minerId]?? "Забой #{$minerId}",
+                    'miner_id' => $minerId,
+                    'dump_name' => $option['dump']->name_dump?? "Дамп #{$dumpId}",
+                    'assigned_round' => $round
+                ];
+
+                $minersAssignedThisRound[] = $minerId;
+
+                // Удаляем использованный вариант
+                unset($dumpOptions[$idx]);
+                $dumpOptions = array_values($dumpOptions);
+                break; // переход к следующему дампу
+            }
+        }
+    }
+
+    // Убираем назначенных с списка minersLeft
+    $minersLeft = array_diff($minersLeft, $minersAssignedThisRound);
+
+    $round++;
+
+    // Останавливаем по достижении лимита раундов или при пустом списке minersLeft
+} while (!empty($minersLeft) && $round <= 10);
+
+// ✅ Подсчёт статистики
+$totalRoutes = 0;
+$assignedMiners = count($assignmentsPoints);
+$totalScore = 0;
+$bestOverallScore = 0;
+
+
+
+// Идём по всем назначениям
+foreach ($assignmentsPoints as $minerId => $minerRoutes) {
+    $routeCount = count($minerRoutes);
+    $totalRoutes += $routeCount;
+
+    // Score для этого miner'а
+    $minerTotalScore = 0;
+    foreach ($minerRoutes as $route) {
+        $minerTotalScore += $route['score'];
+        if ($route['score'] > $bestOverallScore) {
+            $bestOverallScore = $route['score'];
+        }
+    }
+    $totalScore += $minerTotalScore;
+}
+
+// ✅ Статистика
+$distributionStats = [
+    'method' => 'распределение выполнено циклически для пропорционального разделения объемов',
+    'avg_routes_per_miner' => round($totalRoutes / count($allMiners), 1),
+    'total_score' => round($totalScore, 1),
+    'avg_score_per_miner' => round($totalScore / $assignedMiners, 1),
+    'best_score' => round($bestOverallScore, 1),
+];
+
+
+
         
         //$availableZones = Zone::where('delivery', true)->get(['id', 'name_zone']);
         
@@ -383,7 +517,7 @@ $finalResult = [
 
      
         // Передаём данные в представление
-        return view('dump.distribution', compact('stats', 'assignments', 'mode', 'allOptions', 'activeZonesOnly' ));
+        return view('dump.distribution', compact('assignmentsPoints', 'distributionStats', 'allMiners','stats', 'assignments', 'mode', 'allOptions', 'activeZonesOnly' ));
 
 
 
