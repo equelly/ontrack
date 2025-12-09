@@ -21,14 +21,14 @@
                 <input class="form-check-input" type="radio" name="active_zones_only" 
                     id="active-zones" value="1" {{ $activeZonesOnly? 'checked': '' }} onchange="changeActiveZones()">
                 <label class="form-check-label" for="active-zones">
-                    Подготовленные для приема г/м: {{ $activeZonesOnly? $stats['count']: '⚠️ нет' }}
+                    Подготовленные для приема г/м: <strong style="color:#007bff">{{ $activeZonesOnly? $stats['count']: '' }}</strong>
                 </label>
             </div>
             <div class="form-check form-check-inline">
                 <input class="form-check-input" type="radio" name="active_zones_only" 
                     id="all-zones" value="0" {{!$activeZonesOnly? 'checked': '' }} onchange="changeActiveZones()">
                 <label class="form-check-label" for="all-zones">
-                     Все перегрузки: {{ !$activeZonesOnly? $stats['count']: '' }}
+                     Все перегрузки: <strong style="color:#007bff">{{ !$activeZonesOnly? $stats['count']: '' }}</strong>
                 </label>
             </div>
 
@@ -97,54 +97,65 @@
                 <h2>Результаты распределения</h2>
 
                 <div class="alert alert-success">
-                    <h4>📊 Статистика</h4>
-                    <p><strong>Метод:</strong> {{ $distributionStats['method'] }}</p>
-                    <p><strong>Наиболее высокий приоритет:</strong> {{ round($distributionStats['best_score'], 1) }}</p>
-                    <p><strong>Средний приоритет:</strong> {{ round($distributionStats['avg_score_per_miner'], 1) }}</p>
-                </div>
-                
-    
-
-                <div class="container">
-                    <h4>Назначенные маршруты:</h4>
-
-                    @foreach($assignmentsPoints as $minerId => $routes)
-                        <div class="card mb-3">
-                            <div class="card-header">
-                                @foreach($routes as $route)
-                                <strong>Забой #{{ $route['miner_name']?? "{$minerId}" }}</strong> 
-                                <span class="badge bg-primary">{{ count($routes) }} маршрутов</span>
-                            </div>
-                            <div class="card-body">
-                                
-                                    <div class="row mb-2">
-                                        <div class="col-6">
-                                            <strong>перегрузка №{{ $route['dump_name'] }}</strong>
-                                            <br><small>Приоритет: {{ round($route['score'], 1) }}</small>
-                                        </div>
-                                        <div class="col-6 text-end">
-                                            <small>{{ $route['distance'] }} км</small>
-                                            <br><small> {{ $route['assigned_round'] }} очередь</small>
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
-                    @endforeach
+                    <h4>📊 Статистика: </h4>
+                    <h4> рассчеты выполнены для 
+                        <strong>{{ $activeZonesOnly? 'подготовленных зон': 'всех перегузок' }}</strong><br> в режиме <strong>
+                        @if($mode === 'balance')
+                            баланса объема и расстояния (30/70)
+                        @elseif($mode === 'distance')
+                            приоритета по расстоянию
+                        @else
+                            приоритета по объему
+                        @endif
+                        </strong>
+                    </h4>
+                    <h5><strong>Наиболее высокий приоритет:</strong> {{ round($distributionStats['best_score'], 1) }}</h5>
+                    <h5><strong>Средний приоритет:</strong> {{ round($distributionStats['avg_score_per_miner'], 1) }}</h5>
+                    <h5><strong>Направлено забоев на 1 перегрузку:</strong> {{ round($distributionStats['avg_routes_per_dump'], 1) }}</h5>
+                    <h5><strong>Средняя длина маршрута:</strong> {{ $distributionStats['average_distance'] }} км</h5>
                 </div>
 
+                <h3 style="color:#2c3e50">Назначенные маршруты:</h3>
+                <table  class="table table-striped" border="1" cellpadding="8" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>ЭКГ</th>
+                            <th>п/пункт</th>
+                            <th>приоритет</th>
+                            <th>рейс, км</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($assignmentsPoints as $minerId => $minerRoutes)
+                        
+                            @foreach($minerRoutes as $route)
+                                <tr>
+                                    <td><a href="{{ route('miners.index') }}">{{ $route['miner_name']?? "Забой #{$minerId}" }}</a></td>
+                                    <td>
+                                             <!-- отправим информацию для перехода на страницу с которой зашли 'return_to' => 'index' в session[] -->
+                                        <a href="{{route('dump.index', ['dump' => $zone->dump_id, 'return_to' => 'distribution'])}}">
+                                       {{ $map[$route['dump']->zones->first()->rocks->first()->name_rock]?? $route['dump']->zones->first()->rocks->first()->name_rock }}{{ $route['dump']->zones->first()->name_zone }}
+                                        </a>
+                                    </td>
+                                    <td>{{ round($route['score'], 1) }}<sup> ({{ $route['assigned_round'] }})</sup></td>
+                                    <td>{{ $route['distance'] }}</td>
+                                </tr>
+                            @endforeach
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
 
         </div>
         <div class="container">
-            <p>📊 Статистика</p>
+            <p>📊 Статистика по всем перегрузкам для корректировки направлений в ручном режиме</p>
             <ul>
                 <li>Всего точек погрузки в автотранспорт : {{ $stats['total_miners'] }}</li>
                 <li>Перегрузки: {{ $stats['total_dumps'] }}</li>
                 <li>всего зон: {{ $stats['total_zones'] }}</li>
                 <li>рассчет выполнен в режиме <strong><br> {{ $stats['mode_name'] }}</strong></li>
                 <li>{{ $stats['total_assignments'] }} забоев в работе</li>
-                <li>Общая дистанция рейсов отсортированных маршрутов: {{ $stats['total_distance_km'] }} км</li>
+                <li>Общая дистанция рейсов лучших маршрутов: {{ $stats['total_distance_km'] }} км</li>
                 <li>Общее время рейсов: {{ $stats['total_time_hours'] }} автом/часов</li>
                 <li>Среднее расстояние рейса: {{ $stats['average_distance'] }} км</li>
                 <li>Среднее время рейса: {{ $stats['average_time'] }} ч</li>

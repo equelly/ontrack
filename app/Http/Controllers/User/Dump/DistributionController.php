@@ -103,19 +103,6 @@ class DistributionController extends Controller
             });
 
 
-
-        // foreach ($suitableDumps as $option) {
-        //     $dumpName = $option['dump']->name_dump;
-        //     $distance = $option['distance'];
-        //   }
-
-
-
-        // if ($suitableDumps->isEmpty()) {
-          
-        //     continue;
-        // }
-
                 //  ПОДГОТОВКА ЛОГИКИ РЕЖИМОВ
         $suitableDumpCount = $suitableDumps->count();
         $minerName = $miner->name_miner?? 'не установлен';
@@ -252,7 +239,7 @@ $allMinersNames = Miner::whereIn('id', array_keys($allOptions))
 $assignmentsPoints = [];
 $minersLeft = $allMiners;
 $round = 1;
-
+$Distancies = 0;
 // Цикл распределения
 do {
     $minersAssignedThisRound = [];
@@ -284,7 +271,7 @@ do {
                     'dump_name' => $option['dump']->name_dump?? "Дамп #{$dumpId}",
                     'assigned_round' => $round
                 ];
-
+                $Distancies += $option['distance'];
                 $minersAssignedThisRound[] = $minerId;
 
                 // Удаляем использованный вариант
@@ -309,8 +296,6 @@ $assignedMiners = count($assignmentsPoints);
 $totalScore = 0;
 $bestOverallScore = 0;
 
-
-
 // Идём по всем назначениям
 foreach ($assignmentsPoints as $minerId => $minerRoutes) {
     $routeCount = count($minerRoutes);
@@ -329,21 +314,14 @@ foreach ($assignmentsPoints as $minerId => $minerRoutes) {
 
 // ✅ Статистика
 $distributionStats = [
-    'method' => 'распределение выполнено циклически для пропорционального разделения объемов',
-    'avg_routes_per_miner' => round($totalRoutes / count($allMiners), 1),
+    'method' => 'распределение выполнено пропорционально с учетом приоритета расчитанного по объему на перегрузках и длине маршрута от каждого забоя',
+    'avg_routes_per_dump' => round($totalRoutes / $countSuitableDumps, 1),
     'total_score' => round($totalScore, 1),
     'avg_score_per_miner' => round($totalScore / $assignedMiners, 1),
     'best_score' => round($bestOverallScore, 1),
+    'average_distance' => $assignmentsPoints? round($Distancies / count($assignmentsPoints), 2): 0,
 ];
 
-
-
-        
-        //$availableZones = Zone::where('delivery', true)->get(['id', 'name_zone']);
-        
-        
-        
-        // БАЗОВАЯ СТАТИСТИКА
 
         // Группируем доступные зоны по породам (delivery=true)
         $zonesByRock = DB::table('zones')
@@ -484,7 +462,6 @@ $finalResult = [
     $dumpCapacitiesArray = $dumpCapacities;
 
                 // ФИНАЛЬНАЯ СТАТИСТИКА
-        //$stats['total_assignments'] = count($dumpsWithScores);
         $stats['total_distance_km'] = $bestDistancies;
         $stats['total_time_hours'] = round($totalTime, 2);
         $stats['average_distance'] = $assignments? round($bestDistancies / count($assignments), 2): 0;
@@ -492,9 +469,7 @@ $finalResult = [
         $stats['distribution'] = $distribution;
         
         $stats['total_dump_capacity'] = $totalCapacity;      // Общая ёмкость
-        $stats['dump_count'] = $dumpCount;                   // Количество dumps
-        $stats['average_dump_capacity'] = $averageCapacity;  // Средняя ёмкость
-        //$stats['available_zones'] = $availableZones;
+        $stats['dump_count'] = $dumpCount;                   // Количество перегрузок
         $stats['total_volume'] = $finalResult['total_volume'];
         
         $stats['total_zones'] = Zone::count();
