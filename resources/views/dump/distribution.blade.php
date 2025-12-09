@@ -94,7 +94,7 @@
                     </div>
                 @endforeach
             <div class="container mt-4">
-                <h2>Результаты распределения</h2>
+                <h3 class="text-center">Результаты распределения</h3>
 
                 <div class="alert alert-success">
                     <h4>📊 Статистика: </h4>
