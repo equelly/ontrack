@@ -221,6 +221,7 @@ function showLoading() {
 
         // Функция для обновления текста
         function updateLabel() {
+            if (!checkbox) return;
             if (checkbox.checked) {
                 textSpan.textContent = 'в работе';
                 textSpan.classList.remove('text-muted');
@@ -234,9 +235,10 @@ function showLoading() {
 
         // Обновляем при загрузке
         updateLabel();
-
+        if (!checkbox) return; // если элемента нет — просто выходим
         // Обновляем при клике
         checkbox.addEventListener('change', updateLabel);
+        
  });
 document.addEventListener('DOMContentLoaded', function() {
     // ✅ НАЙДЁМ ВСЕ INPUT'Ы ОБЪЁМА ЗОН
