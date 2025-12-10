@@ -331,11 +331,12 @@ $(document).ready(function() {
 });
 // удаление зон 
 function markZoneForDeletion(zoneId) {
-    
-
     // Добавляем скрытое поле для удаления
-    let form = document.querySelector('form');
+    const form = document.getElementById('dump-edit-form'); // а НЕ просто первый form
+    if (!form) return;
     let hiddenInput = document.createElement('input');
+    
+    
     hiddenInput.type = 'hidden';
     hiddenInput.name = 'delete_zones[]';
     hiddenInput.value = zoneId;

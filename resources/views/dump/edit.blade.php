@@ -25,7 +25,7 @@
     </div>
 @endif
 
-<form  method="POST" action="{{route('dump.update', $dump)}}" class="mt-5" class="flex justify-center" >
+<form id="dump-edit-form" method="POST" action="{{route('dump.update', $dump)}}" class="mt-5 flex justify-center" >
   @csrf
   @method('PUT')
   <input type="hidden" id="zone-counter" value="{{ count($dump->zones) }}">
