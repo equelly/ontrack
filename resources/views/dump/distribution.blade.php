@@ -116,35 +116,36 @@
                 </div>
 
                 <h3 style="color:#2c3e50">Назначенные маршруты:</h3>
-                <table  class="table table-striped" border="1" cellpadding="8" cellspacing="0">
+                <div class="max-w-full overflow-x-auto">
+                <table  class="table table-striped min-w-full table-auto" border="1" cellpadding="8" cellspacing="0">
                     <thead>
                         <tr>
                             <th>ЭКГ</th>
                             <th>п/пункт</th>
-                            <th>приоритет</th>
                             <th>рейс, км</th>
+                            <th>приоритет</th>
                         </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($assignmentsPoints as $minerId => $minerRoutes)
-                        
-                            @foreach($minerRoutes as $route)
-                                <tr>
+                        </thead>
+                        <tbody>
+                            @foreach($assignmentsPoints as $minerId => $minerRoutes)
+                            
+                                @foreach($minerRoutes as $route)
+                                    <tr>
                                     <td><a href="{{ route('miners.index') }}">{{ $route['miner_name']?? "Забой #{$minerId}" }}</a></td>
                                     <td>
-                                             <!-- отправим информацию для перехода на страницу с которой зашли 'return_to' => 'index' в session[] -->
-                                        <a href="{{route('dump.index', ['dump' => $zone->dump_id, 'return_to' => 'distribution'])}}">
-                                       {{ $map[$route['dump']->zones->first()->rocks->first()->name_rock]?? $route['dump']->zones->first()->rocks->first()->name_rock }}{{ $route['dump']->zones->first()->name_zone }}
-                                        </a>
+                                                <!-- отправим информацию для перехода на страницу с которой зашли 'return_to' => 'index' в session[] -->
+                                    <a href="{{route('dump.index', ['dump' => $zone->dump_id, 'return_to' => 'distribution'])}}">
+                                        {{ $map[$route['dump']->zones->first()->rocks->first()->name_rock]?? $route['dump']->zones->first()->rocks->first()->name_rock }}{{ $route['dump']->zones->first()->name_zone }}
+                                    </a>
                                     </td>
-                                    <td>{{ round($route['score'], 1) }}<sup> ({{ $route['assigned_round'] }})</sup></td>
                                     <td>{{ $route['distance'] }}</td>
+                                    <td>{{ round($route['score'], 1) }}<sup> ({{ $route['assigned_round'] }})</sup></td>
                                 </tr>
                             @endforeach
                         @endforeach
                     </tbody>
                 </table>
-            </div>
+                </div>
 
         </div>
         <div class="container">
@@ -176,7 +177,8 @@
                 <small class="text-muted">{{$stats['mode_name']}} </small></div>
                 
                 📏 {{ $assignment['distance_km'] }} км | ⏱️ {{ $assignment['travel_time_hours'] }} ч<br>
-                <table class="table table-striped">
+                <div class="max-w-full overflow-x-auto">
+                <table class="table table-striped min-w-full table-auto">
                         <thead>
                             <tr>
                                 <th>№ п/п</th>
@@ -185,7 +187,7 @@
                                 <th>приоритет</th>
                             </tr>
                         </thead>
-                @foreach($allOptions[$key] as $option)
+                    @foreach($allOptions[$key] as $option)
                 
                     <tbody>
                         <tr>
@@ -214,6 +216,7 @@
                     </tbody>
                       @endforeach
                 </table>
+                </div>
                 Общая емкость: {{ $assignment['dump_volume'] }} <br>
                 Текущие объемы: {{ $assignment['total_zone_volume'] }} <br>остаточная емкость {{$assignment['last_volume']}}
             </div>

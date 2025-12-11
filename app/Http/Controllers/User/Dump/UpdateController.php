@@ -17,7 +17,7 @@ class UpdateController extends BaseController
    
     $request->validate([
         'name_dump' => 'required|string|max:255',
-        'loader_zone_id' => 'numeric',
+        'loader_zone_id' => 'nullable|integer',
     ], [
         'name_dump.required' => 'Название дампа обязательно!',
     ]);

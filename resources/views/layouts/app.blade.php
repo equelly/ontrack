@@ -19,11 +19,11 @@
           <!-- Navbar -->
           <nav class="navbar navbar-dark fixed-top scrolling-navbar">
             <div class="container">
-              <a class="navbar-brand ml-3" href="/">
+              <a class="navbar-brand" href="/">
                 <strong>SMS</strong>
               </a>
              
-                <ul class="navbar-nav ms-auto pr-2">
+                <ul class="navbar-nav ms-auto">
                     <li style="color: #ffffff;">
                         @if(isset(Auth::user()->name)) 
                           {{Auth::user()->name}}
@@ -31,7 +31,7 @@
                          @endif
                     </li>      
                 </ul>
-                <button class="navbar-toggler mr-3" type="button" data-toggle="collapse" data-target="#navbarSupportedContent-7" aria-controls="navbarSupportedContent-7" aria-expanded="false" aria-label="Toggle navigation">
+                <button class="navbar-toggler m-1" type="button" data-toggle="collapse" data-target="#navbarSupportedContent-7" aria-controls="navbarSupportedContent-7" aria-expanded="false" aria-label="Toggle navigation">
                 menu
                 </button>
               <div class="collapse navbar-collapse" id="navbarSupportedContent-7">

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\User\Dump;
 
 use App\Models\Dump;
+use Exception;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
 
@@ -38,7 +39,7 @@ class DestroyController extends BaseController
         return redirect()->route('dump.index')
             ->with('success', 'Перегрузка № '. $dump->id. ' удалена со всеми связями!');
 
-    } catch (\Exception $e) {
+    } catch (Exception $e) {
         DB::rollback();  // Откатываем при ошибке
         return back()->with('error', 'Ошибка удаления: '. $e->getMessage());
     }
