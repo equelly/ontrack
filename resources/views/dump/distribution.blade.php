@@ -114,7 +114,7 @@
                     <h5><strong>Направлено забоев на 1 перегрузку:</strong> {{ round($distributionStats['avg_routes_per_dump'], 1) }}</h5>
                     <h5><strong>Средняя длина маршрута:</strong> {{ $distributionStats['average_distance'] }} км</h5>
                 </div>
-
+            </div>
                 <h3 style="color:#2c3e50">Назначенные маршруты:</h3>
                 <div class="max-w-full overflow-x-auto">
                 <table  class="table table-striped min-w-full table-auto" border="1" cellpadding="8" cellspacing="0">
@@ -135,7 +135,15 @@
                                     <td>
                                                 <!-- отправим информацию для перехода на страницу с которой зашли 'return_to' => 'index' в session[] -->
                                     <a href="{{route('dump.index', ['dump' => $zone->dump_id, 'return_to' => 'distribution'])}}">
-                                        {{ $map[$route['dump']->zones->first()->rocks->first()->name_rock]?? $route['dump']->zones->first()->rocks->first()->name_rock }}{{ $route['dump']->zones->first()->name_zone }}
+                                        @php
+                                            // Фильтр: только delivery true
+                                            $activeZones = ($route['dump']?? $dump)->zones->filter(function ($zone) {
+                                                return $zone->delivery === true; 
+                                            });
+                                        @endphp
+                                       @foreach($activeZones as $activeZone)
+                                             {{ $map[$activeZone->rocks->first()->name_rock ]?? $activeZone->rocks->first()->name_rock  }}{{ $activeZone->name_zone}}
+                                       @endforeach
                                     </a>
                                     </td>
                                     <td>{{ $route['distance'] }}</td>
@@ -147,7 +155,7 @@
                 </table>
                 </div>
 
-        </div>
+        
         <div class="container">
             <p>📊 Статистика по всем перегрузкам для корректировки направлений в ручном режиме</p>
             <ul>
@@ -161,7 +169,7 @@
                 <li>Среднее расстояние рейса: {{ $stats['average_distance'] }} км</li>
                 <li>Среднее время рейса: {{ $stats['average_time'] }} ч</li>
             </ul>
-        
+        </div>
             <h4>🔄 Назначения для {{ count($assignments) }} забоев</h4>
     
             @foreach($assignments as $key => $assignment)
@@ -222,7 +230,7 @@
             </div>
             
             @endforeach
-        </div>
+        
     </div>
 @endsection
 
