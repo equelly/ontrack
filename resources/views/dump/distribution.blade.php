@@ -115,7 +115,7 @@
                     <h5><strong>Средняя длина маршрута:</strong> {{ $distributionStats['average_distance'] }} км</h5>
                 </div>
             </div>
-                <h3 style="color:#2c3e50">Назначенные маршруты:</h3>
+                <h3 style="color:#2c3e50">Назначенные маршруты {{ $activeZonesOnly? 'для активных зон' : 'по всем перегрузкам' }}:</h3>
                 <div class="max-w-full overflow-x-auto">
                 <table  class="table table-striped min-w-full table-auto" border="1" cellpadding="8" cellspacing="0">
                     <thead>
@@ -141,9 +141,14 @@
                                                 return $zone->delivery === true; 
                                             });
                                         @endphp
-                                       @foreach($activeZones as $activeZone)
-                                             {{ $map[$activeZone->rocks->first()->name_rock ]?? $activeZone->rocks->first()->name_rock  }}{{ $activeZone->name_zone}}
-                                       @endforeach
+                                        @if($activeZonesOnly)
+                                            @foreach($activeZones as $activeZone)
+                                                    {{ $map[$activeZone->rocks->first()->name_rock ]?? $activeZone->rocks->first()->name_rock  }}{{ $activeZone->name_zone}}
+                                            @endforeach
+                                        @else
+                                             №{{ $route['dump']->name_dump }}
+                                        @endif
+
                                     </a>
                                     </td>
                                     <td>{{ $route['distance'] }}</td>
