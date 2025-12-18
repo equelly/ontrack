@@ -41,6 +41,29 @@ class UpdateController extends BaseController
 
                    // ✅ ПРОВЕРКА: СУЩЕСТВУЮЩАЯ ЗОНА (ИМЕЕТ ID)
         if (isset($zoneData['id']) &&!empty($zoneData['id']) && $zoneData['id']!= 'null') {
+                    // ✅ Валидация name_zone (required)
+        if (empty($zoneData['name_zone'])) {
+            return back()->withErrors(['zones' => 'Название зоны обязательно!']);
+        }
+
+        // ✅ Валидация volume 
+        if (!isset($zoneData['volume'])) {
+            return back()->withErrors(['zones' => 'Объем зоны не указан!']);
+        }
+        if ($zoneData['volume'] === '' || $zoneData['volume'] === null) {
+            return back()->withErrors(['zones' => 'Объем зоны не может быть пустым!']);
+        }
+        if (!is_numeric($zoneData['volume'])) {
+            return back()->withErrors(['zones' => 'Объем зоны должен быть числом!']);
+        }
+        if ((float)$zoneData['volume'] < 0) {
+            return back()->withErrors(['zones' => 'Объем зоны не может быть отрицательным!']);
+        }
+
+        // ✅  delivery
+        if (isset($zoneData['delivery']) &&!in_array($zoneData['delivery'], [0, 1, '0', '1'])) {
+            return back()->withErrors(['zones' => 'Завозка должен быть в формате да/нет!']);
+        }
             // ✅ ОБНОВЛЯЕМ СУЩЕСТВУЮЩУЮ ЗОНУ
             $zone = $dump->zones()->find($zoneData['id']);
             if ($zone) {
