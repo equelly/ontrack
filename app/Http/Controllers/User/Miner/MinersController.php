@@ -15,31 +15,77 @@ class MinersController extends Controller
     /**
      * Отображение списка майнеров с расстояниями до дампов
      */
-    public function index()
-    {
-        $miners = Miner::with(['lastUpdater', 'dumps'])  // Загружаем связанные дампы и пользователя
-                       ->orderBy('last_updated_at', 'desc')  
-                       ->orderBy('created_at', 'desc')
-                       ->paginate(15);
+public function index()
+{
+    $miners = Miner::with('lastUpdater')
+                   ->orderBy('last_updated_at', 'desc')
+                   ->orderBy('created_at', 'desc')
+                   ->paginate(15);
 
-                // 2. Для каждого майнера — один SQL-запрос с JOIN и сортировкой!
-    $miners->getCollection()->transform(function ($miner) {
-        $dumps = DB::table('dumps')
-            ->leftJoin('miner_dump_distances', function($join) use ($miner) {
-                $join->on('dumps.id', '=', 'miner_dump_distances.dump_id')
-                     ->where('miner_dump_distances.miner_id', '=', $miner->id);
-            })
-            ->select('dumps.*', 'miner_dump_distances.distance_km')
-            ->orderBy('miner_dump_distances.distance_km', 'asc')  // ← СОРТИРОВКА!
-            ->orderBy('dumps.id')
-            ->get();
+    $minerIds = $miners->getCollection()->pluck('id');
 
-        $miner->dumps = $dumps;  // Заменяем на отсортированные дампы
-        return $miner;
+    // Один запрос: dumps с distance для всех майнеров
+    $dumpsData = DB::table('dumps')
+        ->leftJoin('miner_dump_distances', 'dumps.id', '=', 'miner_dump_distances.dump_id')
+        ->whereIn('miner_dump_distances.miner_id', $minerIds)
+        ->select('dumps.*', 'miner_dump_distances.miner_id', 'miner_dump_distances.distance_km')
+        ->orderBy('miner_dump_distances.miner_id')
+        ->orderBy('miner_dump_distances.distance_km', 'asc')
+        ->get()
+        ->groupBy('miner_id');
+
+    // Все dump IDs
+    $allDumpIds = $dumpsData->flatten()->pluck('id');
+
+    // Один запрос: active zones (delivery=1)
+    $zonesData = DB::table('zones')
+        ->whereIn('dump_id', $allDumpIds)
+        ->where('delivery', 1)
+        ->select('zones.*')
+        ->get()
+        ->groupBy('dump_id');
+
+       // 3. Zone IDs для rocks
+    $allZoneIds = $zonesData->flatten()->pluck('id');
+
+    // Один запрос: rocks через pivot rock_zone (без quantity)
+    $rocksData = DB::table('rocks')
+        ->join('rock_zone', 'rocks.id', '=', 'rock_zone.rock_id')
+        ->whereIn('rock_zone.zone_id', $allZoneIds)  // Только active zones
+        ->select('rocks.*', 'rock_zone.zone_id')
+        ->orderBy('rock_zone.zone_id')
+        ->orderBy('rocks.id')
+        ->get()
+        ->groupBy('zone_id');  // ['zone_id' => Collection rocks]
+
+
+
+
+    // Присвой данные майнерам
+    $miners->getCollection()->each(function ($miner) use ($dumpsData, $zonesData, $rocksData) {
+        $dumps = $dumpsData->get($miner->id, collect());
+
+        $dumps->each(function ($dump) use ($zonesData, $rocksData) {
+        $dump->zones = $zonesData->get($dump->id, collect());
+
+            $dump->zones->each(function ($zone) use ($rocksData) {
+                $zone->rocks = $rocksData->get((string) $zone->id, collect());
+
+                // Нет pivot — просто флаг
+                $zone->hasRocks = $zone->rocks->isNotEmpty();
+            });
+
+            $dump->hasActiveZones = $dump->zones->isNotEmpty();
+        });
+
+
+        
+
+        $miner->dumps = $dumps->sortBy('distance_km')->values();
     });
+    return view('miners.index', compact('miners'));
+}
 
-        return view('miners.index', compact('miners'));
-    }
     
   public function create()
     {

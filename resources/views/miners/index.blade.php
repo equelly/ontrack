@@ -1,6 +1,14 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    $map = [
+       'вскрыша' => 'V',
+       'руда' => 'R',
+       'песчаник' => 'Kvp',
+       'руда_S' => 'Rs',
+        ];
+@endphp
 <div class="container mt-5">
     
     <div class="card-header d-flex justify-content-between align-items-center mb-2">
@@ -16,9 +24,9 @@
         <thead class="table-dark">
             <tr class="mobile-table td">
                 
-                <th>Название</th>
-                <th>Маршруты и расстояния</th>
-                <th class="hide-on-mobile">Создан</th>
+                <th>Номер</th>
+                <th class="border-left">Маршруты</th>
+                <th class="hide-on-mobile border-left">Обновлен</th>
             </tr>
         </thead>
         <tbody>
@@ -66,24 +74,24 @@
                             </div>
                         </div>
                     </td>             
-                    <td class="text-end">
+                    <td class="text-end border-left">
                         @if($miner->dumps->count() > 0)
                             <ol class="list-unstyled mb-0">
+                               
                                 @foreach($miner->dumps as $dump)
                                     <li class="small">
-                                         @if($dump->distance_km!== null)
-                                         <!-- $loop объект класса CompilesLoops, который laravel создает для циклов foreach -->
-                                         @if($loop->first)
-                                            <small class="text-success ms-2">ближний</small>
-                                         @endif
-                                        <strong>до п/п №{{ $dump->name_dump }}</strong>
-                                        <span class="badge bg-green-600">
-                                            {{ $dump->distance_km }} км
+                                        <span>
+                                            @if($dump->hasActiveZones)
+                                            @foreach($dump->zones as $zone)
+                                            {{ $map[$zone->rocks->first()->name_rock ]?? $zone->rocks->first()->name_rock  }}
+                                            <small class="text-muted">{{ $zone->name_zone }}</small>
+                                            @endforeach
+                                        @endif
+                                        </span>
+                                        <span class="badge {{ $dump->hasActiveZones? 'bg-success': 'bg-secondary' }}">
+                                            {{ $dump->name_dump }} ({{ $dump->distance_km?? 'нет данных' }} км)
                                         </span>
                                         
-                                        @else
-                                            <span class="badge bg-light text-muted">не данных</span>
-                                        @endif
                                     </li>
                                 @endforeach
                             </ol>
@@ -91,7 +99,7 @@
                             <span class="text-muted">не установлены!</span>
                         @endif
                     </td>
-                    <td class="hide-on-mobile">{{ $miner->created_at? $miner->created_at->format('d.m.Y H:i'): 'Неизвестно' }}</td>
+                    <td class="hide-on-mobile border-left">{{ $miner->last_updated_at? $miner->last_updated_at->format('d.m в H:i'): 'Неизвестно' }}</td>
                     
                 </tr>
             @empty

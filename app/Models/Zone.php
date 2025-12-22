@@ -49,6 +49,6 @@ class Zone extends Model
         return $this->hasMany(Route::class);
     }
     public function rocks() {
-        return $this->belongsToMany(Rock::class, 'rock_zone', 'zone_id', 'rock_id');
+        return $this->belongsToMany(Rock::class, 'rock_zone');
     }
 }
