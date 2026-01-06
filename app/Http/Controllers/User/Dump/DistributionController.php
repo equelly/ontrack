@@ -490,7 +490,14 @@ $finalResult = [
             return ($b['score']?? 0) <=> ($a['score']?? 0);
         });
 
-     
+        // ✅ СТАНОВИТСЯ (JSON для Livewire)
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'distribution' => $assignmentsPoints,
+                'stats' => $distributionStats,
+                'mode' => $mode
+            ]);
+        }
         // Передаём данные в представление
         return view('dump.distribution', compact('assignmentsPoints', 'distributionStats', 'allMiners','stats', 'assignments', 'mode', 'allOptions', 'activeZonesOnly' ));
 

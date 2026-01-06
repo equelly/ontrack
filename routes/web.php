@@ -5,6 +5,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\User\Dump\DistributionController;
 use App\Http\Controllers\User\Miner\MinersController;
+use App\Livewire\DispatcherPanel;
+use App\Livewire\TestComponent;
+
+Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
+Route::get('/test', TestComponent::class);
+Route::post('/dump/distribution', [DistributionController::class, 'index'])->name('dump.distribution');
+
 
 /*
 |--------------------------------------------------------------------------
