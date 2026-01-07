@@ -79,9 +79,16 @@
 
 {{-- Результат --}}
 @if($distributionResult)
-    <div class="mt-6 p-4 bg-green-50 border rounded-lg">
+    <div class="mt-6">
         <h3>РЕЗУЛЬТАТЫ РАСПРЕДЕЛЕНИЯ:</h3>
-       
+       <div class="flex justify-around items-center mb-8 m-2">
+            <h3 class="text-4xl font-black bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                📊 {{ $editMode ? 'Редактирование в ручном режиме' : 'В автоматическом режиме' }} 
+            </h3>
+            <span class="p-3 py-3 {{ $editMode ? 'bg-yellow-100 text-yellow-800' : 'bg-emerald-100 text-emerald-800' }} rounded-2xl font-black">
+                {{ count($distributionResult['distribution']) }} назначений
+            </span>
+        </div>
         @if($editMode)
         <div class="mb-4 p-4 bg-gradient-to-r from-indigo-100 to-purple-100 border-2 border-indigo-300 rounded-2xl">
             <div class="font-bold text-lg">🔍 СТАТУС РЕДАКТИРОВАНИЯ:</div>
@@ -98,42 +105,54 @@
 
 @if(isset($distributionResult['distribution']) && count($distributionResult['distribution']) > 0)
 <div class="mt-8 p-8 bg-gradient-to-br from-emerald-50 to-blue-50 border-2 border-emerald-200 rounded-3xl shadow-2xl">
-    <div class="flex justify-around items-center mb-8 m-2">
-        <h3 class="text-4xl font-black bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-            📊 {{ $editMode ? 'Редактирование в ручном режиме' : 'В автоматическом режиме' }} 
-        </h3>
-        <span class="p-3 py-3 {{ $editMode ? 'bg-yellow-100 text-yellow-800' : 'bg-emerald-100 text-emerald-800' }} rounded-2xl font-black shadow-lg">
-            {{ count($distributionResult['distribution']) }} назначений
-        </span>
-    </div>
-
-    <div class="overflow-x-auto rounded-3xl shadow-2xl">
+    <div class="overflow-x-auto rounded-3xl">
         <table class="w-full bg-white/90 backdrop-blur-xl">
             <thead class="bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-600 ">
                 <tr>
-                    <th class="p-6 text-left font-black rounded-tl-3xl">забой</th>
-                    <th class="p-6 text-left font-black">перегрузка</th>
-                    <th class="p-6 text-right font-black">📏 КМ</th>
-                    <th class="p-6 text-right font-black rounded-tr-3xl">приоритет</th>
+                    <th class="text-left font-black rounded-tl-3xl">забой</th>
+                    <th class="text-left font-black">перегрузка</th>
+                    <th class="text-right font-black">📏 КМ</th>
+                    <th class="text-right font-black rounded-tr-3xl">приоритет</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach($distributionResult['distribution'] as $minerId => $minerAssignments)
                     {{-- 🔥 БЕРЁМ ПЕРВЫЙ (и единственный) assignment для этого miner --}}
-                    @php $assignment = $minerAssignments[0] ?? null; @endphp
+                    @php 
+                        $assignment = $minerAssignments[0] ?? null; 
+                        $currentDumpId = $tempAssignments[$minerId] ?? $assignment['dump_id'];
+                        $savedDumpId = $savedRoutes[$minerId] ?? null;
+                        $isSaved = $savedDumpId === $currentDumpId && $savedDumpId !== null;
+                        $savedDumpName = $savedDumpId ? ($this->dumpNames[$savedDumpId] ?? "№{$savedDumpId}") : null;
+                    @endphp
                     
                     @if($assignment)
-                    <tr class="hover:bg-gradient-to-r {{ $editMode ? 'hover:from-yellow-50 hover:to-orange-50 bg-yellow-50/50 border-2 border-yellow-200' : 'hover:from-emerald-50 hover:to-blue-50' }} border-b border-emerald-100 transition-all">
-                        <td class="p-6 font-bold text-gray-900">
+                    <tr class="border-b border-emerald-100 transition-all
+                        {{ $isSaved ? 'bg-emerald-50' : ($editMode ? 'bg-yellow-50/50' : '') }}">                        
+                        <td class="font-bold text-xl text-gray-900 relative">
+                            <span class="font-semibold {{ 
+                                $isSaved ? 'bg-emerald-200 text-emerald-800' : 
+                                (isset($savedDumpId) ? 'bg-amber-200 text-amber-800 border-2 border-amber-400' : 'bg-gray-200 text-gray-700')
+                            }}">
+                                @if($isSaved)
+                                    ✅ 
+                                @elseif(isset($savedDumpId))
+                                    ⚠️ 
+                                @else
+                                    ➕ новый маршрут
+                                @endif
+                            </span>
                             {{ $assignment['miner_name'] }}
-                           
+                            
+                            
                         </td>
+
                         
-                        <td class="p-6">
+                        <td class="">
                             @if($editMode)
                                 <select wire:model.live="tempAssignments.{{ $minerId }}" 
                                     wire:key="miner-{{ $minerId }}-select"
-                                    class="w-full p-4 border-3 rounded-2xl focus:ring-4 font-semibold shadow-lg">
+                                    class="w-full p-4 border-3 rounded-2xl focus:ring-4 font-semibold">
 
                                     @foreach($availableDumps as $dumpId => $dumpName)
                                         @php
@@ -143,6 +162,14 @@
                                             $distance = $distanceData?->distance_km ?? 999;
                                             $score = max(0, 100 - ($distance * 8));
                                             $isBest = abs($score - $assignment['score']) < 1;
+                                            // ФИЛЬТР delivery=true 
+                                            $hasDelivery = \App\Models\Zone::where('dump_id', $dumpId)
+                                                ->where('delivery', true)
+                                                ->exists();
+                                                
+                                            if ($activeZonesOnly && !$hasDelivery) {
+                                                continue;
+                                            }
                                         @endphp
                                         
                                         <option value="{{ $dumpId }}" 
@@ -157,17 +184,17 @@
                                 
                                 @if(($tempAssignments[$minerId] ?? $assignment['dump_id']) != $assignment['dump_id'])
                                     <div class="mt-2 px-4 py-2 bg-emerald-100 border-2 border-emerald-400 rounded-xl font-bold text-emerald-800 text-lg">
-                                        ✨ изменен с п.п.№{{ $dumpName }} на п.п.№{{ $availableDumps[$tempAssignments[$minerId]] ?? 'Дамп' }}
+                                        ✨ изменен с п.п.№{{ $savedDumpName }} на п.п.№{{ $availableDumps[$currentDumpId] ?? $currentDumpId }}
                                     </div>
                                 @endif
                             @else
-                                <span class="inline-flex items-center gap-2 p-3 bg-blue-100 text-blue-800 rounded-2xl font-bold shadow-lg">
+                                <span class="inline-flex items-center gap-2 p-3 bg-blue-100 text-blue-800 rounded-2xl font-bold">
                                     № {{ $assignment['dump_name'] }}
                                 </span>
                             @endif
                         </td>
                         
-                        <td class="p-6 text-right">
+                        <td class="text-right">
                             <div class="text-3xl font-black text-emerald-700">
                                 {{ number_format($assignment['distance'], 1) }}
                             </div>
@@ -176,12 +203,60 @@
                             </div>
                         </td>
                         
-                        <td class="p-6 text-right">
-                            <div class="text-3xl font-black text-amber-600 bg-amber-100 p-3 py-3 rounded-2xl inline-block shadow-lg">
+                        <td class="text-right">
+                            <div class="text-3xl font-black text-amber-600 bg-amber-100 p-3 py-3 rounded-2xl inline-block">
                                 {{ number_format($assignment['score'], 1) }}
                             </div>
                         </td>
                     </tr>
+                        {{-- строка изменений сделанных в ручную --}}
+                        @if(isset($savedRoutes[$minerId]) && $savedRoutes[$minerId] != $assignment['dump_id'])
+                            @php
+                                $savedDumpId = $savedRoutes[$minerId];
+                                // 🔥 NAME ДАМПА из БД!
+                                $savedDumpName = \App\Models\Dump::find($savedDumpId)?->name_dump ?? "Дамп №{$savedDumpId}";
+                                
+                                $savedDistanceData = \App\Models\MinerDumpDistance::where('miner_id', $minerId)
+                                    ->where('dump_id', $savedDumpId)
+                                    ->first();
+                                $savedDistance = $savedDistanceData?->distance_km ?? 999;
+                                $savedScore = max(0, 100 - ($savedDistance * 8));
+                                $deltaScore = $assignment['score'] - $savedScore;
+                            @endphp
+                            
+                            <tr class="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 hover:bg-amber-100">
+                                <td >
+                                    <div class="flex items-center gap-4 text-sm">
+                                        
+                                        <span class="font-semibold text-amber-800">📝 перенаправлено диспетчером на </span>
+                                </td>
+                                <td>       
+                                        {{--  NAME ДАМПА! --}}
+                                        <span class="font-black text-lg text-amber-700">
+                                            п.п.{{ $savedDumpName }}
+                                        </span>
+                                </td>
+                                <td>       
+                                    <div class="flex items-center gap-4 ml-8">
+                                        <div class="text-right">
+                                            <div class="text-xl font-black text-amber-600">{{ number_format($savedDistance, 1) }}км</div>
+                                            </div>
+                                </td>
+                                <td>
+                                    <div class="text-right">
+                                        <div class="text-2xl font-black {{ $deltaScore > 0 ? 'text-emerald-600' : 'text-amber-600' }} px-3 py-1 rounded-xl">
+                                            {{ number_format($savedScore, 1) }}
+                                                <span class="text-sm">({{ $deltaScore > 0 ? '+' : '' }}{{ number_format($deltaScore, 1) }})</span>
+                                        </div>
+                                        </div>
+                                    </div>
+                                
+                                    </div>
+                                </td>
+                            </tr>
+                        @endif
+
+
                     @endif
                 @endforeach
             </tbody>

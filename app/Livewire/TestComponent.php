@@ -26,10 +26,21 @@ class TestComponent extends Component
     public $tempAssignments = [];
     public $availableDumps = [];
     public $allMinerDumpScores = [];
+    // для подсветки уже сохраненных маршрутов при ручном редактировании 
+    public array $savedRoutes = [];
+    // массив названий перегрузок
+    public array $dumpNames = [];
     
     
     public function mount(): void
     {
+        // в случае перехода со страницы на страницу явно устанавливаем состояние зон
+        $this->activeZonesOnly = true;
+        // передаем названия дамп в массив для вывода по id
+        $this->dumpNames = Dump::pluck('name_dump', 'id')->toArray();
+        $this->loadSavedRoutes();
+
+        
 
         $this->dumps = DB::table('dumps')
             ->select('id', 'name_dump as name')
@@ -42,6 +53,14 @@ class TestComponent extends Component
         $this->loadMiners();
         //при загрузке страницы отработает метод распределения 
         $this->distribute();
+    }
+
+    protected function loadSavedRoutes(): void
+    {
+            // Все АКТИВНЫЕ маршруты из БД
+    $this->savedRoutes = MiningOrder::where('active', true)
+        ->pluck('dump_id', 'miner_id')
+        ->toArray();
     }
 
     public function loadMiners(): void
@@ -223,12 +242,12 @@ class TestComponent extends Component
 
         //$this->tempAssignments = [];
         //$this->editMode = false;
-
+        $this->loadSavedRoutes();
+        
         $message = "✅ Сохранено маршрутов: $savedCount";
         if ($manualChanges > 0) {
             $message .= " (из них $manualChanges изменено)";
         }
-        
         session()->flash('success', $message);
     }
 
