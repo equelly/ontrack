@@ -30,6 +30,17 @@ class TestComponent extends Component
     public array $savedRoutes = [];
     // массив названий перегрузок
     public array $dumpNames = [];
+
+    // массив для статистических данных распределения
+    public array $stats = [
+    'auto_avg_distance' => 0,
+    'auto_avg_score' => 0,
+    'manual_avg_distance' => 0, 
+    'manual_avg_score' => 0,
+    'saved_avg_distance' => 0,
+    'saved_avg_score' => 0,
+    'total_improvement' => 0
+];
     
     
     public function mount(): void
@@ -108,6 +119,8 @@ class TestComponent extends Component
         
         // 🔥 НОВОЕ: СЧИТАЕМ score ДЛЯ ВСЕХ miner-dump пар
         $this->calculateAllMinerDumpScores($assignmentsPoints);
+        // запуск метода расчета статистики
+        $this->calculateStats();
     }
 
     private function calculateAllMinerDumpScores($assignmentsPoints)
@@ -238,6 +251,8 @@ class TestComponent extends Component
             );
 
             $savedCount++;
+            //  Обновляем статистику
+            $this->calculateStats();  
         }
 
         //$this->tempAssignments = [];
@@ -275,8 +290,60 @@ class TestComponent extends Component
             ->toArray();
     }
 
-    
+    //  функции для рассчета и вывода статистики распределения
+    public function updatedTempAssignments()
+    {
+        $this->calculateStats();
+    }
 
+    public function calculateStats(): void
+    {
+        $autoDistances = [];
+        $autoScores = [];
+        $manualDistances = [];
+        $manualScores = [];
+        $savedDistances = [];
+        $savedScores = [];
+
+        foreach($this->distributionResult['distribution'] ?? [] as $minerId => $minerAssignments) {
+            $assignment = $minerAssignments[0] ?? null;
+            if (!$assignment) continue;
+
+            // Автоматическое
+            $autoDistances[] = $assignment['distance'];
+            $autoScores[] = $assignment['score'];
+
+            // Ручное
+            if (isset($this->tempAssignments[$minerId])) {
+                $manualDumpId = $this->tempAssignments[$minerId];
+                $manualDistanceData = MinerDumpDistance::where('miner_id', $minerId)
+                    ->where('dump_id', $manualDumpId)
+                    ->first();
+                $manualDistances[] = $manualDistanceData?->distance_km ?? 999;
+                $manualScores[] = max(0, 100 - ($manualDistances[count($manualDistances)-1] * 8));
+            }
+
+            // Сохранённое
+            if (isset($this->savedRoutes[$minerId])) {
+                $savedDumpId = $this->savedRoutes[$minerId];
+                $savedDistanceData = MinerDumpDistance::where('miner_id', $minerId)
+                    ->where('dump_id', $savedDumpId)
+                    ->first();
+                $savedDistances[] = $savedDistanceData?->distance_km ?? 999;
+                $savedScores[] = max(0, 100 - ($savedDistances[count($savedDistances)-1] * 8));
+            }
+        }
+
+        $this->stats = [
+            'auto_avg_distance' => count($autoDistances) ? array_sum($autoDistances)/count($autoDistances) : 0,
+            'auto_avg_score' => count($autoScores) ? array_sum($autoScores)/count($autoScores) : 0,
+            'manual_avg_distance' => count($manualDistances) ? array_sum($manualDistances)/count($manualDistances) : 0,
+            'manual_avg_score' => count($manualScores) ? array_sum($manualScores)/count($manualScores) : 0,
+            'saved_avg_distance' => count($savedDistances) ? array_sum($savedDistances)/count($savedDistances) : 0,
+            'saved_avg_score' => count($savedScores) ? array_sum($savedScores)/count($savedScores) : 0,
+            'total_improvement' => $this->stats['auto_avg_score'] - $this->stats['saved_avg_score']
+        ];
+    }
 
 
 

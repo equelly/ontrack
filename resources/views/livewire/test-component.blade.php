@@ -89,17 +89,81 @@
                 {{ count($distributionResult['distribution']) }} назначений
             </span>
         </div>
-        @if($editMode)
-        <div class="mb-4 p-4 bg-gradient-to-r from-indigo-100 to-purple-100 border-2 border-indigo-300 rounded-2xl">
-            <div class="font-bold text-lg">🔍 СТАТУС РЕДАКТИРОВАНИЯ:</div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 text-sm">
-                <div>📊 Всего маршрутов: {{ count($distributionResult['distribution'] ?? []) }}</div>
-                <div>✏️ Изменено: {{ count($tempAssignments ?? []) }}</div>
-                <div>🟢 Активные зоны: {{ $activeZonesOnly ? 'ВКЛ' : 'ВЫКЛ' }}</div>
-                <div>⚙️ Режим: {{ $mode ?? 'balance' }}</div>
+        <div class="mt-8 p-6 bg-gradient-to-r from-slate-50 to-blue-50 border-2 border-slate-200 rounded-3xl shadow-2xl">
+            <h3 class="text-2xl font-black text-slate-800 mb-6 text-center">📊 СТАТИСТИКА РАСПРЕДЕЛЕНИЯ</h3>
+            
+            {{-- ТАБЛИЦА 3 колонки — распределения --}}
+            <div class="overflow-x-auto">
+                <table class="w-full bg-white rounded-2xl shadow-lg">
+                    <thead class="bg-gradient-to-r from-slate-100 to-slate-200">
+                        <tr>
+                            <th class="p-4 text-left font-bold text-slate-800 border-r border-slate-200">режим</th>
+                            <th class="p-4 text-right font-bold text-slate-800 border-r border-slate-200">среднее расстояние (км)</th>
+                            <th class="p-4 text-right font-bold text-slate-800">приоритет</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{-- АВТОМАТИЧЕСКИЙ --}}
+                        <tr class="hover:bg-blue-50 border-b border-slate-100">
+                            <td class="p-4 font-semibold text-blue-700 flex items-center gap-2">
+                                <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                🤖 Автоматический
+                            </td>
+                            <td class="p-4 text-right font-mono text-xl text-blue-600 font-bold">
+                                {{ number_format($stats['auto_avg_distance'] ?? 0, 1) }}
+                            </td>
+                            <td class="p-4 text-right font-mono text-2xl font-black text-blue-700">
+                                {{ number_format($stats['auto_avg_score'] ?? 0, 1) }}
+                            </td>
+                        </tr>
+                        
+                        {{-- СОХРАНЁННОЕ --}}
+                        <tr class="hover:bg-amber-50 border-b border-slate-100">
+                            <td class="p-4 font-semibold text-amber-700 flex items-center gap-2">
+                                <div class="w-3 h-3 bg-amber-500 rounded-full"></div>
+                                💾 Текущий
+                            </td>
+                            <td class="p-4 text-right font-mono text-xl text-amber-600 font-bold">
+                                {{ number_format($stats['saved_avg_distance'] ?? 0, 1) }}
+                            </td>
+                            <td class="p-4 text-right font-mono text-2xl font-black text-amber-700">
+                                {{ number_format($stats['saved_avg_score'] ?? 0, 1) }}
+                            </td>
+                        </tr>
+                        
+                        {{-- РУЧНОЕ --}}
+                        @if($editMode && count($tempAssignments ?? []) > 0)
+                        <tr class="hover:bg-emerald-50">
+                            <td class="p-4 font-semibold text-emerald-700 flex items-center gap-2">
+                                <div class="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                                ✏️ редактирование ({{ count($tempAssignments) }})
+                            </td>
+                            <td class="p-4 text-right font-mono text-xl text-emerald-600 font-bold">
+                                {{ number_format($stats['manual_avg_distance'] ?? 0, 1) }}
+                            </td>
+                            <td class="p-4 text-right font-mono text-2xl font-black {{ ($stats['manual_avg_score'] ?? 0) > ($stats['auto_avg_score'] ?? 0) ? 'text-emerald-700' : 'text-amber-700' }}">
+                                {{ number_format($stats['manual_avg_score'] ?? 0, 1) }}
+                            </td>
+                        </tr>
+                        @else
+                        <tr class="opacity-50">
+                            <td class="p-4 text-gray-500 flex items-center gap-2">
+                                <div class="w-3 h-3 bg-gray-400 rounded-full"></div>
+                                ✏️ Ручное редактирование
+                            </td>
+                            <td class="p-4 text-right text-gray-400 font-mono text-xl">—</td>
+                            <td class="p-4 text-right font-mono text-2xl text-gray-400 font-black">—</td>
+                        </tr>
+                        @endif
+                    </tbody>
+                </table>
             </div>
         </div>
-        @endif
+
+
+
+
+
 
         {{-- таблица для данных --}}
 
