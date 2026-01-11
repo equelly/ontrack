@@ -5,11 +5,10 @@ namespace App\Livewire;
 use Livewire\Component;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
-use App\Http\Controllers\User\Dump\DistributionController;
 use App\Models\MiningOrder;
 use App\Models\Dump;
 use App\Models\MinerDumpDistance;
-use Illuminate\Support\Facades\Log;
+
 
 class TestComponent extends Component
 {
@@ -63,7 +62,7 @@ class TestComponent extends Component
         $this->miners = new Collection();
         $this->loadMiners();
         //при загрузке страницы отработает метод распределения 
-        $this->distribute();
+        //$this->distribute();
     }
 
     protected function loadSavedRoutes(): void
@@ -251,15 +250,18 @@ class TestComponent extends Component
             );
 
             $savedCount++;
-            //  Обновляем статистику
-            $this->calculateStats();  
+            
         }
+        // Обновим сохранённые маршруты
+        $this->loadSavedRoutes();  
+        // и пересчитаем статистику по сохраненным маршрутам
+        $this->calculateStats(); 
 
-        //$this->tempAssignments = [];
+        $this->tempAssignments = [];
         //$this->editMode = false;
-        $this->loadSavedRoutes();
         
-        $message = "✅ Сохранено маршрутов: $savedCount";
+        
+        $message = "Сохранено маршрутов: $savedCount";
         if ($manualChanges > 0) {
             $message .= " (из них $manualChanges изменено)";
         }
@@ -291,7 +293,7 @@ class TestComponent extends Component
     }
 
     //  функции для рассчета и вывода статистики распределения
-    public function updatedTempAssignments()
+    public function updatedTempAssignments($value, $keyAtRoot)
     {
         $this->calculateStats();
     }
@@ -349,6 +351,6 @@ class TestComponent extends Component
 
     public function render()
     {
-        return view('livewire.test-component');
+        return view('livewire.test-component')->layout('components.layouts.app');
     }
 }

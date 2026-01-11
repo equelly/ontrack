@@ -1,30 +1,6 @@
 <div class="p-6 space-y-6">
     <h3 class="text-3xl font-bold">🚧 ДИСПЕТЧЕР: Miners</h3>
 
-    {{-- 🔥 3 КНОПКИ: --}}
-    <div class="mb-8 flex gap-4">
-        @if(!$editMode)
-            <button wire:click="toggleEditMode" 
-                    class="p-3 py-4 bg-gradient-to-r from-orange-500 to-amber-600 font-black rounded-3xl shadow-2xl">
-                ✏️ РУЧНОЕ РЕДАКТИРОВАНИЕ
-            </button>
-        @else
-            <button wire:click="toggleEditMode" 
-                    class="p-3 py-4 bg-gradient-to-r from-gray-500 to-gray-600 font-black rounded-3xl shadow-2xl">
-                ❌ ОТМЕНА
-            </button>
-        @endif
-        
-        <button wire:click="saveMiningOrders" 
-                class="px-12 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 font-black rounded-3xl shadow-2xl
-                       {{ !isset($distributionResult['distribution']) ? 'opacity-50 cursor-not-allowed' : '' }}"
-                {{ !isset($distributionResult['distribution']) ? 'disabled' : '' }}>
-            💾 СОХРАНИТЬ МАРШРУТЫ 
-            ({{ isset($distributionResult['distribution']) ? count($distributionResult['distribution']) : 0 }})
-        </button>
-    
-</div>
-
 
 @if (session('success'))
 <div style="position: fixed; top: 20px; right: 20px; z-index: 999999 !important; background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 24px 32px; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 4px solid #047857; min-width: 400px; backdrop-filter: blur(20px); animation: slideInRight 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55), fadeOut 4s 2.5s forwards;">
@@ -83,7 +59,7 @@
         <h3>РЕЗУЛЬТАТЫ РАСПРЕДЕЛЕНИЯ:</h3>
        <div class="flex justify-around items-center mb-8 m-2">
             <h3 class="text-4xl font-black bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                📊 {{ $editMode ? 'Редактирование в ручном режиме' : 'В автоматическом режиме' }} 
+                📊 {{ $editMode ? 'Корректировка в ручном режиме' : 'В автоматическом режиме' }} 
             </h3>
             <span class="p-3 py-3 {{ $editMode ? 'bg-yellow-100 text-yellow-800' : 'bg-emerald-100 text-emerald-800' }} rounded-2xl font-black">
                 {{ count($distributionResult['distribution']) }} назначений
@@ -91,76 +67,97 @@
         </div>
         <div class="mt-8 p-6 bg-gradient-to-r from-slate-50 to-blue-50 border-2 border-slate-200 rounded-3xl shadow-2xl">
             <h3 class="text-2xl font-black text-slate-800 mb-6 text-center">📊 СТАТИСТИКА РАСПРЕДЕЛЕНИЯ</h3>
-            
+          
             {{-- ТАБЛИЦА 3 колонки — распределения --}}
             <div class="overflow-x-auto">
-                <table class="w-full bg-white rounded-2xl shadow-lg">
-                    <thead class="bg-gradient-to-r from-slate-100 to-slate-200">
+                <table class="w-full bg-white rounded-2xl shadow-lg border border-gray-200" style="border-spacing: 0;">
+                    <thead style="background: linear-gradient(90deg, #cad3dbff 0%, #b3b8bfff 100%);">
                         <tr>
-                            <th class="p-4 text-left font-bold text-slate-800 border-r border-slate-200">режим</th>
-                            <th class="p-4 text-right font-bold text-slate-800 border-r border-slate-200">среднее расстояние (км)</th>
-                            <th class="p-4 text-right font-bold text-slate-800">приоритет</th>
+                            <th style="padding: 16px; text-align: left; font-weight: bold; color: #1e293b; border-right: 1px solid #e2e8f0;">режим</th>
+                            <th style="padding: 16px; text-align: right; font-weight: bold; color: #1e293b; border-right: 1px solid #e2e8f0;">среднее расстояние (км)</th>
+                            <th style="padding: 16px; text-align: right; font-weight: bold; color: #1e293b;">приоритет</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {{-- АВТОМАТИЧЕСКИЙ --}}
-                        <tr class="hover:bg-blue-50 border-b border-slate-100">
-                            <td class="p-4 font-semibold text-blue-700 flex items-center gap-2">
-                                <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                🤖 Автоматический
-                            </td>
-                            <td class="p-4 text-right font-mono text-xl text-blue-600 font-bold">
-                                {{ number_format($stats['auto_avg_distance'] ?? 0, 1) }}
-                            </td>
-                            <td class="p-4 text-right font-mono text-2xl font-black text-blue-700">
-                                {{ number_format($stats['auto_avg_score'] ?? 0, 1) }}
-                            </td>
-                        </tr>
-                        
-                        {{-- СОХРАНЁННОЕ --}}
-                        <tr class="hover:bg-amber-50 border-b border-slate-100">
-                            <td class="p-4 font-semibold text-amber-700 flex items-center gap-2">
-                                <div class="w-3 h-3 bg-amber-500 rounded-full"></div>
-                                💾 Текущий
-                            </td>
-                            <td class="p-4 text-right font-mono text-xl text-amber-600 font-bold">
-                                {{ number_format($stats['saved_avg_distance'] ?? 0, 1) }}
-                            </td>
-                            <td class="p-4 text-right font-mono text-2xl font-black text-amber-700">
-                                {{ number_format($stats['saved_avg_score'] ?? 0, 1) }}
-                            </td>
-                        </tr>
-                        
-                        {{-- РУЧНОЕ --}}
-                        @if($editMode && count($tempAssignments ?? []) > 0)
-                        <tr class="hover:bg-emerald-50">
-                            <td class="p-4 font-semibold text-emerald-700 flex items-center gap-2">
-                                <div class="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                                ✏️ редактирование ({{ count($tempAssignments) }})
-                            </td>
-                            <td class="p-4 text-right font-mono text-xl text-emerald-600 font-bold">
-                                {{ number_format($stats['manual_avg_distance'] ?? 0, 1) }}
-                            </td>
-                            <td class="p-4 text-right font-mono text-2xl font-black {{ ($stats['manual_avg_score'] ?? 0) > ($stats['auto_avg_score'] ?? 0) ? 'text-emerald-700' : 'text-amber-700' }}">
-                                {{ number_format($stats['manual_avg_score'] ?? 0, 1) }}
-                            </td>
-                        </tr>
-                        @else
-                        <tr class="opacity-50">
-                            <td class="p-4 text-gray-500 flex items-center gap-2">
-                                <div class="w-3 h-3 bg-gray-400 rounded-full"></div>
-                                ✏️ Ручное редактирование
-                            </td>
-                            <td class="p-4 text-right text-gray-400 font-mono text-xl">—</td>
-                            <td class="p-4 text-right font-mono text-2xl text-gray-400 font-black">—</td>
-                        </tr>
-                        @endif
-                    </tbody>
+                    
+                    {{-- СТРОКА 1 - СВЕТЛАЯ --}}
+                    <tr style="background-color: #dcdfe2ff;">
+                        <td style="padding: 16px; font-weight: 600; color: #1d4ed8; display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 12px; height: 12px; background: #3b82f6; border-radius: 50%;"></div>
+                            🤖 Автоматический
+                        </td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 20px; color: #2563eb; font-weight: bold;">
+                            {{ number_format($stats['auto_avg_distance'] ?? 0, 1) }}
+                        </td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 24px; font-weight: 900; color: #1d4ed8;">
+                            {{ number_format($stats['auto_avg_score'] ?? 0, 1) }}
+                        </td>
+                    </tr>
+                    
+                    {{-- СТРОКА 2 - БЕЛАЯ --}}
+                    <tr style="background-color: #ffffff;">
+                        <td style="padding: 16px; font-weight: 600; color: #b45309; display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 12px; height: 12px; background: #f59e0b; border-radius: 50%;"></div>
+                            💾 Текущий
+                        </td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 20px; color: #d97706; font-weight: bold;">
+                            {{ number_format($stats['saved_avg_distance'] ?? 0, 1) }}
+                        </td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 24px; font-weight: 900; color: #b45309;">
+                            {{ number_format($stats['saved_avg_score'] ?? 0, 1) }}
+                        </td>
+                    </tr>
+                    
+                    @if($editMode && count($tempAssignments ?? []) > 0)
+                    {{-- СТРОКА 3 - СВЕТЛАЯ --}}
+                    <tr style="background-color: #dcdfe2ff;">
+                        <td style="padding: 16px; font-weight: 600; color: #166534; display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 12px; height: 12px; background: #10b981; border-radius: 50%;"></div>
+                            ✏️ редактирование ({{ count($tempAssignments) }})
+                        </td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 20px; color: #059669; font-weight: bold;">
+                            {{ number_format($stats['manual_avg_distance'] ?? 0, 1) }}
+                        </td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 24px; font-weight: 900; color: #166534;">
+                            {{ number_format($stats['manual_avg_score'] ?? 0, 1) }}
+                        </td>
+                    </tr>
+                    @else
+                    {{-- СТРОКА 4 - БЕЛАЯ + ПРОЗРАЧНОСТЬ --}}
+                    <tr style="background-color: #ffffff; opacity: 0.5;">
+                        <td style="padding: 16px; color: #6b7280; display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 12px; height: 12px; background: #9ca3af; border-radius: 50%;"></div>
+                            ✏️ Ручная Корректировка
+                        </td>
+                        <td style="padding: 16px; text-align: right; color: #9ca3af; font-family: monospace; font-size: 20px;">—</td>
+                        <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 24px; color: #9ca3af; font-weight: 900;">—</td>
+                    </tr>
+                    @endif
                 </table>
             </div>
         </div>
-
-
+        {{-- 🔥 3 КНОПКИ: --}}
+        <div class="">
+            <div class="mb-8 flex justify-around">
+                @if(!$editMode)
+                    <button wire:click="toggleEditMode" 
+                            class="p-3 py-4 bg-gradient-to-r from-orange-500 to-amber-600 font-black rounded-3xl shadow-2xl">
+                        ✏️ РУЧНОЕ РЕДАКТИРОВАНИЕ
+                    </button>
+                @else
+                    <button wire:click="toggleEditMode" 
+                            class="p-3 py-4 bg-gradient-to-r from-gray-500 to-gray-600 font-black rounded-3xl shadow-2xl">
+                        ❌ ОТМЕНА
+                    </button>
+                @endif
+                
+                <button wire:click="saveMiningOrders" class="border-4 border-indigo-500/100 "
+                        class="px-12 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 font-black rounded-3xl shadow-2xl
+                            {{ !isset($distributionResult['distribution']) ? 'opacity-50 cursor-not-allowed' : '' }}"
+                        {{ !isset($distributionResult['distribution']) ? 'disabled' : '' }}>
+                    💾 ПРИМЕНИТЬ МАРШРУТЫ 
+                    ({{ isset($distributionResult['distribution']) ? count($distributionResult['distribution']) : 0 }})
+                </button>
+        </div>
 
 
 
@@ -168,15 +165,15 @@
         {{-- таблица для данных --}}
 
 @if(isset($distributionResult['distribution']) && count($distributionResult['distribution']) > 0)
-<div class="mt-8 p-8 bg-gradient-to-br from-emerald-50 to-blue-50 border-2 border-emerald-200 rounded-3xl shadow-2xl">
+<div class="mt-8">
     <div class="overflow-x-auto rounded-3xl">
         <table class="w-full bg-white/90 backdrop-blur-xl">
             <thead class="bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-600 ">
-                <tr>
-                    <th class="text-left font-black rounded-tl-3xl">забой</th>
-                    <th class="text-left font-black">перегрузка</th>
-                    <th class="text-right font-black">📏 КМ</th>
-                    <th class="text-right font-black rounded-tr-3xl">приоритет</th>
+                <tr class="border-1 border-indigo-500/100">
+                    <th class="text-left font-black rounded-tl-3xl" style="padding: 16px; text-align: left; font-weight: bold; color: #1e293b; border-right: 1px solid #e2e8f0;"">забой</th>
+                    <th class="text-left font-black" style="padding: 16px; text-align: left; font-weight: bold; color: #1e293b; border-right: 1px solid #e2e8f0;"">перегрузка</th>
+                    <th class="text-right font-black" style="padding: 16px; text-align: left; font-weight: bold; color: #1e293b; border-right: 1px solid #e2e8f0;"">📏 КМ</th>
+                    <th class="text-right font-black rounded-tr-3xl" style="padding: 16px; text-align: left; font-weight: bold; color: #1e293b; border-right: 1px solid #e2e8f0;"">приоритет</th>
                 </tr>
             </thead>
             <tbody>
@@ -191,9 +188,10 @@
                     @endphp
                     
                     @if($assignment)
-                    <tr class="border-b border-emerald-100 transition-all
-                        {{ $isSaved ? 'bg-emerald-50' : ($editMode ? 'bg-yellow-50/50' : '') }}">                        
-                        <td class="font-bold text-xl text-gray-900 relative">
+                    <tr class="border-1 solid" 
+                        {{ $isSaved ? 'bg-emerald-50' : ($editMode ? 'bg-yellow-50/50' : '') }}" >                        
+                        <td wire:key="miner-{{ $minerId }}-row" 
+                        class="font-bold text-xl text-gray-900 relative">
                             <span class="font-semibold {{ 
                                 $isSaved ? 'bg-emerald-200 text-emerald-800' : 
                                 (isset($savedDumpId) ? 'bg-amber-200 text-amber-800 border-2 border-amber-400' : 'bg-gray-200 text-gray-700')
@@ -212,12 +210,18 @@
                         </td>
 
                         
-                        <td class="">
+                        <td>
                             @if($editMode)
                                 <select wire:model.live="tempAssignments.{{ $minerId }}" 
+                                    wire:ignore.self  
                                     wire:key="miner-{{ $minerId }}-select"
-                                    class="w-full p-4 border-3 rounded-2xl focus:ring-4 font-semibold">
-
+                                    @if(($tempAssignments[$minerId] ?? $assignment['dump_id']) != $assignment['dump_id'])
+                                    class="w-full  border-3 rounded-2xl focus:ring-4 font-semibold"
+                                    @else
+                                    class="w-full p-3 border-3 rounded-2xl focus:ring-4 font-semibold"
+                                    @endif >
+                                    
+                                       
                                     @foreach($availableDumps as $dumpId => $dumpName)
                                         @php
                                             $distanceData = \App\Models\MinerDumpDistance::where('miner_id', $minerId)
@@ -247,8 +251,8 @@
                                 </select>
                                 
                                 @if(($tempAssignments[$minerId] ?? $assignment['dump_id']) != $assignment['dump_id'])
-                                    <div class="mt-2 px-4 py-2 bg-emerald-100 border-2 border-emerald-400 rounded-xl font-bold text-emerald-800 text-lg">
-                                        ✨ изменен с п.п.№{{ $savedDumpName }} на п.п.№{{ $availableDumps[$currentDumpId] ?? $currentDumpId }}
+                                    <div class="bg-emerald-100 border-2 border-emerald-400 rounded-xl font-bold text-emerald-800 text-lg">
+                                        изменен: №{{ $savedDumpName }} на №{{ $availableDumps[$currentDumpId] ?? $currentDumpId }}
                                     </div>
                                 @endif
                             @else

@@ -8,9 +8,9 @@ use App\Http\Controllers\User\Miner\MinersController;
 use App\Livewire\DispatcherPanel;
 use App\Livewire\TestComponent;
 
-Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
-Route::get('/test', TestComponent::class);
-Route::post('/dump/distribution', [DistributionController::class, 'index'])->name('dump.distribution');
+//Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
+Route::get('/test', TestComponent::class)->name('test'); 
+//Route::post('/dump/distribution', [DistributionController::class, 'index'])->name('dump.distribution');
 
 
 /*
