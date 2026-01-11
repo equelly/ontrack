@@ -112,7 +112,7 @@
                     <tr style="background-color: #dcdfe2ff;">
                         <td style="padding: 16px; font-weight: 600; color: #166534; display: flex; align-items: center; gap: 8px;">
                             <div style="width: 12px; height: 12px; background: #10b981; border-radius: 50%;"></div>
-                            ✏️ редактирование ({{ count($tempAssignments) }})
+                            ✏️ корректировка ({{ count($tempAssignments) }})
                         </td>
                         <td style="padding: 16px; text-align: right; font-family: monospace; font-size: 20px; color: #059669; font-weight: bold;">
                             {{ number_format($stats['manual_avg_distance'] ?? 0, 1) }}
@@ -141,7 +141,7 @@
                 @if(!$editMode)
                     <button wire:click="toggleEditMode" 
                             class="p-3 py-4 bg-gradient-to-r from-orange-500 to-amber-600 font-black rounded-3xl shadow-2xl">
-                        ✏️ РУЧНОЕ РЕДАКТИРОВАНИЕ
+                        ✏️ ПЕРЕНАПРАВИТЬ
                     </button>
                 @else
                     <button wire:click="toggleEditMode" 
@@ -155,7 +155,6 @@
                             {{ !isset($distributionResult['distribution']) ? 'opacity-50 cursor-not-allowed' : '' }}"
                         {{ !isset($distributionResult['distribution']) ? 'disabled' : '' }}>
                     💾 ПРИМЕНИТЬ МАРШРУТЫ 
-                    ({{ isset($distributionResult['distribution']) ? count($distributionResult['distribution']) : 0 }})
                 </button>
         </div>
 
@@ -188,10 +187,15 @@
                     @endphp
                     
                     @if($assignment)
-                    <tr class="border-1 solid" 
-                        {{ $isSaved ? 'bg-emerald-50' : ($editMode ? 'bg-yellow-50/50' : '') }}" >                        
+                    <tr wire:key="miner-{{ $minerId }}"
+                        class="border
+                            {{ (!empty($savedDumpId) && !$isSaved) 
+                                ? 'bg-slate-100' 
+                                : ($isSaved ? 'bg-emerald-50' : ($editMode ? 'bg-yellow-50/50' : ''))
+                            }}">
+                       
                         <td wire:key="miner-{{ $minerId }}-row" 
-                        class="font-bold text-xl text-gray-900 relative">
+                            class="font-bold text-xl relative {{ (!empty($savedDumpId) && !$isSaved) ? 'text-slate-500' : 'text-gray-900' }}">
                             <span class="font-semibold {{ 
                                 $isSaved ? 'bg-emerald-200 text-emerald-800' : 
                                 (isset($savedDumpId) ? 'bg-amber-200 text-amber-800 border-2 border-amber-400' : 'bg-gray-200 text-gray-700')
@@ -252,27 +256,29 @@
                                 
                                 @if(($tempAssignments[$minerId] ?? $assignment['dump_id']) != $assignment['dump_id'])
                                     <div class="bg-emerald-100 border-2 border-emerald-400 rounded-xl font-bold text-emerald-800 text-lg">
-                                        изменен: №{{ $savedDumpName }} на №{{ $availableDumps[$currentDumpId] ?? $currentDumpId }}
+                                        с п.п. №{{ $savedDumpName }} на №{{ $availableDumps[$currentDumpId] ?? $currentDumpId }}
                                     </div>
                                 @endif
                             @else
-                                <span class="inline-flex items-center gap-2 p-3 bg-blue-100 text-blue-800 rounded-2xl font-bold">
+                                <span class="{{ (!empty($savedDumpId) && !$isSaved) ? 'opacity-50 text-slate-600 bg-slate-200' : '' }}">
                                     № {{ $assignment['dump_name'] }}
                                 </span>
                             @endif
                         </td>
                         
-                        <td class="text-right">
-                            <div class="text-3xl font-black text-emerald-700">
+                        <td class="text-right {{ (!empty($savedDumpId) && !$isSaved) ? 'opacity-50 text-slate-600 bg-slate-200' : '' }}">
+                            <div class="font-black {{ (!empty($savedDumpId) && !$isSaved) ? 'text-slate-500' : 'text-emerald-700' }}">
                                 {{ number_format($assignment['distance'], 1) }}
                             </div>
-                            <div class="text-sm text-emerald-600 font-medium">
+                            <div class="font-black {{ (!empty($savedDumpId) && !$isSaved) ? 'opacity-50 text-slate-600 bg-slate-200' : '' }}">
                                 {{ number_format($assignment['travel_time'], 2) }}ч
                             </div>
                         </td>
                         
-                        <td class="text-right">
-                            <div class="text-3xl font-black text-amber-600 bg-amber-100 p-3 py-3 rounded-2xl inline-block">
+                        <td class="text-right {{ (!empty($savedDumpId) && !$isSaved) ? 'opacity-50 text-slate-600 bg-slate-200' : '' }}">
+                            <div class="{{ (!empty($savedDumpId) && !$isSaved) 
+                                ? 'text-slate-500 bg-slate-200' 
+                                : 'text-amber-600 bg-amber-100' }}">
                                 {{ number_format($assignment['score'], 1) }}
                             </div>
                         </td>
@@ -296,12 +302,12 @@
                                 <td >
                                     <div class="flex items-center gap-4 text-sm">
                                         
-                                        <span class="font-semibold text-amber-800">📝 перенаправлено диспетчером на </span>
+                                        <span class="font-semibold text-amber-800">📝 перенаправлен диспетчером на </span>
                                 </td>
                                 <td>       
                                         {{--  NAME ДАМПА! --}}
                                         <span class="font-black text-lg text-amber-700">
-                                            п.п.{{ $savedDumpName }}
+                                            п.п.№{{ $savedDumpName }}
                                         </span>
                                 </td>
                                 <td>       
@@ -314,7 +320,7 @@
                                     <div class="text-right">
                                         <div class="text-2xl font-black {{ $deltaScore > 0 ? 'text-emerald-600' : 'text-amber-600' }} px-3 py-1 rounded-xl">
                                             {{ number_format($savedScore, 1) }}
-                                                <span class="text-sm">({{ $deltaScore > 0 ? '+' : '' }}{{ number_format($deltaScore, 1) }})</span>
+                                                <span class="text-sm">({{ $deltaScore > 0 ? '-' : '' }}{{ number_format($deltaScore, 1) }})</span>
                                         </div>
                                         </div>
                                     </div>

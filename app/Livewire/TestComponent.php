@@ -258,7 +258,7 @@ class TestComponent extends Component
         $this->calculateStats(); 
 
         $this->tempAssignments = [];
-        //$this->editMode = false;
+        $this->editMode = false;
         
         
         $message = "Сохранено маршрутов: $savedCount";
