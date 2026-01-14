@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use App\Models\MiningOrder;
 use App\Models\Dump;
 use App\Models\MinerDumpDistance;
+use App\Models\Truck;
 
 
 class TestComponent extends Component
@@ -40,6 +41,10 @@ class TestComponent extends Component
     'saved_avg_score' => 0,
     'total_improvement' => 0
 ];
+    // 🚛 свойства для грузовиков
+    public Collection $trucks;
+    public Collection $freeTrucks;
+    public Collection $assignments; // MiningOrder с truck_id
     
     
     public function mount(): void
@@ -61,8 +66,9 @@ class TestComponent extends Component
         
         $this->miners = new Collection();
         $this->loadMiners();
-        //при загрузке страницы отработает метод распределения 
-        //$this->distribute();
+        // запуск методов для назначения автомобилей
+        $this->loadTrucks(); 
+        $this->loadAssignments();
     }
 
     protected function loadSavedRoutes(): void
@@ -110,6 +116,9 @@ class TestComponent extends Component
         // 🔥 ИЗВЛЕКАЕМ ЛУЧШИЕ + ВСЕ score!
         $assignmentsPoints = $view->getData()['assignmentsPoints'] ?? [];
         $stats = $view->getData()['stats'] ?? [];
+
+        // 🚛 НАЗНАЧАЕМ ГРУЗОВИКИ АВТОМАТИЧЕСКИ
+        $this->autoDistributeTrucks($assignmentsPoints);
         
         $this->distributionResult = [
             'distribution' => $assignmentsPoints,
@@ -120,6 +129,10 @@ class TestComponent extends Component
         $this->calculateAllMinerDumpScores($assignmentsPoints);
         // запуск метода расчета статистики
         $this->calculateStats();
+        // Обновляем список грузовиков
+        $this->loadTrucks();
+        // Обновляем назначения
+        $this->loadAssignments(); 
     }
 
     private function calculateAllMinerDumpScores($assignmentsPoints)
@@ -346,6 +359,125 @@ class TestComponent extends Component
             'total_improvement' => $this->stats['auto_avg_score'] - $this->stats['saved_avg_score']
         ];
     }
+    // методы для распределения автомобилей
+    public function loadTrucks(): void
+    {
+        $this->trucks = Truck::with('driver', 'currentOrder')->get();
+        $this->freeTrucks = Truck::free()->get();
+    }
+    
+    public function loadAssignments(): void
+    {
+        $this->assignments = MiningOrder::with(['truck', 'miner', 'dump'])
+            ->where('active', true)
+            ->whereHas('truck', function($q) {
+                    $q->whereIn('status', ['loading', 'transporting', 'unloading']);
+                })
+            ->latest()
+            ->take(20)
+            ->get();
+    }
+    
+    // Основной метод автоматического назначения автомобилей
+    public function autoDistributeTrucks(): void
+{
+    $minerDumpAssignments = $this->distributionResult['distribution'] ?? [];
+    
+    if (empty($minerDumpAssignments)) {
+        session()->flash('error', 'Сначала выполните распределение маршрутов согласно выбранного режима подходящего для текущей ситуации!');
+        return;
+    }
+    
+    $savedCount = 0;
+    $freeTrucks = Truck::free()->get();
+    
+    foreach ($minerDumpAssignments as $minerId => $minerAssignments) {
+        if ($freeTrucks->isEmpty()) break;
+        
+        $bestDumpId = $minerAssignments[0]['dump_id'] ?? null;
+        if (!$bestDumpId) continue;
+        
+        // Берем ПЕРВЫЙ свободный грузовик (упрощено)
+        $bestTruck = $freeTrucks->first();
+        
+        MiningOrder::updateOrCreate(
+            ['miner_id' => $minerId, 'active' => true],
+            [
+                'truck_id' => $bestTruck->id,
+                'dump_id' => $bestDumpId,
+                'operator_id' => $bestTruck->driver_id ?? null,
+                //'priority' => 50 + rand(1, 50), // Простой приоритет
+                'distance_km' => $minerAssignments[0]['distance'] ?? 0,
+                'score' => $minerAssignments[0]['score'] ?? 0,
+                'assigned_round' => 1,
+            ]
+        );
+        
+        $bestTruck->markAs('loading');
+        $freeTrucks = $freeTrucks->reject(fn($t) => $t->id === $bestTruck->id);
+        $savedCount++;
+    }
+    
+    $this->loadTrucks();
+    $this->loadAssignments();
+    $this->loadSavedRoutes();
+    session()->flash('success', "🚛 Назначено грузовиков: $savedCount");
+}
+
+
+    private function findBestTruckForMiner($trucks, $minerId, $dumpId)
+    {
+        return $trucks->sortBy(function ($truck) use ($minerId, $dumpId) {
+            // Приоритет: расстояние Miner→Truck + Truck→Dump
+            $minerDistance = $this->getMinerToTruckDistance($minerId, $truck->id);
+            $dumpDistance = $this->getTruckToDumpDistance($truck->id, $dumpId);
+            $totalDistance = $minerDistance * 0.6 + $dumpDistance * 0.4;
+            
+            return $totalDistance + ($truck->load_capacity * 0.1); // Бонус за грузоподъемность
+        })->first();
+    }
+
+    private function calculatePriority($minerId, Truck $truck)
+    {
+        $distanceFactor = $this->getMinerToTruckDistance($minerId, $truck->id);
+        $truckEfficiency = $truck->load_capacity / 25; // Норма 25т
+        return (int)(100 - ($distanceFactor * 5) + ($truckEfficiency * 20));
+    }
+
+    // listeners прослушиватели событий
+    protected $listeners = [
+        'echo:assignments,AssignmentUpdated' => 'refreshTrucksAndAssignments'
+    ];
+
+    public function refreshTrucksAndAssignments()
+    {
+        $this->loadTrucks();
+        $this->loadAssignments();
+    }
+    
+    
+    public function refreshData(): void
+    {
+        $minerDumpAssignments = $this->distributionResult['distribution'] ?? [];
+    
+        if (empty($minerDumpAssignments)) {
+            session()->flash('error', 'Сначала выполните распределение маршрутов согласно выбранного режима подходящего для текущей ситуации!');
+            return;
+        }
+        $this->loadTrucks();
+        $this->loadAssignments();
+        $this->loadSavedRoutes();
+        session()->flash('info', '📊 Данные обновлены');
+    }
+    
+    // Вспомогательные методы
+    private function getMinerToTruckDistance(int $minerId, int $truckId): float
+    {
+        // TODO: GPS координаты или расстояния из БД
+        return rand(1, 20); 
+    }
+   
+    
 
 
 

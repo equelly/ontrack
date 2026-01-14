@@ -47,7 +47,7 @@
                 wire:click="distribute"
                 class="bg-blue-600 p-3 py-2 rounded hover:bg-blue-700"
             >
-                Распределить
+                Распределить маршруты
             </button>
         </div>
     </div>
@@ -338,11 +338,112 @@
     </div>
 </div>
 @endif
-
-
-
+</div>
+@endif
+@if (session()->has('error'))
+    <div class="mb-4 rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+        {{ session('error') }}
     </div>
 @endif
+@if (session()->has('info'))
+    <div class="mb-4 rounded border border-red-300 bg-sky-50 px-4 py-3 text-sm text-red-800">
+        {{ session('info') }}
+    </div>
+@endif
+
+{{-- 🚛 ПАНЕЛЬ ДИСПЕТЧЕРА --}}
+<div class="dispatch-panel bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-xl mb-8">
+    <div class="flex justify-between mb-4">
+        <button wire:click="autoDistributeTrucks" class="bg-green-500 text-white px-6 py-2 rounded">
+            🚛 назначить маршруты авто
+        </button>
+
+        <button wire:click="refreshData" 
+                class="btn-refresh bg-yellow-500 hover:bg-yellow-600 px-6 py-3 rounded-lg font-bold transition-all">
+            🔄 ОБНОВИТЬ
+        </button>
+    </div>
+    
+    <div class="grid md:grid-cols-2 gap-6 text-sm">
+        <div class="stats-card bg-white/20 backdrop-blur p-4 rounded-lg">
+            <h4>📊 СТАТИСТИКА</h4>
+            <p>Свободно: <strong>{{ $freeTrucks->count() }}</strong></p>
+            <p>В работе: <strong>{{ $trucks->whereIn('status', ['loading','transporting','unloading'])->count() }}</strong></p>
+            <p>Заданий: <strong>{{ $assignments->count() }}</strong></p>
+        </div>
+        
+        <div class="stats-card bg-white/20 backdrop-blur p-4 rounded-lg">
+            <h4>⚡ РЕЖИМ</h4>
+            <p>{{ ucfirst($mode) }} | Зоны: {{ $activeZonesOnly ? 'активные' : 'все' }}</p>
+        </div>
+    </div>
+</div>
+
+{{-- ГРУЗОВИКИ И ЗАДАНИЯ --}}
+<div class="grid lg:grid-cols-2 gap-6">
+    {{-- Свободные грузовики --}}
+    <div class="trucks-panel bg-white shadow-xl rounded-xl p-6">
+        <h3 class="text-xl font-bold mb-4 flex items-center">
+            🚛 Свободные грузовики ({{ $freeTrucks->count() }})
+        </h3>
+        @forelse($freeTrucks as $truck)
+            <div class="truck-item p-4 mb-3 bg-gray-50 rounded-lg hover:shadow-md transition-all">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <strong>{{ $truck->number }}</strong> 
+                        <span class="ml-2 bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                            {{ $truck->brand ?? '–' }} | {{ $truck->load_capacity }}т
+                        </span>
+                    </div>
+                    <span class="text-green-600 font-bold">СВОБОДЕН</span>
+                </div>
+            </div>
+        @empty
+            <div class="text-center py-8 text-gray-500">Нет свободных грузовиков</div>
+        @endforelse
+    </div>
+    
+    {{-- Текущие задания --}}
+    <div class="assignments-panel bg-white shadow-xl rounded-xl p-6">
+        <h3 class="text-xl font-bold mb-4 flex items-center">
+            📋 Текущие задания ({{ $assignments->count() }})
+        </h3>
+        @forelse($assignments as $assignment)
+            <div class="assignment-item p-4 mb-3 rounded-lg border-l-4 
+                @switch($assignment->truck->status)
+                    @case('loading') border-l-yellow-400 bg-yellow-50 @break
+                    @case('transporting') border-l-blue-400 bg-blue-50 @break
+                    @case('unloading') border-l-green-400 bg-green-50 @break
+                    @default border-l-gray-400 bg-gray-50
+                @endswitch">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <strong>{{ $assignment->miner->name_miner ?? 'Забой' }}</strong> 
+                        → 
+                        <strong>{{ $assignment->dump->name_dump ?? 'Дамп' }}</strong>
+                    </div>
+                    <span class="status-badge px-3 py-1 rounded-full text-xs font-bold
+                        @switch($assignment->truck->status)
+                            @case('loading') bg-yellow-100 text-yellow-800 @break
+                            @case('transporting') bg-blue-100 text-blue-800 @break
+                            @case('unloading') bg-green-100 text-green-800 @break
+                            @default bg-gray-100 text-gray-800
+                        @endswitch">
+                        {{ ucfirst($assignment->truck->status) }}
+                    </span>
+                </div>
+                <div class="text-sm text-gray-600">
+                    🚛 {{ $assignment->truck->number }} | 
+                    Приоритет: {{ $assignment->priority }} | 
+                    {{ $assignment->distance_km }} км
+                </div>
+            </div>
+        @empty
+            <div class="text-center py-8 text-gray-500">Заданий нет</div>
+        @endforelse
+    </div>
+</div>
+
 </div>
 
 
