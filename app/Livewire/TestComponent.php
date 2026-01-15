@@ -378,51 +378,78 @@ class TestComponent extends Component
             ->get();
     }
     
-    // Основной метод автоматического назначения автомобилей
-    public function autoDistributeTrucks(): void
+    // Основной метод автоматического назначения маршрутов автомобилям
+
+ public function autoDistributeTrucks(): void
 {
-    $minerDumpAssignments = $this->distributionResult['distribution'] ?? [];
+    // для начала проверим выполнено ли распределение маршрутов
+    if (!empty($this->tempAssignments)) {
+        $assignmentsToProcess = collect($this->tempAssignments);
+        $message = 'по РУЧНЫМ корректировкам диспетчера ✅';
+    } else {
+        // Fallback на автоматическое
+        $minerDumpAssignments = $this->distributionResult['distribution'] ?? [];
+        if (empty($minerDumpAssignments)) {
+            session()->flash('error', 'Сначала выполните распределение маршрутов согласно выбранного режима подходящего для текущей ситуации!');
+            return;
+        }
+    }
+    //  1. Берем ВСЕ активные mining_orders (с грузовиками И без)
+    $activeOrders = MiningOrder::where('active', true)
+        ->with('miner', 'dump')
+        ->get();
     
-    if (empty($minerDumpAssignments)) {
-        session()->flash('error', 'Сначала выполните распределение маршрутов согласно выбранного режима подходящего для текущей ситуации!');
+    if ($activeOrders->isEmpty()) {
+        session()->flash('error', 'Нет активных маршрутов!');
         return;
     }
     
-    $savedCount = 0;
-    $freeTrucks = Truck::free()->get();
+    // 🔥 2. ПЕРЕСЧИТАЕМ score для ВСЕХ
+    foreach ($activeOrders as $order) {
+        $distance = MinerDumpDistance::where('miner_id', $order->miner_id)
+            ->where('dump_id', $order->dump_id)
+            ->value('distance_km') ?? 10;
+        
+        $newScore = max(0, 100 - ($distance * 8));
+        $order->update(['score' => $newScore]);
+    }
     
-    foreach ($minerDumpAssignments as $minerId => $minerAssignments) {
+    // 🔥 3. ОСВОБОДИМ ВСЕ грузовики (перераспределяем!)
+    Truck::whereIn('status', ['loading', 'transporting', 'unloading'])
+         ->update(['status' => 'free']);
+    MiningOrder::where('active', true)->update(['truck_id' => null]);
+    
+    // 🔥 4. Сортируем по АКТУАЛЬНОМУ score и распределяем заново
+    $sortedOrders = MiningOrder::where('active', true)
+        ->orderByDesc('score')
+        ->with('miner', 'dump')
+        ->get();
+    
+    $freeTrucks = Truck::free()->get();
+    $savedCount = 0;
+    
+    foreach ($sortedOrders as $order) {
         if ($freeTrucks->isEmpty()) break;
         
-        $bestDumpId = $minerAssignments[0]['dump_id'] ?? null;
-        if (!$bestDumpId) continue;
+        $bestTruck = $freeTrucks->shift(); // Берем по порядку
         
-        // Берем ПЕРВЫЙ свободный грузовик (упрощено)
-        $bestTruck = $freeTrucks->first();
-        
-        MiningOrder::updateOrCreate(
-            ['miner_id' => $minerId, 'active' => true],
-            [
-                'truck_id' => $bestTruck->id,
-                'dump_id' => $bestDumpId,
-                'operator_id' => $bestTruck->driver_id ?? null,
-                //'priority' => 50 + rand(1, 50), // Простой приоритет
-                'distance_km' => $minerAssignments[0]['distance'] ?? 0,
-                'score' => $minerAssignments[0]['score'] ?? 0,
-                'assigned_round' => 1,
-            ]
-        );
+        $order->update([
+            'truck_id' => $bestTruck->id,
+            'operator_id' => $bestTruck->driver_id ?? null,
+        ]);
         
         $bestTruck->markAs('loading');
-        $freeTrucks = $freeTrucks->reject(fn($t) => $t->id === $bestTruck->id);
         $savedCount++;
     }
     
     $this->loadTrucks();
     $this->loadAssignments();
     $this->loadSavedRoutes();
-    session()->flash('success', "🚛 Назначено грузовиков: $savedCount");
+    
+    session()->flash('success', "🚛 ПЕРЕРАСПРЕДЕЛЕНО: $savedCount по новому score");
 }
+
+
 
 
     private function findBestTruckForMiner($trucks, $minerId, $dumpId)

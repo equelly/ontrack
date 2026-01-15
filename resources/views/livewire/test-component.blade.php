@@ -434,7 +434,7 @@
                 </div>
                 <div class="text-sm text-gray-600">
                     🚛 {{ $assignment->truck->number }} | 
-                    Приоритет: {{ $assignment->priority }} | 
+                    Приоритет: {{ $assignment->score }} | 
                     {{ $assignment->distance_km }} км
                 </div>
             </div>
