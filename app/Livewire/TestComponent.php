@@ -9,10 +9,12 @@ use App\Models\MiningOrder;
 use App\Models\Dump;
 use App\Models\MinerDumpDistance;
 use App\Models\Truck;
+use Illuminate\Support\Facades\Cache;
 
 
 class TestComponent extends Component
 {
+    
     // свойства для редактирования в автоматическом режиме
     public $selectedDumpId;
     public string $mode = 'balance';
@@ -404,7 +406,7 @@ class TestComponent extends Component
         return;
     }
     
-    // 🔥 2. ПЕРЕСЧИТАЕМ score для ВСЕХ
+    //  2. ПЕРЕСЧИТАЕМ score для ВСЕХ
     foreach ($activeOrders as $order) {
         $distance = MinerDumpDistance::where('miner_id', $order->miner_id)
             ->where('dump_id', $order->dump_id)
@@ -414,12 +416,12 @@ class TestComponent extends Component
         $order->update(['score' => $newScore]);
     }
     
-    // 🔥 3. ОСВОБОДИМ ВСЕ грузовики (перераспределяем!)
+    // 3. ОСВОБОДИМ ВСЕ грузовики (перераспределяем!)
     Truck::whereIn('status', ['loading', 'transporting', 'unloading'])
          ->update(['status' => 'free']);
     MiningOrder::where('active', true)->update(['truck_id' => null]);
     
-    // 🔥 4. Сортируем по АКТУАЛЬНОМУ score и распределяем заново
+    // 4. Сортируем по АКТУАЛЬНОМУ score и распределяем заново
     $sortedOrders = MiningOrder::where('active', true)
         ->orderByDesc('score')
         ->with('miner', 'dump')
@@ -431,7 +433,7 @@ class TestComponent extends Component
     foreach ($sortedOrders as $order) {
         if ($freeTrucks->isEmpty()) break;
         
-        $bestTruck = $freeTrucks->shift(); // Берем по порядку
+        $bestTruck = $freeTrucks->first();
         
         $order->update([
             'truck_id' => $bestTruck->id,
@@ -439,15 +441,29 @@ class TestComponent extends Component
         ]);
         
         $bestTruck->markAs('loading');
+        
+        // 🔥 Real-time broadcast
+        $this->dispatch('assignment-updated');
+        
+        $freeTrucks = $freeTrucks->reject(fn($t) => $t->id === $bestTruck->id);
         $savedCount++;
     }
-    
+    // После назначения грузовика
+    // 🔥 Cache для ВСЕХ вкладок!
+        Cache::put('realtime_notification', '🔥 Новое назначение!', 30);;
+
     $this->loadTrucks();
     $this->loadAssignments();
     $this->loadSavedRoutes();
     
     session()->flash('success', "🚛 ПЕРЕРАСПРЕДЕЛЕНО: $savedCount по новому score");
+
 }
+public function checkRealtimeUpdates()
+{
+    // Просто проверяем session — Livewire сам обновит!
+}
+
 
 
 
@@ -469,17 +485,6 @@ class TestComponent extends Component
         $distanceFactor = $this->getMinerToTruckDistance($minerId, $truck->id);
         $truckEfficiency = $truck->load_capacity / 25; // Норма 25т
         return (int)(100 - ($distanceFactor * 5) + ($truckEfficiency * 20));
-    }
-
-    // listeners прослушиватели событий
-    protected $listeners = [
-        'echo:assignments,AssignmentUpdated' => 'refreshTrucksAndAssignments'
-    ];
-
-    public function refreshTrucksAndAssignments()
-    {
-        $this->loadTrucks();
-        $this->loadAssignments();
     }
     
     

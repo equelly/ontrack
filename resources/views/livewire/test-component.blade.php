@@ -1,5 +1,14 @@
 <div class="p-6 space-y-6">
     <h3 class="text-3xl font-bold">🚧 ДИСПЕТЧЕР: Miners</h3>
+{{-- 🔥 Real-time Cache уведомления --}}
+    <div wire:poll.3s="checkRealtimeUpdates">
+        @if(Cache::get('realtime_notification'))
+        <div class="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg animate-pulse">
+            {{ Cache::get('realtime_notification') }}
+        </div>
+        @endif
+    </div>
+
 
 
 @if (session('success'))
