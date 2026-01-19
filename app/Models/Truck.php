@@ -24,11 +24,11 @@ class Truck extends Model
         return $this->hasMany(MiningOrder::class);
     }
 
+
+    // app/Models/Truck.php
     public function currentOrder()
     {
-        return $this->hasOne(MiningOrder::class)
-            ->where('active', true)
-            ->latest();
+        return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
     }
 
     public function driver()

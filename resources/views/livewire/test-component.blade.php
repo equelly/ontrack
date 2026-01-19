@@ -1,14 +1,118 @@
 <div class="p-6 space-y-6">
     <h3 class="text-3xl font-bold">🚧 ДИСПЕТЧЕР: Miners</h3>
-{{-- 🔥 Real-time Cache уведомления --}}
-    <div wire:poll.3s="checkRealtimeUpdates">
-        @if(Cache::get('realtime_notification'))
-        <div class="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg animate-pulse">
-            {{ Cache::get('realtime_notification') }}
-        </div>
-        @endif
+    {{-- 📊 АНАЛИТИКА НАВЕРХУ диспетчерской --}}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-100 rounded-2xl">
+    
+    {{-- 🟢 Свободны --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-green-600">{{ $statusStats['free'] ?? 0 }}</div>
+        <div class="text-sm text-gray-600">Готовы к рейсу</div>
     </div>
 
+    {{-- 🔵 В пути к забою --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ $statusStats['to_miner'] ?? 0 }}</div>
+        <div class="text-sm text-gray-600">В пути к забою</div>
+    </div>
+
+    {{-- ⚙️ Загрузка --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ $statusStats['loading'] ?? 0 }}</div>
+        <div class="text-sm text-gray-600">Загружаются</div>
+    </div>
+
+    {{-- 🟡 В пути к отвалу --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-yellow-600">{{ $statusStats['transporting'] ?? 0 }}</div>
+        <div class="text-sm text-gray-600">К месту разгрузки</div>
+    </div>
+
+    {{-- 🟠 Разгрузка --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-orange-600">{{ $statusStats['unloading'] ?? 0 }}</div>
+        <div class="text-sm text-gray-600">Разгружаются</div>
+    </div>
+
+    {{-- 🟣 Завершено --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-purple-600">{{ $statusStats['completed'] ?? 0 }}</div>
+        <div class="text-sm text-gray-600">Завершено</div>
+    </div>
+
+    {{-- ⚠️ Проблемы --}}
+    <div class="bg-white p-4 rounded-xl shadow text-center">
+        <div class="text-2xl font-bold text-red-600">
+            {{ ($statusStats['breakdown'] ?? 0) + ($statusStats['maintenance'] ?? 0) }}
+        </div>
+        <div class="text-sm text-gray-600">Проблемы</div>
+    </div>
+</div>
+
+{{-- 🔥 Real-time Cache уведомления --}}
+    {{-- Диспетчерская --}}
+<div wire:poll.3s="checkDispatcherNotifications">
+    @if(session()->has('realtime'))
+    <div class="fixed top-4 right-4 z-50 bg-blue-500 text-white px-6 py-3 rounded-xl shadow-lg animate-pulse">
+        {{ session('realtime') }}
+    </div>
+    @endif
+</div>
+
+
+<div class="overflow-x-auto">
+    <table class="min-w-full bg-white border border-gray-200 rounded-lg shadow">
+        <thead>
+            <tr class="bg-gray-50">
+                <th class="px-6 py-3 text-left">Грузовик</th>
+                <th class="px-6 py-3 text-left">Статус</th>
+                <th class="px-6 py-3 text-left">Действие</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($trucks as $truck)
+            <tr class="border-t hover:bg-gray-50">
+                <td class="px-6 py-4">
+                    <strong>{{ $truck->number }}</strong> ({{ $truck->brand }})
+                </td>
+                <td class="px-6 py-4">
+                    <span class="px-3 py-1 rounded-full text-xs font-semibold
+                        @switch($truck->status)
+                            @case('free') bg-green-100 text-green-800 @break
+                            @case('to_miner') bg-blue-100 text-blue-800 @break
+                            @case('loading') bg-blue-100 text-blue-800 @break
+                            @case('transporting') bg-yellow-100 text-yellow-800 @break
+                            @case('unloading') bg-orange-100 text-orange-800 @break
+                            @case('completed') bg-purple-100 text-purple-800 @break
+                            @case('maintenance') bg-gray-100 text-gray-800 @break
+                            @case('fueling') bg-indigo-100 text-indigo-800 @break
+                            @case('breakdown') bg-red-100 text-red-800 @break
+                            @case('in_service') bg-emerald-100 text-emerald-800 @break
+                            @default bg-gray-100 text-gray-800 @endswitch">
+                        
+                        {{-- 🔥 КРАСИВЫЙ ТЕКСТ --}}
+                        {{ $this->getStatusTextAttribute($truck->status) }}
+                    </span>
+                </td>
+
+                <td class="px-6 py-4 space-y-2">
+                    {{-- Планируемые --}}
+                    <select wire:change="setTruckStatus({{ $truck->id }}, $event.target.value)" class="border rounded px-3 py-1 text-sm w-full">
+                        <option value="in_service">В работе</option>
+                        <option value="maintenance">🔧 Обслуживание</option>
+                        <option value="fueling">⛽ Заправка</option>
+                    </select>
+                    {{-- Экстренная --}}
+                    <button wire:click="emergencyBreakdown({{ $truck->id }})"
+                            class="w-full bg-red-500 hover:bg-red-600 text-white text-xs py-2 px-3 rounded font-semibold shadow-sm">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>⚠️ Неисправность
+                    </button>
+                </td>
+            </tr>
+            @endforeach
+
+        </tbody>
+    </table>
+</div>
 
 
 @if (session('success'))

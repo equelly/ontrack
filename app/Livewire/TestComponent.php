@@ -459,11 +459,86 @@ class TestComponent extends Component
     session()->flash('success', "🚛 ПЕРЕРАСПРЕДЕЛЕНО: $savedCount по новому score");
 
 }
+// Водительская — читает СВОЙ канал
 public function checkRealtimeUpdates()
 {
-    // Просто проверяем session — Livewire сам обновит!
+    $this->loadTruck();
+    
+    $notification = Cache::get('realtime_notification');
+    if ($notification && str_contains($notification, $this->truck->number)) {
+        session()->flash('realtime', $notification);
+        // НЕ очищаем — пусть диспетчер тоже увидит!
+    }
 }
 
+
+// прослущивание всех канолов для диспетчера
+public function checkDispatcherNotifications()
+{
+    // Диспетчер видит ВСЕ уведомления (водители + свои задания)
+    $notification = Cache::get('realtime_notification');
+    if ($notification) {
+        session()->flash('realtime', $notification);
+        Cache::forget('realtime_notification');  // Очищаем после показа
+    }
+}
+
+
+// метод для установления статуса грузовиков
+
+public function setTruckStatus($truckId, $status): void
+{
+    $truck = Truck::find($truckId);
+    if (!$truck) return;
+    
+    // Диспетчер может ТОЛЬКО планируемые статусы через селект
+    $allowedDispatcherStatuses = ['maintenance', 'fueling', ''];
+    if (!in_array($status, $allowedDispatcherStatuses)) {
+        session()->flash('error', 'Используйте кнопку "Неисправность"!');
+        return;
+    }
+    
+    $truck->update(['status' => $status]);
+    
+    // 🔥 ПЕРСОНАЛЬНОЕ уведомление ТОЛЬКО для этого водителя!
+    Cache::put("driver_notification_{$truckId}", "📋 {$truck->number}: {$status}", 30);
+    
+    // Диспетчерская видит общее уведомление
+    Cache::put('dispatcher_notification', "📋 Диспетчер: {$truck->number} → {$status}", 30);
+    
+    $this->loadTrucks();
+}
+
+
+
+//
+public function emergencyBreakdown($truckId): void
+{
+    $truck = Truck::find($truckId);
+    if (!$truck) {
+        session()->flash('error', 'Грузовик не найден!');
+        return;
+    }
+    
+    // 🚨 ЭКСТРЕННЫЙ breakdown от диспетчера
+    $truck->update(['status' => 'breakdown']);
+    
+    // КРИТИЧЕСКОЕ уведомление (60 сек!)
+    Cache::put('realtime_notification', "🚨 ДИСПЕТЧЕР: {$truck->number} НЕИСПРАВЕН! 🚨", 60);
+    
+    $this->loadTrucks();
+    session()->flash('warning', "🚨 {$truck->number} — экстренная неисправность!");
+}
+//
+public $statusStats = [];
+
+public function loadStatusStats()
+{
+    $this->statusStats = Truck::selectRaw('status, COUNT(*) as count')
+        ->groupBy('status')
+        ->pluck('count', 'status')
+        ->toArray();
+}
 
 
 
@@ -508,13 +583,32 @@ public function checkRealtimeUpdates()
         // TODO: GPS координаты или расстояния из БД
         return rand(1, 20); 
     }
-   
+    // статусы в автомобилей для вывода в удобном техстовом виде
+    public function getStatusTextAttribute($status)
+    {
+        $actions = [
+            'free'          => '1️⃣ Готов к рейсу',
+            'to_miner'      => '2️⃣ К забою',
+            'loading'       => '3️⃣ Загрузка',
+            'transporting'  => '4️⃣ К отвалу',
+            'unloading'     => '5️⃣ Разгрузка',
+            'completed'     => '6️⃣ Завершено',
+            'maintenance'   => '🔧 Обслуживание',
+            'fueling'       => '⛽ Заправка',
+            'breakdown'     => '⚠️ Неисправность',
+            'in_service'    => '✅ В работе',
+        ];
+
+        return $actions[$status] ?? ucfirst($status);
+    }
+
     
 
 
 
     public function render()
     {
+        $this->loadStatusStats();
         return view('livewire.test-component')->layout('components.layouts.app');
     }
 }
