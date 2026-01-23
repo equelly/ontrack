@@ -19,28 +19,27 @@ class DriverPanel extends Component
     public $currentOrder;
     public $nextAction = 'Ожидание задания';
 
+    public function mount($truckId = null)
+{
+    $this->truckId = $truckId;
+    if ($this->truckId) {
+        $this->loadTruck(); // ← АВТОЗАГРУЗКА при входе!
+    }
+}
+
     public function updatedTruckId()
     {
         if ($this->truckId) {
             $this->loadTruck();
         }
     }
-
-    public function loadTruck()
+public function loadTruck()
 {
-    $this->truck = Truck::with('driver')->findOrFail($this->truckId);
-    
-    // 🔥 ПРЯМАЯ загрузка АКТИВНОГО заказа!
+    $this->truck = Truck::with('driver')->findOrFail($this->truckId)->fresh();
     $this->currentOrder = MiningOrder::where('truck_id', $this->truckId)
-                                   ->where('active', true)
-                                   ->with(['miner', 'dump'])
-                                   ->first();
-    
-    Log::info('DriverPanel заказ', [
-        'truck_id' => $this->truckId,
-        'order_found' => $this->currentOrder ? true : false
-    ]);
-    
+        ->where('active', true)
+        ->with(['miner', 'dump'])
+        ->first();
     $this->setNextAction();
 }
 
@@ -55,25 +54,55 @@ public function setNextAction(): void
 {
     $status = $this->truck->status ?? 'free';
 
-    if (!$this->currentOrder && $status === 'free') {
-        $this->nextAction = 'Готов к рейсу';
+    // ✅ Логика статусов:
+    if ($status === 'free') {
+        $this->nextAction = '🟡 Ожидает ПЕРВОЕ назначение';
+        return;
+    }
+    
+    if ($status === 'completed') {
+        $this->nextAction = '🟡 Рейс завершён, ждём новое назначение';
+        return;
+    }
+    
+    if (!$this->currentOrder) {
+        $this->nextAction = '❌ Нет активного маршрута';
         return;
     }
 
     $actions = [
-        'free'          => '1️⃣ Маршрут получен, движение к забою',
-        'to_miner'      => '2️⃣ Прибыл к забою, ожидание загрузки',
-        'loading'       => '3️⃣ Идет загрузка',
-        'transporting'  => '4️⃣ Загружен, движение к месту разрузки',
-        'unloading'     => '5️⃣ Идет разгрузка',
-        'completed'     => '6️⃣ Разгрузился, свободен',
-        'maintenance'   => '🔧 Обслуживание → Нажмите "В работу" после завершения',
-        'fueling'       => '⛽ Заправка → Нажмите "В работу" после заправки', 
-        'breakdown'     => '⚠️ Неисправность → Нажмите "В работу" после устранения неисправности',
+        'to_miner'    => '2️⃣ Движение к забою',
+        'loading'     => '3️⃣ Погрузка',
+        'transporting'=> '4️⃣ К месту разргрузки',
+        'unloading'   => '5️⃣ Разгрузка',
+        'maintenance' => '🔧 Обслуживание',
+        'fueling'     => '⛽ Заправка', 
+        'breakdown'   => '⚠️ Неисправность',
     ];
 
     $this->nextAction = $actions[$status] ?? '❓ Неизвестный статус';
 }
+public function markAs($status)
+{
+    $this->validateOnly('status', [
+        'status' => 'required|in:free,to_miner,loading,transporting,unloading,completed'
+    ]);
+    
+    $this->truck->update(['status' => $status]);
+    
+    // 🔥 🔥 🔥 ГЛАВНОЕ!
+    if ($status === 'completed') {
+        Cache::put('realtime_notification', [
+            'message' => "🚛 {$this->truck->number} завершил рейс", 
+            'truck_id' => $this->truck->id  // ← ЭТО КРИТИЧНО!
+        ], 30);
+        
+        Log::info('✅ Cache ПОСТАВЛЕН!', ['truck_id' => $this->truck->id]);
+    }
+    
+    $this->loadTruck();
+}
+
 
 
     public function driverAction(): void
@@ -103,28 +132,42 @@ public function setNextAction(): void
 private function handleRouteCycle($status): void
 {
     switch ($status) {
-        case 'free': $this->truck->markAs('to_miner'); break;
-        case 'to_miner': $this->truck->markAs('loading'); break;
-        case 'loading': $this->truck->markAs('transporting'); break;
-        case 'transporting': $this->truck->markAs('unloading'); break;
-        case 'unloading': $this->truck->markAs('completed'); break;
-        case 'completed': 
-            $this->truck->markAs('free');
-            if ($this->currentOrder) {
-                $this->currentOrder->update(['active' => false]);
-            }
+        case 'free':
+            $this->truck->markAs('to_miner');
             break;
+        case 'to_miner':
+            $this->truck->markAs('loading');
+            break;
+        case 'loading':
+            $this->truck->markAs('transporting');
+            break;
+        case 'transporting':
+            $this->truck->markAs('unloading');
+            break;
+        case 'unloading':
+            if ($this->currentOrder) {
+                $this->currentOrder->update(['truck_id' => null, 'operator_id' => null]);
+            }
+            
+            $this->truck->markAs('completed');
+            
+            // 🔥 ЭТО НОВОЕ!
+            Cache::put('global_truck_completed', $this->truck->id, 10);
+            
+            $this->loadTruck();
+            break;
+
+        
     }
     
-    // ✅ ПРАВИЛЬНЫЙ порядок:
-    $this->loadTruck();                    // 1. Обновляем truck
-    $this->setNextAction();                // 2. Пересчитываем nextAction
-
-    // 🔥 ДЛЯ ВСЕХ: водитель + диспетчер
+    $this->loadTruck();
+    $this->setNextAction();
+    
     $message = "🚛 {$this->truck->number} → {$this->nextAction}";
-    Cache::put('realtime_notification', $message, 30);  // ← ОБЩИЙ канал!
-    session()->flash('success', 'Статус обновлен!');
+    Cache::put('realtime_notification', $message, 30); // Только message!
 }
+
+
 
 
 // метод выхода из режимов обслуживания, заправки и ремонта
@@ -172,11 +215,7 @@ public function reportBreakdown(): void
 
     public function render()
     {
-        // Логи только для отладки
-        Log::info('DriverPanel render', [
-            'truckId' => $this->truckId,
-            'has_order' => $this->truck?->currentOrder ? 'ДА' : 'НЕТ'
-        ]);
+        
         
         return view('livewire.driver-panel');
     }

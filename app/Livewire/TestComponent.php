@@ -10,6 +10,8 @@ use App\Models\Dump;
 use App\Models\MinerDumpDistance;
 use App\Models\Truck;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
 
 
 class TestComponent extends Component
@@ -382,83 +384,62 @@ class TestComponent extends Component
     
     // Основной метод автоматического назначения маршрутов автомобилям
 
- public function autoDistributeTrucks(): void
+public function autoDistributeTrucks(): void
 {
-    // для начала проверим выполнено ли распределение маршрутов
-    if (!empty($this->tempAssignments)) {
-        $assignmentsToProcess = collect($this->tempAssignments);
-        $message = 'по РУЧНЫМ корректировкам диспетчера ✅';
-    } else {
-        // Fallback на автоматическое
-        $minerDumpAssignments = $this->distributionResult['distribution'] ?? [];
-        if (empty($minerDumpAssignments)) {
-            session()->flash('error', 'Сначала выполните распределение маршрутов согласно выбранного режима подходящего для текущей ситуации!');
-            return;
+    Log::info('🚀 autoDistributeTrucks() НАЧАЛ');
+    
+    $freeTrucks = Truck::whereIn('status', ['free', 'completed'])->get();
+    if ($freeTrucks->isEmpty()) return;
+    
+    // 🔥 ГРУППИРУЕМ маршруты ПО ЗАБОЯМ!
+    $ordersByMiner = MiningOrder::where('active', true)
+        ->whereNull('truck_id')
+        ->with('miner')
+        ->get()
+        ->groupBy('miner_id');
+    
+    Log::info('📊', [
+        'free_trucks' => $freeTrucks->count(),
+        'miners_with_orders' => $ordersByMiner->count()
+    ]);
+    
+    foreach ($freeTrucks as $truck) {
+        // 🔥 БЕРЁМ ЛУЧШИЙ забой с СВОБОДНЫМИ маршрутами
+        $bestMiner = null;
+        $bestOrder = null;
+        $bestScore = -1;
+        
+        foreach ($ordersByMiner as $minerId => $minerOrders) {
+            // Пропускаем пустые забои
+            if ($minerOrders->whereNull('truck_id')->isEmpty()) continue;
+            
+            // Берём лучший маршрут этого забоя
+            $order = $minerOrders->whereNull('truck_id')->sortByDesc('score')->first();
+            
+            if ($order && $order->score > $bestScore) {
+                $bestScore = $order->score;
+                $bestOrder = $order;
+                $bestMiner = $minerId;
+            }
         }
-    }
-    //  1. Берем ВСЕ активные mining_orders (с грузовиками И без)
-    $activeOrders = MiningOrder::where('active', true)
-        ->with('miner', 'dump')
-        ->get();
-    
-    if ($activeOrders->isEmpty()) {
-        session()->flash('error', 'Нет активных маршрутов!');
-        return;
-    }
-    
-    //  2. ПЕРЕСЧИТАЕМ score для ВСЕХ
-    foreach ($activeOrders as $order) {
-        $distance = MinerDumpDistance::where('miner_id', $order->miner_id)
-            ->where('dump_id', $order->dump_id)
-            ->value('distance_km') ?? 10;
         
-        $newScore = max(0, 100 - ($distance * 8));
-        $order->update(['score' => $newScore]);
-    }
-    
-    // 3. ОСВОБОДИМ ВСЕ грузовики (перераспределяем!)
-    Truck::whereIn('status', ['loading', 'transporting', 'unloading'])
-         ->update(['status' => 'free']);
-    MiningOrder::where('active', true)->update(['truck_id' => null]);
-    
-    // 4. Сортируем по АКТУАЛЬНОМУ score и распределяем заново
-    $sortedOrders = MiningOrder::where('active', true)
-        ->orderByDesc('score')
-        ->with('miner', 'dump')
-        ->get();
-    
-    $freeTrucks = Truck::free()->get();
-    $savedCount = 0;
-    
-    foreach ($sortedOrders as $order) {
-        if ($freeTrucks->isEmpty()) break;
+        if (!$bestOrder) break;
         
-        $bestTruck = $freeTrucks->first();
-        
-        $order->update([
-            'truck_id' => $bestTruck->id,
-            'operator_id' => $bestTruck->driver_id ?? null,
+        // Назначаем!
+        $bestOrder->update([
+            'truck_id' => $truck->id,
+            'operator_id' => $truck->driver_id ?? null
         ]);
         
-        $bestTruck->markAs('loading');
-        
-        // 🔥 Real-time broadcast
-        $this->dispatch('assignment-updated');
-        
-        $freeTrucks = $freeTrucks->reject(fn($t) => $t->id === $bestTruck->id);
-        $savedCount++;
-    }
-    // После назначения грузовика
-    // 🔥 Cache для ВСЕХ вкладок!
-        Cache::put('realtime_notification', '🔥 Новое назначение!', 30);;
+        $truck->update(['status' => 'to_miner']);
 
+    }
+    
     $this->loadTrucks();
     $this->loadAssignments();
-    $this->loadSavedRoutes();
-    
-    session()->flash('success', "🚛 ПЕРЕРАСПРЕДЕЛЕНО: $savedCount по новому score");
-
 }
+
+
 // Водительская — читает СВОЙ канал
 public function checkRealtimeUpdates()
 {
@@ -475,13 +456,15 @@ public function checkRealtimeUpdates()
 // прослущивание всех канолов для диспетчера
 public function checkDispatcherNotifications()
 {
-    // Диспетчер видит ВСЕ уведомления (водители + свои задания)
     $notification = Cache::get('realtime_notification');
     if ($notification) {
-        session()->flash('realtime', $notification);
-        Cache::forget('realtime_notification');  // Очищаем после показа
+        // 🔥 ВЫВОДИМ ТОЛЬКО СТРОКУ message!
+        $message = is_array($notification) ? $notification['message'] ?? 'Уведомление' : $notification;
+        session()->flash('realtime', $message); // ← Строка!
+        Cache::forget('realtime_notification');
     }
 }
+
 
 
 // метод для установления статуса грузовиков
@@ -590,7 +573,7 @@ public function loadStatusStats()
             'free'          => '1️⃣ Готов к рейсу',
             'to_miner'      => '2️⃣ К забою',
             'loading'       => '3️⃣ Загрузка',
-            'transporting'  => '4️⃣ К отвалу',
+            'transporting'  => '4️⃣ На разгрузку',
             'unloading'     => '5️⃣ Разгрузка',
             'completed'     => '6️⃣ Завершено',
             'maintenance'   => '🔧 Обслуживание',
@@ -606,9 +589,21 @@ public function loadStatusStats()
 
 
 
-    public function render()
-    {
-        $this->loadStatusStats();
-        return view('livewire.test-component')->layout('components.layouts.app');
+public function render()
+{
+    // 🔥 ЭТО НОВОЕ!
+    $completedTruckId = Cache::get('global_truck_completed');
+    if ($completedTruckId) {
+        Log::info('🎯 ГЛОБАЛЬНЫЙ truck!', ['truck_id' => $completedTruckId]);
+        $this->autoDistributeTrucks();
+        Cache::forget('global_truck_completed');
+        return view('livewire.test-component'); // ← Ранний возврат!
     }
+    
+    $this->loadStatusStats();
+    return view('livewire.test-component');
+}
+
+
+
 }

@@ -60,7 +60,7 @@
         <div class="bg-gradient-to-r from-yellow-50 to-orange-100 rounded-2xl p-6 mb-6">
             <div class="text-center">
                 <p class="text-lg font-semibold text-gray-600">{{ $nextAction }}</p>
-                <div class="mt-2 text-sm text-gray-500">
+                                <div class="mt-2 text-sm text-gray-500">
                     Перевозимый объем: {{ $truck->current_load }} / {{ $truck->load_capacity }}т
                 </div>
             </div>
@@ -72,12 +72,12 @@
             class="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-6 rounded-2xl text-lg shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center"
             {{-- Активна всегда, кроме completed --}}
             {{ $truck->status === 'completed' ? 'opacity-50 cursor-not-allowed' : '' }} >
-            @if(in_array($truck->status ?? '', ['maintenance', 'fueling', 'breakdown']))
-                <i class="fas fa-tools mr-2"></i>
-                В работу
+               @if($truck->status === 'completed' && !$currentOrder)
+                <i class="fas fa-redo mr-2"></i>🚛 НОВЫЙ РЕЙС
+            @elseif(in_array($truck->status ?? '', ['maintenance','fueling','breakdown']))
+                <i class="fas fa-tools mr-2"></i>В работу
             @else
-                <i class="fas fa-play mr-2"></i>
-                ДАЛЕЕ
+                <i class="fas fa-play mr-2"></i>{{ $nextAction }}
             @endif
         </button>
 

@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Log;
+
+
 
 class Truck extends Model
 {
@@ -39,7 +42,9 @@ class Truck extends Model
     // Scope'ы
     public function scopeFree($query)
     {
-        return $query->where('status', 'free');
+        
+        //  'free' И 'completed' - оба свободны для назначения
+        return $query->whereIn('status', ['free', 'completed']);
     }
 
     public function scopeAvailable($query)
