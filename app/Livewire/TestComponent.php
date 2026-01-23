@@ -570,12 +570,12 @@ public function loadStatusStats()
     public function getStatusTextAttribute($status)
     {
         $actions = [
-            'free'          => '1️⃣ Готов к рейсу',
-            'to_miner'      => '2️⃣ К забою',
-            'loading'       => '3️⃣ Загрузка',
-            'transporting'  => '4️⃣ На разгрузку',
-            'unloading'     => '5️⃣ Разгрузка',
-            'completed'     => '6️⃣ Завершено',
+            'free'          => 'Готов к рейсу',
+            'to_miner'      => 'К забою',
+            'loading'       => 'Загрузка',
+            'transporting'  => 'На разгрузку',
+            'unloading'     => 'Разгрузка',
+            'completed'     => 'Завершено',
             'maintenance'   => '🔧 Обслуживание',
             'fueling'       => '⛽ Заправка',
             'breakdown'     => '⚠️ Неисправность',

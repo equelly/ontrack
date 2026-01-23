@@ -13,20 +13,6 @@
 
     @if($truck)
     <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
-        {{-- Заголовок с номером и брендом --}}
-        <div class="text-center mb-8">
-            <div class="w-20 h-20 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <i class="fas fa-truck text-2xl text-white"></i>
-            </div>
-            <h1 class="text-2xl font-bold text-gray-800 mb-1">{{ $truck->number }}</h1>
-            <p class="text-gray-600">{{ $truck->brand }} • {{ $truck->load_capacity }}т</p>
-            @if($truck->driver)
-            <p class="text-green-600 font-semibold text-lg mt-2">{{ $truck->driver->name ?? 'Водитель' }}</p>
-            @else
-            <p class="text-yellow-600 font-semibold text-lg mt-2">Водитель не назначен</p>
-            @endif
-        </div>
-
         {{-- Нет активного маршрута --}}
         @if(!$currentOrder)
         <div class="mb-6 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl text-center">
@@ -43,7 +29,11 @@
                 <i class="fas fa-route text-blue-500 mr-2"></i>
                 Активный маршрут
             </h3>
-            <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                    <span class="text-gray-500 block">Автомобиль:</span>
+                    <span class="font-semibold">{{ $truck->brand }}<br>{{ $truck->number }}</span>
+                </div>
                 <div>
                     <span class="text-gray-500 block">Забой:</span>
                     <span class="font-semibold">{{ $currentOrder->miner->name_miner ?? 'Забой' }}</span>
@@ -52,15 +42,22 @@
                     <span class="text-gray-500 block">Место разгрузки:</span>
                     <span class="font-semibold">п.п.№{{ $currentOrder->dump->name_dump ?? 'Не определено' }}</span>
                 </div>
+                
             </div>
-        </div>
-        @endif
+            @if($truck->driver)
+                <p class="text-green-600 font-semibold text-lg mt-2">{{ $truck->driver->name ?? 'Водитель' }}</p>
+                    @else
+                <p class="text-yellow-600 font-semibold text-lg mt-2">Водитель не назначен</p>
+                @endif
+            </div>
+            @endif
 
         {{-- Статус грузовика --}}
         <div class="bg-gradient-to-r from-yellow-50 to-orange-100 rounded-2xl p-6 mb-6">
+            Статус
             <div class="text-center">
                 <p class="text-lg font-semibold text-gray-600">{{ $nextAction }}</p>
-                                <div class="mt-2 text-sm text-gray-500">
+                <div class="mt-2 text-sm text-gray-500">
                     Перевозимый объем: {{ $truck->current_load }} / {{ $truck->load_capacity }}т
                 </div>
             </div>
@@ -73,11 +70,11 @@
             {{-- Активна всегда, кроме completed --}}
             {{ $truck->status === 'completed' ? 'opacity-50 cursor-not-allowed' : '' }} >
                @if($truck->status === 'completed' && !$currentOrder)
-                <i class="fas fa-redo mr-2"></i>🚛 НОВЫЙ РЕЙС
+                <i class="fas fa-redo mr-2"></i>НОВЫЙ РЕЙС
             @elseif(in_array($truck->status ?? '', ['maintenance','fueling','breakdown']))
                 <i class="fas fa-tools mr-2"></i>В работу
             @else
-                <i class="fas fa-play mr-2"></i>{{ $nextAction }}
+                <i class="fas fa-play mr-2"></i>Далее
             @endif
         </button>
 
@@ -90,8 +87,8 @@
         <p class="text-gray-400">ID: {{ $truckId }}</p>
     </div>
     @endif
-{{-- Под кнопкой "Далее →" добавить экстренную кнопку --}}
-@if(in_array($truck->status ?? '', ['free', 'loading', 'transporting', 'unloading', 'completed']))
+{{-- экстренная кнопка --}}
+@if(in_array($truck->status ?? '', ['free', 'to_miner', 'loading', 'transporting', 'unloading', 'completed']))
 <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
     <button 
         wire:click="reportBreakdown"

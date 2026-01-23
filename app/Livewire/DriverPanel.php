@@ -56,7 +56,7 @@ public function setNextAction(): void
 
     // ✅ Логика статусов:
     if ($status === 'free') {
-        $this->nextAction = '🟡 Ожидает ПЕРВОЕ назначение';
+        $this->nextAction = '🟡 Получить назначение';
         return;
     }
     
@@ -71,13 +71,13 @@ public function setNextAction(): void
     }
 
     $actions = [
-        'to_miner'    => '2️⃣ Движение к забою',
-        'loading'     => '3️⃣ Погрузка',
-        'transporting'=> '4️⃣ К месту разргрузки',
-        'unloading'   => '5️⃣ Разгрузка',
+        'to_miner'    => ' Движение к забою',
+        'loading'     => ' Погрузка',
+        'transporting'=> ' К месту разргрузки',
+        'unloading'   => ' Разгрузка',
         'maintenance' => '🔧 Обслуживание',
         'fueling'     => '⛽ Заправка', 
-        'breakdown'   => '⚠️ Неисправность',
+        'breakdown'   => 'Неисправность',
     ];
 
     $this->nextAction = $actions[$status] ?? '❓ Неизвестный статус';

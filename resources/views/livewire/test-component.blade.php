@@ -65,6 +65,7 @@
             <tr class="bg-gray-50">
                 <th class="px-6 py-3 text-left">Грузовик</th>
                 <th class="px-6 py-3 text-left">Статус</th>
+                <th class="px-6 py-3 text-left">Маршрут</th>  
                 <th class="px-6 py-3 text-left">Действие</th>
             </tr>
         </thead>
@@ -74,8 +75,7 @@
                 <td class="px-6 py-4">
                     <strong>{{ $truck->number }}</strong> ({{ $truck->brand }})
                 </td>
-                <td class="px-6 py-4">
-                    <span class="px-3 py-1 rounded-full text-xs font-semibold
+                <td class="py-4 px-3 py-1 text-xs font-semibold
                         @switch($truck->status)
                             @case('free') bg-green-100 text-green-800 @break
                             @case('to_miner') bg-blue-100 text-blue-800 @break
@@ -88,31 +88,46 @@
                             @case('breakdown') bg-red-100 text-red-800 @break
                             @case('in_service') bg-emerald-100 text-emerald-800 @break
                             @default bg-gray-100 text-gray-800 @endswitch">
-                        
-                        {{-- 🔥 КРАСИВЫЙ ТЕКСТ --}}
                         {{ $this->getStatusTextAttribute($truck->status) }}
                     </span>
                 </td>
+                
+                {{-- КОЛОНКА МАРШРУТА --}}
+                <td class="px-6 py-4">
+                    @if($truck->currentOrder)
+                        <div class="flex flex-col space-y-1 text-sm">
+                            <span class="font-semibold text-gray-900">
+                                {{ $truck->currentOrder->miner->name_miner ?? 'Miner' }}
+                                <i class="fas fa-arrow-right ml-1 text-gray-400"></i>
+                                п.п.№{{ $truck->currentOrder->dump->name_dump ?? 'Dump' }}
+                            </span>
+                            <span class="text-xs text-gray-500">
+                                {{ number_format($truck->currentOrder->distance_km ?? 0, 1) }} км | 
+                                Score: {{ $truck->currentOrder->score ?? 0 }}
+                            </span>
+                        </div>
+                    @else
+                        <span class="text-sm text-gray-400 italic">Нет маршрута</span>
+                    @endif
+                </td>
 
                 <td class="px-6 py-4 space-y-2">
-                    {{-- Планируемые --}}
                     <select wire:change="setTruckStatus({{ $truck->id }}, $event.target.value)" class="border rounded px-3 py-1 text-sm w-full">
                         <option value="in_service">В работе</option>
                         <option value="maintenance">🔧 Обслуживание</option>
                         <option value="fueling">⛽ Заправка</option>
                     </select>
-                    {{-- Экстренная --}}
                     <button wire:click="emergencyBreakdown({{ $truck->id }})"
                             class="w-full bg-red-500 hover:bg-red-600 text-white text-xs py-2 px-3 rounded font-semibold shadow-sm">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>⚠️ Неисправность
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Неисправность
                     </button>
                 </td>
             </tr>
             @endforeach
-
         </tbody>
     </table>
 </div>
+
 
 
 @if (session('success'))
