@@ -1,14 +1,13 @@
-<div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+<div
+    id="driver-panel"
+    data-truck-id="{{ $truck?->id }}"
+    class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4"
+>
 
     {{-- Real-time уведомления --}}
-    {{-- Водитель видит ТОЛЬКО свои --}}
-        <div wire:poll.3s="checkRealtimeUpdates">
-            @if(session()->has('realtime'))
-            <div class="fixed top-4 left-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg animate-pulse text-center">
-                {{ session('realtime') }}
-            </div>
-            @endif
-        </div>
+<div id="realtime-driver-notification"
+     class="fixed top-5 right-5 bg-blue-500 text-white p-2 rounded">
+</div>
 
 
     @if($truck)

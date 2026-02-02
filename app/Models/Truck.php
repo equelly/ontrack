@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Log;
 
 
 
-class Truck extends Model
+class Truck extends Model 
 {
     protected $fillable = [
         'number', 'brand', 'load_capacity', 
-        'driver_id', 'status', 'current_load', 'last_free_at'
+        'driver_id', 'status', 'current_load', 'last_free_at', 'fuel_level', 'truck_model_id',
     ];
 
     protected $casts = [
@@ -20,8 +20,48 @@ class Truck extends Model
         'current_load' => 'decimal:2',
         'last_free_at' => 'datetime',
     ];
+    protected $appends = ['fuelLiters', 'fuelCapacity', 'fuelConsumption', 'fullName'];
+    
+    
 
-    // Связи
+    public function truckModel()
+    {
+        return $this->belongsTo(TruckModel::class);
+    }
+
+    public function plannedTasks()
+    {
+        return $this->hasMany(TruckPlannedTask::class);
+    }
+
+    public function driver()
+    {
+        return $this->belongsTo(User::class, 'driver_id');
+    }
+
+
+    // Геттеры для топлива
+    public function getFuelCapacityAttribute()
+    {
+        return $this->truckModel?->fuel_capacity ?? 500;
+    }
+
+    public function getFuelConsumptionAttribute()
+    {
+        return $this->truckModel?->fuel_consumption ?? 35;
+    }
+
+    public function getFuelLitersAttribute()
+    {
+        return round(($this->fuel_level / 100) * $this->fuel_capacity, 1);
+    }
+
+    public function getFullNameAttribute()
+    {
+        return ($this->truckModel?->full_name ?? 'Неизвестная модель') . ' #' . $this->number;
+    }
+
+    
     public function miningOrders(): HasMany
     {
         return $this->hasMany(MiningOrder::class);
@@ -32,11 +72,6 @@ class Truck extends Model
     public function currentOrder()
     {
         return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
-    }
-
-    public function driver()
-    {
-        return $this->belongsTo(User::class, 'driver_id');
     }
 
     // Scope'ы
