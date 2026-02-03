@@ -22,4 +22,4 @@ window.Echo = new Echo({
     enabledTransports: ['ws', 'wss'],
 });
 
-console.log('✅ Echo + Reverb готов к работе!');
+console.log('✅ Echo + Reverb инициализирован');

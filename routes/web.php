@@ -8,11 +8,20 @@ use App\Http\Controllers\User\Miner\MinersController;
 use App\Livewire\DispatcherPanel;
 use App\Livewire\DriverPanel;
 use App\Livewire\TestComponent;
+use App\Events\TestBroadcast;
 
 //Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
 Route::get('/test', TestComponent::class)->name('test'); 
 Route::get('/driver/{truckId}', DriverPanel::class)->name('driver.panel');
 
+Route::get('/test-broadcast', function () {
+    return view('test-broadcast');
+});
+
+Route::get('/test-broadcast/send', function () {
+    broadcast(new TestBroadcast(''));
+    return 'event sent';
+});
 //Route::post('/dump/distribution', [DistributionController::class, 'index'])->name('dump.distribution');
 
 
