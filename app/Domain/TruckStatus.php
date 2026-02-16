@@ -30,4 +30,10 @@ class TruckStatus
             default        => null,
         };
     }
+
+    public static function canTransition(string $from, string $to): bool
+    {
+        $next = self::nextTransition($from);
+        return $next && $next['to'] === $to;
+    }
 }

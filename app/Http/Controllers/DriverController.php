@@ -67,6 +67,11 @@ class DriverController extends Controller
         logger()->info('Driver status request', $request->all());
 
         $truck = Truck::findOrFail($request->truck_id);
+            if (! TruckStatus::canTransition($truck->status, $request->to)) {
+        return response()->json([
+            'message' => 'Не допустимый переход статуса',
+        ], 409);
+    }
 
         $service->changeStatus($truck, $request->to);
 

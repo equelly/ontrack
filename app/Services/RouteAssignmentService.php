@@ -14,7 +14,7 @@ class RouteAssignmentService
     {
         // 1️⃣ Грузовик должен быть свободен
         if ($truck->status !== 'completed') {
-            Log::info("Truck {$truck->id} is not free, skipping assignment");
+            Log::info("Грузовик {$truck->id} не свободен, пропустим назначение маршрута");
             return;
         }
 
@@ -22,11 +22,12 @@ class RouteAssignmentService
         $order = MiningOrder::query()
             ->where('active', 1)
             ->whereNull('truck_id')
+            // WRR распределение нагрузки
             ->orderByDesc('score')
             ->first();
 
         if (! $order) {
-            Log::info("No available mining orders for Truck {$truck->id}");
+            Log::info("Нет доступных забоев для грузовика {$truck->id}");
             return;
         }
 
@@ -34,13 +35,13 @@ class RouteAssignmentService
         $order->update([
             'truck_id' => $truck->id,
         ]);
-        Log::info("Assigned order {$order->id} to Truck {$truck->id}");
+        Log::info("Принято назначение {$order->id} для грузовика {$truck->id}");
 
         // 4️⃣ Обновляем статус грузовика
         $truck->update([
             'status' => 'to_miner',
         ]);
-Log::info("{$truck}");
+
         // 5️⃣ Уведомляем водителя
         if ($truck->driver_id) {
             $driverId = (int)$truck->driver_id; // 👈 приведение к числу

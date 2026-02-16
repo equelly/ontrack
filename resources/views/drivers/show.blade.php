@@ -48,39 +48,38 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.id = 'status-btn';
             btn.innerText = transition.label;
             statusContainer.appendChild(btn);
+            let inProgress = false;
 
             btn.addEventListener('click', () => {
-                
+                if (inProgress) return;
+
+                inProgress = true;
                 btn.disabled = true;
-                btn.innerText = "⏳ Отправка...";
+                btn.innerText = '⏳ Отправка...';
+
                 fetch('/driver/status', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                        },
-                        body: JSON.stringify({
-                            truck_id: truckId,
-                            to: transition.to
-                        })
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({
+                        truck_id: truckId,
+                        to: transition.to
                     })
-                    .then(res => {
-                        if (!res.ok) throw new Error('Ошибка смены статуса');
-                        return res.json();
-                    })
-                    .then(data => {
-                        console.log('STATUS UPDATED:', data);
-
-                        document.getElementById('truck-status').innerText = data.statusLabel;
-                        updateStatusButton(data.status, data.transition);
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        btn.disabled = false;
-                        btn.innerText = transition.label;
-                    });
-
+                })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('truck-status').innerText = data.statusLabel;
+                    updateStatusButton(data.status, data.transition);
+                })
+                .catch(() => {
+                    inProgress = false;
+                    btn.disabled = false;
+                    btn.innerText = transition.label;
+                });
             });
+
 
         } else if (status === 'free') {
             const assignBtn = document.createElement('button');
@@ -125,16 +124,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const breakdownBtn = document.getElementById('breakdown-btn');
     breakdownBtn.addEventListener('click', () => {
         fetch('/driver/status', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify({ truck_id: truckId, to: 'breakdown' })
-        }).then(() => {
-            breakdownBtn.disabled = true;
-            breakdownBtn.innerText = "🚨 Отправлено";
-        });
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ truck_id: truckId, to: 'breakdown' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                breakdownBtn.disabled = true;
+                breakdownBtn.innerText = "🚨 Поломка зафиксирована";
+
+                document.getElementById('truck-status').innerText = data.statusLabel;
+                updateStatusButton(data.status, data.transition);
+            });
+
     });
 
     // -------------------------------
