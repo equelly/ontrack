@@ -11,6 +11,10 @@ export default defineConfig({
             refresh: true,
         }),
     ],
+        server: {
+        host: 'localhost', // ← ВАЖНО
+        port: 5173,
+    },
     // скрыть предупреждения
     css: {
         preprocessorOptions: {

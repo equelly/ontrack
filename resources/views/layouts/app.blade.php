@@ -12,6 +12,7 @@
   <!-- Google Fonts Roboto -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
   @vite(['resources/sass/app.scss', 'resources/js/app.js', 'resources/css/app.css'])
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="mt-3">
 

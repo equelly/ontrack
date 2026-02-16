@@ -1,14 +1,31 @@
 <?php
 
-use App\Models\Order;
+
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\User\Dump\DistributionController;
-use App\Http\Controllers\User\Miner\MinersController;
-use App\Livewire\DispatcherPanel;
 use App\Livewire\DriverPanel;
 use App\Livewire\TestComponent;
 use App\Events\TestBroadcast;
+use App\Events\DispatcherNotification;
+use App\Events\DriverRouteUpdated;
+use App\Http\Controllers\DriverController;
+use App\Http\Controllers\DriverRouteController;
+use App\Http\Controllers\DispatcherController;
+
+
+Route::get('/dispatcher', [DispatcherController::class, 'index']);
+
+
+Route::post('/driver/route/ack', [DriverRouteController::class, 'ack']);
+Route::post('/driver/status', [DriverController::class, 'updateStatus']);
+
+Route::get('/driver/{truck}', [DriverController::class, 'show']);
+
+
+Route::resource('drivers', DriverController::class)->parameters(['drivers' => 'truck']);
+
+
 
 //Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
 Route::get('/test', TestComponent::class)->name('test'); 
@@ -22,6 +39,12 @@ Route::get('/test-broadcast/send', function () {
     broadcast(new TestBroadcast(''));
     return 'event sent';
 });
+
+Route::get('/driver-test/{driverId}', function ($driverId) {
+    return view('driver-test', compact('driverId'));
+});
+
+
 //Route::post('/dump/distribution', [DistributionController::class, 'index'])->name('dump.distribution');
 
 

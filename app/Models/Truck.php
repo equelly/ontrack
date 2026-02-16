@@ -12,7 +12,8 @@ class Truck extends Model
 {
     protected $fillable = [
         'number', 'brand', 'load_capacity', 
-        'driver_id', 'status', 'current_load', 'last_free_at', 'fuel_level', 'truck_model_id',
+        'driver_id', 'status', 'current_load', 'last_free_at', 'fuel_level', 'truck_model_id', 
+        'route_version', 'route_ack_version'
     ];
 
     protected $casts = [

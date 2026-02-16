@@ -33,19 +33,17 @@ return [
 
         'reverb' => [
             'driver' => 'reverb',
+            'guards' => ['web'],
+
             'key' => env('REVERB_APP_KEY'),
             'secret' => env('REVERB_APP_SECRET'),
             'app_id' => env('REVERB_APP_ID'),
+
             'options' => [
-                'host' => env('REVERB_HOST', '127.0.0.1'),
+                'host' => env('REVERB_HOST', 'localhost'),
                 'port' => env('REVERB_PORT', 8080),
                 'scheme' => env('REVERB_SCHEME', 'http'),
-                'useTLS' => false,
-                'encrypted' => false,
-                'curl_options' => [
-                    CURLOPT_SSL_VERIFYPEER => false,
-                    CURLOPT_SSL_VERIFYHOST => false,
-                ],
+                'useTLS' => env('REVERB_SCHEME') === 'https',
             ],
         ],
 
