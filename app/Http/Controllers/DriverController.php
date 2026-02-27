@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Domain\TruckStatus;
 use App\Models\Truck;
+use App\Services\RouteAssignmentService;
 use App\Services\TruckStatusService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 
 
@@ -93,4 +95,41 @@ class DriverController extends Controller
     {
         //
     }
+    /**
+ * Назначить маршрут грузовику (по запросу водителя)
+ */
+public function assignForTruck(Request $request, RouteAssignmentService $service)
+{
+    $request->validate([
+        'truck_id' => 'required|exists:trucks,id',
+    ]);
+
+    $truck = Truck::findOrFail($request->truck_id);
+
+        // Лог для диагностики
+    Log::debug('Assign check', [
+        'auth_id' => auth()->id(),
+        'driver_id' => $truck->driver_id,
+        'truck_status' => $truck->status,
+    ]);
+
+    // Проверяем что грузовик принадлежит текущему водителю
+    if ((int)$truck->driver_id !== auth()->id()) {
+        return response()->json([
+            'message' => 'Это не ваш грузовик',
+        ], 403);
+    }
+
+    // Вызываем сервис назначения маршрута
+    $service->assignForTruck($truck);
+
+    // Перезагружаем грузовик
+    $truck->refresh();
+
+    return response()->json([
+        'status' => $truck->status,
+        'statusLabel' => TruckStatus::label($truck->status),
+        'transition' => TruckStatus::nextTransition($truck->status),
+    ]);
+}
 }

@@ -17,10 +17,12 @@ use App\Http\Controllers\DispatcherController;
 Route::get('/dispatcher', [DispatcherController::class, 'index']);
 
 
-Route::post('/driver/route/ack', [DriverRouteController::class, 'ack']);
-Route::post('/driver/status', [DriverController::class, 'updateStatus']);
-
-Route::get('/driver/{truck}', [DriverController::class, 'show']);
+Route::middleware(['auth', 'role:driver'])->group(function () {
+    Route::post('/driver/route/ack', [DriverRouteController::class, 'ack']);
+    Route::post('/driver/status', [DriverController::class, 'updateStatus']);
+    Route::post('/driver/assign', [DriverController::class, 'assignForTruck']);
+    Route::get('/driver/{truck}', [DriverController::class, 'show']);
+});
 
 
 Route::resource('drivers', DriverController::class)->parameters(['drivers' => 'truck']);

@@ -92,19 +92,7 @@ public function index()
         return view('miners.create');
     }
 
-    public function store(Request $request)
-    {
-        
-        $validated = $request->validate([
-            'name_miner' => 'required|string|max:255',
-            'active' => 'boolean',
 
-        ]);
-        Miner::firstOrCreate($validated);
-
-        return redirect()->route('miners.index')
-            ->with('success', "Оборудование '{$validated['name_miner']}' добавлено!Установите маршруты для работы в системе распределения");
-    }
     public function show(Miner $miner)
     {
               
@@ -146,138 +134,82 @@ public function index()
 }
 
 
-    //     public function update(Request $request, Miner $miner)
-    // {
-    //     $validated = $request->validate([
-    //         'name_miner' => 'required|string|max:255',
-    //         'active' => 'boolean',
-    //         'dump_distances' => 'array',
-    //         'dump_distances.*' => 'nullable|numeric|min:0|max:1000',
-    //     ]);
-
-    //         // Обновляем ВСЕ расстояния одной формой
-    //     if (isset($validated['dump_distances'])) {
-    //         foreach ($validated['dump_distances'] as $dumpId => $distance) {
-    //             if ($distance > 0) {
-    //                 $miner->dumps()->syncWithoutDetaching([
-    //                     $dumpId => ['distance_km' => $distance]
-    //                 ]);
-    //             } else {
-    //                 $miner->dumps()->detach($dumpId);
-    //             }
-    //         }
-    //     }
-
-    //     $oldName = $miner->name_miner;  // Сохраняем старое имя для вывода в сообщении
-
-    //         // Проверяем, изменилось ли имя
-    //     if ($oldName!== $validated['name_miner']) {
-    //         $message = "Забой '{$oldName}' изменен на '{$validated['name_miner']}'!";
-    //     } else {
-    //         $message = "Данные забоя '{$validated['name_miner']}' обновлёны!";
-    //     }
-
-    //     $miner->update([
-    //         'name_miner' => $validated['name_miner'],
-    //         'active' => $validated['active']?? false,
-    //     ]);
-
-    //     // Сохраняем/обновляем расстояния
-    //     if (isset($validated['dump_distances'])) {
-    //         foreach ($validated['dump_distances'] as $dumpId => $distance) {
-    //             if ($distance > 0) {
-    //                 $miner->dumps()->syncWithoutDetaching([
-    //                     $dumpId => ['distance_km' => $distance]
-    //                 ]);
-    //             } else {
-    //                 $miner->dumps()->detach($dumpId);
-    //             }
-    //         }
-    //     }
-
-    //         // Используем новое имя для сообщения
-    
-    //     return redirect()->route('miners.index')->with('success', $message);
-    // }
     public function update(Request $request, Miner $miner)
-{
-    $validated = $request->validate([
-        'name_miner' => 'required|string|max:255',
-        'active' => 'boolean',
-        'dump_distances' => 'array',
-        'dump_distances.*' => 'nullable|numeric|min:0|max:1000',
-    ]);
+    {
+        $validated = $request->validate([
+            'name_miner' => 'required|string|max:255',
+            'active' => 'boolean',
+            'dump_distances' => 'array',
+            'dump_distances.*' => 'nullable|numeric|min:0|max:1000',
+        ]);
 
-    $oldName = $miner->name_miner;
-    $oldActive = $miner->active;
-    $distanceChanges = 0;
+        $oldName = $miner->name_miner;
+        $oldActive = $miner->active;
+        $distanceChanges = 0;
 
-    // Обновляем майнера (аудит сработает автоматически через boot()!)
-    $miner->update([
-        'name_miner' => $validated['name_miner'],
-        'active' => $validated['active']?? false,
-    ]);
+        // Обновляем майнера
+        $miner->update([
+            'name_miner' => $validated['name_miner'],
+            'active' => $validated['active'] ?? false,
+        ]);
 
-    // 🆗 Считаем изменения расстояний
-    if (isset($validated['dump_distances'])) {
-        foreach ($validated['dump_distances'] as $dumpId => $distance) {
-            $existing = $miner->distances()->where('dump_id', $dumpId)->first();
-            $oldDistance = $existing?->distance_km?? 0;
+        // Обновляем расстояния
+        if (isset($validated['dump_distances'])) {
+            foreach ($validated['dump_distances'] as $dumpId => $distance) {
+                $existing = $miner->distances()->where('dump_id', $dumpId)->first();
+                $oldDistance = $existing?->distance_km ?? 0;
 
-            if ($distance > 0) {
-                // Добавляем/обновляем расстояние
-                if ($oldDistance!= $distance) {
-                    $miner->dumps()->syncWithoutDetaching([
-                        $dumpId => ['distance_km' => $distance]
-                    ]);
-                    $distanceChanges++;
-                }
-            } else {
-                // Удаляем расстояние, если было
-                if ($oldDistance > 0) {
-                    $miner->dumps()->detach($dumpId);
-                    $distanceChanges++;
+                if ($distance > 0) {
+                    if ($oldDistance != $distance) {
+                        $miner->dumps()->syncWithoutDetaching([
+                            $dumpId => [
+                                'distance_km' => $distance,
+                                'travel_time_hours' => $distance / 20  // ← ИСПРАВЛЕНО
+                            ]
+                        ]);
+                        $distanceChanges++;
+                    }
+                } else {
+                    if ($oldDistance > 0) {
+                        $miner->dumps()->detach($dumpId);
+                        $distanceChanges++;
+                    }
                 }
             }
         }
+
+        // Формируем сообщение
+        $newName = $validated['name_miner'];
+        $newActive = $validated['active'] ?? false;
+        $user = auth()->user()?->name ?? 'Система';
+        $time = now()->format('H:i');
+
+        $changes = [];
+
+        if ($oldName !== $newName) {
+            $changes[] = "название: '{$oldName}' → '{$newName}'";
+        }
+
+        if ($oldActive !== $newActive) {
+            $status = $newActive ? 'в работе' : 'не в работе';
+            $changes[] = "статус изменен: теперь → {$status}";
+        }
+
+        if ($distanceChanges > 0) {
+            $changes[] = "обновлены расстояния для {$distanceChanges} маршрутов";
+        }
+
+        if (empty($changes)) {
+            $message = "Изменены данные забоя '{$newName}'";
+        } else {
+            $changesList = implode(', ', $changes);
+            $message = "Забой '{$newName}' обновлён: {$changesList}";
+        }
+
+        $message .= " 👤 изменения внесены: {$user} • в {$time}";
+
+        return redirect()->route('miners.index')->with('success', $message);
     }
-
-    //  Формируем информативное сообщение с аудитом
-    $newName = $validated['name_miner'];
-    $newActive = $validated['active']?? false;
-    $user = auth()->user()?->name?? 'Система';
-    $time = now()->format('H:i');
-
-    $changes = [];
-
-    // Проверяем изменение имени
-    if ($oldName!== $newName) {
-        $changes[] = "название: '{$oldName}' → '{$newName}'";
-    }
-
-    // Проверяем изменение статуса
-    if ($oldActive!== $newActive) {
-        $status = $newActive? 'в работе': 'не в работе';
-        $changes[] = "статус изменен: теперь → {$status}";
-    }
-
-    // Проверяем изменения расстояний
-    if ($distanceChanges > 0) {
-        $changes[] = "обновлены расстояния для {$distanceChanges} маршрутов";
-    }
-
-    // Формируем финальное сообщение
-    if (empty($changes)) {
-        $message = "Изменены данные забоя '{$newName}'";
-    } else {
-        $changesList = implode(', ', $changes);
-        $message = "Забой '{$newName}' обновлён: {$changesList}";
-    }
-
-    $message.= " 👤 изменения внесены: {$user} • в {$time}";
-
-    return redirect()->route('miners.index')->with('success', $message);
-}
 
 
     public function destroy(Miner $miner)

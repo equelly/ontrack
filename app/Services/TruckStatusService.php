@@ -3,100 +3,68 @@
 namespace App\Services;
 
 use App\Models\Truck;
+use App\Models\TruckTrip;
 use App\Models\MiningOrder;
 use App\Events\DispatcherNotification;
-use App\Events\DriverRouteUpdated;  
-use App\Models\TruckTrip;
+use App\Events\DriverRouteUpdated;
 use DomainException;
-
-
 
 class TruckStatusService
 {
-    
+    protected RouteAssignmentService $assignmentService;
 
-public function changeStatus(Truck $truck, string $to, array $context = []): void
-{
-    $from = $truck->status;
-
-    if (! $this->canTransition($from, $to)) {
-        throw new DomainException("Переход {$from} → {$to} запрещён");
+    public function __construct(RouteAssignmentService $assignmentService)
+    {
+        $this->assignmentService = $assignmentService;
     }
 
-    $truck->update([
-        'status' => $to,
-    ]);
+    public function changeStatus(Truck $truck, string $to, array $context = []): void
+    {
+        $from = $truck->status;
 
-    // 🔔 уведомление диспетчера (уже есть)
-    event(new DispatcherNotification(
-        $truck->id,
-        $to,
-        [
-            
-            'from'  => $from,
-            'to'    => $to,
-            'label' => \App\Domain\TruckStatus::label($to),
-        ]
-    ));
+        if (!$this->canTransition($from, $to)) {
+            throw new DomainException("Переход {$from} → {$to} запрещён");
+        }
 
-    /**
-     * 🟢 1. Завершили рейс — закрываем MiningOrder
-     */
-    if ($to === 'completed') {
+        $truck->update(['status' => $to]);
 
-        $order = MiningOrder::where('truck_id', $truck->id)
-            ->where('active', 1)
-            ->latest()
-            ->first();
+        $this->notifyDispatcher($truck, $from, $to);
 
-        if ($order) {
-            // закрываем order
-            $order->update([
-                'active'       => 0,
-                'completed_at' => now(),
-            ]);
+        switch ($to) {
+            case 'breakdown':
+                $this->onBreakdown($truck);
+                break;
 
-            // ⬅️ ФИКСИРУЕМ ФАКТ РЕЙСА
-            TruckTrip::create([
-                'truck_id'        => $truck->id,
-                'driver_id'       => $truck->driver_id,
-                'miner_id'        => $order->miner_id,
-                'dump_id'         => $order->dump_id,
-                'mining_order_id' => $order->id,
-                'load_volume'     => $order->planned_volume ?? null,
-                'started_at'      => $order->created_at,
-                'completed_at'    => now(),
-            ]);
-                app(RouteAssignmentService::class)->assignForTruck($truck);
+            case 'completed':
+                $this->onCompleted($truck);
+                break;
+
+            case 'free':
+                $this->onFree($truck);
+                break;
+
+            case 'maintenance':
+            case 'fueling':
+                $this->onPlannedStop($truck, $to);
+                break;
         }
     }
-}
-
-
 
     protected function canTransition(string $from, string $to): bool
     {
         $map = [
-                // рабочий цикл
-                'to_miner'     => ['loading'],
-                'loading'      => ['transporting'],
-                'transporting' => ['unloading'],
-                'unloading'    => ['completed'],
+            'to_miner'     => ['loading'],
+            'loading'      => ['transporting'],
+            'transporting' => ['unloading'],
+            'unloading'    => ['completed'],
+            'completed'    => [],
+            'free'         => ['to_miner', 'maintenance', 'fueling'],
+            'maintenance'  => ['free'],
+            'fueling'      => ['free'],
+            '*'            => ['breakdown'],
+            'breakdown'    => ['free'],
+        ];
 
-                // completed — ТЕРМИНАЛЬНЫЙ
-                'completed'    => [],
-
-                // служебные
-                'free'         => ['to_miner', 'maintenance', 'fueling'],
-                'maintenance'  => ['free'],
-                'fueling'      => ['free'],
-
-                // авария
-                '*'            => ['breakdown'],
-                'breakdown'    => ['free'],
-            ];
-
-        // универсальный переход (авария)
         if (isset($map['*']) && in_array($to, $map['*'], true)) {
             return true;
         }
@@ -107,7 +75,6 @@ public function changeStatus(Truck $truck, string $to, array $context = []): voi
     /* =========================
        УВЕДОМЛЕНИЯ
        ========================= */
-
     protected function notifyDispatcher(Truck $truck, string $old, string $new): void
     {
         event(new DispatcherNotification(
@@ -116,38 +83,33 @@ public function changeStatus(Truck $truck, string $to, array $context = []): voi
             [
                 'from' => $old,
                 'to'   => $new,
+                'label'=> \App\Domain\TruckStatus::label($new),
             ]
         ));
     }
 
     protected function notifyDriver(int $driverId, array $payload): void
     {
-        event(new DriverRouteUpdated(
-            $driverId,
-            $payload
-        ));
+        event(new DriverRouteUpdated($driverId, $payload));
     }
 
     /* =========================
        ОБРАБОТЧИКИ СТАТУСОВ
        ========================= */
 
-    /**
-     * 🚨 НЕЗАПЛАНИРОВАННАЯ поломка
-     */
     protected function onBreakdown(Truck $truck): void
     {
-        // Если есть активное назначение — отменяем
-        $order = MiningOrder::where('truck_id', $truck->id)
-            ->where('active', 1)
-            ->first();
+        // 1. Отменяем текущее назначение
+        $this->assignmentService->cancelCurrentTrip($truck);
+
+        // 2. Освобождаем mining_order (НЕ деактивируем!)
+        $order = MiningOrder::where('truck_id', $truck->id)->first();
 
         if ($order) {
-            $order->update([
-                'active' => 0,
-            ]);
+            $order->update(['truck_id' => null]);
         }
 
+        // 3. Уведомляем водителя
         if ($truck->driver_id) {
             $this->notifyDriver($truck->driver_id, [
                 'action'   => 'route_cancelled',
@@ -157,45 +119,57 @@ public function changeStatus(Truck $truck, string $to, array $context = []): voi
         }
     }
 
-    /**
-     * ✅ Рейс завершён
-     */
     protected function onCompleted(Truck $truck): void
     {
-        $order = MiningOrder::where('truck_id', $truck->id)
-            ->where('active', 1)
+        // 1. Завершаем truck_trip
+        $trip = TruckTrip::where('truck_id', $truck->id)
+            ->whereNull('completed_at')
+            ->latest()
             ->first();
 
-        if ($order) {
-            $order->update([
-                'active' => 0,
+        if ($trip) {
+            $trip->update([
+                'completed_at' => now(),
+                'load_volume'  => $trip->miningOrder->planned_volume ?? null,
             ]);
         }
 
+        // 2. Освобождаем mining_order (НЕ деактивируем!)
+        $order = MiningOrder::where('truck_id', $truck->id)->first();
+
+        if ($order) {
+            $order->update(['truck_id' => null]);
+        }
+
+        // 3. Уведомляем водителя
         if ($truck->driver_id) {
             $this->notifyDriver($truck->driver_id, [
                 'action' => 'route_completed',
             ]);
         }
+
+        // 4. Переводим в free и назначаем следующий маршрут
+        $truck->update(['status' => 'free']);
+        $this->onFree($truck);
     }
 
-    /**
-     * 🟢 Грузовик свободен — можно назначать следующий маршрут
-     */
     protected function onFree(Truck $truck): void
     {
-        app(\App\Services\RouteAssignmentService::class)
-            ->assignForTruck($truck);
+        // Назначаем следующий маршрут
+        $this->assignmentService->assignForTruck($truck);
     }
 
-
-    /**
-     * 🛠 Плановые остановки (обслуживание / заправка)
-     */
     protected function onPlannedStop(Truck $truck, string $type): void
     {
-        // Маршрут НЕ прерывается
-        // Просто уведомляем водителя
+        // Отменяем текущее назначение
+        $this->assignmentService->cancelCurrentTrip($truck);
+
+        // Освобождаем mining_order
+        $order = MiningOrder::where('truck_id', $truck->id)->first();
+
+        if ($order) {
+            $order->update(['truck_id' => null]);
+        }
 
         if ($truck->driver_id) {
             $this->notifyDriver($truck->driver_id, [
