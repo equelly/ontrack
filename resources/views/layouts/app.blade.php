@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
   <meta http-equiv="x-ua-compatible" content="ie=edge">
-  <title>SMS</title>
+  <title>SiMqa</title>
   
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.11.2/css/all.css">
@@ -21,7 +21,7 @@
           <nav class="navbar navbar-dark fixed-top scrolling-navbar">
             <div class="container">
               <a class="navbar-brand" href="/">
-                <strong>SMS</strong>
+                <strong>SMQ</strong>
               </a>
              
                 <ul class="navbar-nav ms-auto">
@@ -98,7 +98,7 @@
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show mt-4" role="alert">
             {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-dismiss="alert"></button>
         </div>
     @endif
                     @yield('content')
@@ -393,5 +393,6 @@ function markZoneForDeletion(zoneId) {
 
 }
 </script>
+@yield('scripts')
 </body>
 </html>                

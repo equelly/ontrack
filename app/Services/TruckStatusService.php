@@ -8,6 +8,8 @@ use App\Models\MiningOrder;
 use App\Events\DispatcherNotification;
 use App\Events\DriverRouteUpdated;
 use DomainException;
+use Illuminate\Support\Facades\Log;
+
 
 class TruckStatusService
 {
@@ -128,27 +130,42 @@ class TruckStatusService
             ->first();
 
         if ($trip) {
+            // Получаем объём загрузки
+            $loadVolume = $trip->miningOrder->planned_volume ?? $truck->load_capacity ?? 0;
+            
             $trip->update([
                 'completed_at' => now(),
-                'load_volume'  => $trip->miningOrder->planned_volume ?? null,
+                'load_volume'  => $loadVolume,
             ]);
+            
+            // 2. Обновляем статистику dump
+            $dump = $trip->dump;
+            if ($dump) {
+                $dump->increment('trips_count');
+                $dump->increment('delivered_volume', $loadVolume);
+                
+                Log::info("Dump {$dump->id} updated", [
+                    'trips_count' => $dump->trips_count,
+                    'delivered_volume' => $dump->delivered_volume,
+                ]);
+            }
         }
 
-        // 2. Освобождаем mining_order (НЕ деактивируем!)
+        // 3. Освобождаем mining_order (НЕ деактивируем!)
         $order = MiningOrder::where('truck_id', $truck->id)->first();
 
         if ($order) {
             $order->update(['truck_id' => null]);
         }
 
-        // 3. Уведомляем водителя
+        // 4. Уведомляем водителя
         if ($truck->driver_id) {
             $this->notifyDriver($truck->driver_id, [
                 'action' => 'route_completed',
             ]);
         }
 
-        // 4. Переводим в free и назначаем следующий маршрут
+        // 5. Переводим в free и назначаем следующий маршрут
         $truck->update(['status' => 'free']);
         $this->onFree($truck);
     }

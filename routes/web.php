@@ -14,7 +14,6 @@ use App\Http\Controllers\DriverRouteController;
 use App\Http\Controllers\DispatcherController;
 
 
-Route::get('/dispatcher', [DispatcherController::class, 'index']);
 
 
 Route::middleware(['auth', 'role:driver'])->group(function () {
@@ -47,7 +46,7 @@ Route::get('/driver-test/{driverId}', function ($driverId) {
 });
 
 
-//Route::post('/dump/distribution', [DistributionController::class, 'index'])->name('dump.distribution');
+Route::get('/dump/distribution', [DistributionController::class, 'index']);
 
 
 /*
@@ -129,3 +128,18 @@ Auth::routes();
 
 Route::get('/', [App\Http\Controllers\IndexController::class, 'index'])->name('welcome');
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
+
+// =========================================
+// МАРШРУТЫ ДИСПЕТЧЕРА
+// =========================================
+Route::middleware(['auth', 'role:dispatcher'])->group(function () {
+    Route::get('/dispatcher', [App\Http\Controllers\DispatcherController::class, 'index'])->name('dispatcher.index');
+    
+    // Управление грузовиками
+    Route::post('/dispatcher/truck/{truck}/reassign', [App\Http\Controllers\DispatcherController::class, 'reassign']);
+    Route::post('/dispatcher/truck/{truck}/breakdown', [App\Http\Controllers\DispatcherController::class, 'breakdown']);
+    Route::post('/dispatcher/truck/{truck}/maintenance', [App\Http\Controllers\DispatcherController::class, 'maintenance']);
+    Route::post('/dispatcher/truck/{truck}/fueling', [App\Http\Controllers\DispatcherController::class, 'fueling']);
+    Route::post('/dispatcher/truck/{truck}/free', [App\Http\Controllers\DispatcherController::class, 'setFree']);
+    Route::get('/dispatcher/routes', [App\Http\Controllers\DispatcherController::class, 'availableRoutes']);
+});

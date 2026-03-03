@@ -39,7 +39,14 @@ class Truck extends Model
     {
         return $this->belongsTo(User::class, 'driver_id');
     }
+    // Связь с 
 
+    public function currentTrip()
+    {
+        return $this->hasOne(TruckTrip::class)
+            ->whereNull('completed_at')
+            ->latest();
+    }
 
     // Геттеры для топлива
     public function getFuelCapacityAttribute()

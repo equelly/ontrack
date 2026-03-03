@@ -22,5 +22,20 @@ class TruckTrip extends Model
         'started_at'   => 'datetime',
         'completed_at' => 'datetime',
     ];
+    // 
+    public function miner()
+    {
+        return $this->belongsTo(Miner::class);
+    }
+
+    public function dump()
+    {
+        return $this->belongsTo(Dump::class);
+    }
+
+    public function miningOrder()
+    {
+        return $this->belongsTo(MiningOrder::class);
+    }
 }
 

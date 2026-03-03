@@ -6,6 +6,8 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+
 
 class DispatcherNotification implements ShouldBroadcastNow
 {
@@ -25,27 +27,22 @@ class DispatcherNotification implements ShouldBroadcastNow
         $this->payload = $payload;
     }
 
-    /**
-     * Канал (пока public, как test-channel)
-     */
     public function broadcastOn(): Channel
     {
-        return new Channel('dispatcher-channel');
+        return new Channel('dispatcher');  // имя канала
     }
 
-    /**
-     * Имя события (ВАЖНО — с точкой)
-     */
     public function broadcastAs(): string
     {
-        return 'dispatcher.notification';
+        return 'DispatcherNotification';  // Имя класса
     }
 
-    /**
-     * Payload события
-     */
     public function broadcastWith(): array
     {
+        Log::debug('DispatcherNotification broadcastWith', [
+        'truck_id' => $this->truckId,
+        'status' => $this->status,
+    ]);
         return [
             'truck_id' => $this->truckId,
             'status'   => $this->status,

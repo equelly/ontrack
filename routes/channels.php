@@ -24,11 +24,11 @@ Broadcast::channel('driver.{truckId}', function ($user, $truckId) {
     return $user->role === 'driver';
 });
 
-Broadcast::channel('dispatcher', function ($user) {
-    logger()->debug('CHANNEL dispatcher', [
-        'user_id' => $user->id ?? null,
-        'role' => $user->role ?? null,
-    ]);
+// Broadcast::channel('dispatcher', function ($user) {
+//     logger()->debug('CHANNEL dispatcher', [
+//         'user_id' => $user->id ?? null,
+//         'role' => $user->role ?? null,
+//     ]);
 
-    return $user->role === 'dispatcher';
-});
+//     return $user->role === 'dispatcher';
+// });

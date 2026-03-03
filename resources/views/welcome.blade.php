@@ -11,11 +11,13 @@
                 <div class="row mt-5">
                   <!--Grid column-->
                   <div class="col-md-6 mb-5 mt-md-0 mt-5 white-text text-center text-md-left">
-                    <h1 class="m-3 h1-responsive font-weight-bold wow fadeInLeft" data-wow-delay="0.3s">Система мониторинга сервиса</h1>
+                    <h1 class="m-3 h1-responsive font-weight-bold wow fadeInLeft" data-wow-delay="0.3s">Система Управления Карьером</h1>
                     
 					<hr class="bg-white wow fadeInLeft" data-wow-delay="0.3s">
                     <div class="mb-4 wow fadeInLeft" data-wow-delay="0.3s">
-					<h2 class="text-light">Проект для взаимодействия между эксплуатационным персоналом и персоналом занятым обслуживанием и ремонтом оборудования.</h2>
+					<h2 class="text-light">Проект для </br>Взаимодействия между персоналом эксплуатационным и обслуживающим оборудование</br>
+                    Огранизации и управления грузопотоками в карьере
+                    </h2>
 					
 					 <p class="text-light"># Получение и предоставление информации 24/7</p>
                      <p class="text-light"># Ведение учета работ</p>

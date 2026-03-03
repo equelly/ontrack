@@ -19,6 +19,8 @@ class Dump extends Model
         'last_updated_by',
         'last_updated_at',
         'loader_zone_id',  
+        'delivered_volume',  
+        'trips_count',       
     ];
 
         // ✅ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ ПОЛЕЙ АУДИТА

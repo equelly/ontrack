@@ -1,34 +1,31 @@
-import './bootstrap'; 
-
-
-// временно — только для dispatcher
 import './bootstrap';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // =========================================
+    // ДИСПЕТЧЕР
+    // =========================================
     if (window.location.pathname === '/dispatcher') {
         if (window.Echo) {
-            window.Echo
-                .channel('dispatcher-channel')
-                .listen('.dispatcher.notification', (e) => {
-                    console.log('🚨 Dispatcher notification received', e);
+            
+            const channel = window.Echo.channel('dispatcher');
+            
+            channel.listen('.DispatcherNotification', (e) => {
+                
+                // Показываем уведомление
+                showToast(e.status, e);
 
-                    const row = document.getElementById(`truck-${e.truck_id}`);
-                    
-                    if (row) {
-                        if (e.status) {
-                            row.querySelector('.status').textContent = e.status;
-                             // обновляем цвет строки
-                        row.style.backgroundColor = statusColor(e.status);
-                        }
-                        if (e.data?.order_id) {
-                            row.querySelector('.current-order').textContent = e.data.order_id;
-                        }
-                    }
-                });
+                // Обновляем страницу
+                setTimeout(() => location.reload(), 2000);
+            });
+            // Дополнительно: слушаем все сообщения
+            window.Echo.connector.pusher.connection.bind('message', (msg) => {
+            });
+            
         } else {
-            console.error('window.Echo is not defined!');
+            console.error('❌ window.Echo is not defined!');
         }
-        // для вывода в удобной форме статусов
+
+        // Статусы
         const STATUS_LABELS = {
             to_miner: 'в пути к забою',
             loading: 'идет загрузка',
@@ -40,57 +37,124 @@ document.addEventListener('DOMContentLoaded', () => {
             fueling: 'заправка',
             breakdown: 'неисправность',
         };
+
         function humanStatus(status) {
             return STATUS_LABELS[status] ?? status;
         }
+
         document.querySelectorAll('.status').forEach(cell => {
             const rawStatus = cell.textContent.trim();
             cell.textContent = humanStatus(rawStatus);
         });
-
     }
-});
+    
+    // =========================================
+    // ПАНЕЛЬ ВОДИТЕЛЯ
+    // =========================================
+    if (window.location.pathname.includes('/driver/')) {
+        
+        const truckId = window.truckId || document.body.dataset.truckId;
+        
+        if (window.Echo && truckId) {
+            
+            window.Echo.private('driver.' + truckId)
+                .listen('App.Events.DriverRouteUpdated', (e) => {
+                    
+                    if (e.action === 'route_assigned') {
+                        showToast('success', 'Вам назначен новый маршрут!');
+                    }
+                    
+                    if (e.action === 'route_cancelled') {
+                        showToast('warning', 'Маршрут отменён!');
+                    }
+                    
+                    setTimeout(() => location.reload(), 1000);
+                });
+        }
+    }
 
-//
-if (window.driverId && document.getElementById('ackRoute')) {
-    document.getElementById('ackRoute').addEventListener('click', () => {
-        fetch('/driver/route/ack', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document
-                    .querySelector('meta[name="csrf-token"]')
-                    .content
-            },
-            body: JSON.stringify({
-                truck_id: window.truckId
-            })
-        })
-        .then(r => r.json())
-        .then(() => {
-            console.log('✅ Маршрут подтверждён водителем');
-        });
+    // Цвета статусов для таблиц
+    function statusColor(status) {
+        const colors = {
+            'free': '#d4edda',
+            'to_miner': '#fff3cd',
+            'loading': '#cce5ff',
+            'transporting': '#ffe5b4',
+            'unloading': '#f8d7da',
+            'completed': '#e2e3e5',
+            'breakdown': '#f5c6cb',
+            'maintenance': '#d6d8d9',
+            'fueling': '#d1ecf1',
+        };
+        return colors[status] || '#ffffff';
+    }
+
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const statusCell = row.querySelector('.status');
+        if(statusCell) {
+            row.style.backgroundColor = statusColor(statusCell.textContent.trim());
+        }
     });
-}
 
-function statusColor(status) {
-    switch(status) {
-        case 'free': return '#d4edda';
-        case 'to_miner': return '#fff3cd';
-        case 'loading': return '#cce5ff';
-        case 'transporting': return '#ffe5b4';
-        case 'unloading': return '#f8d7da';
-        case 'completed': return '#e2e3e5';
-        case 'breakdown': return '#f5c6cb';
-        case 'maintenance': return '#d6d8d9';
-        case 'fueling': return '#d1ecf1';
-        default: return '#ffffff';
-    }
-}
-document.querySelectorAll('tbody tr').forEach(row => {
-    const statusCell = row.querySelector('.status');
-    if(statusCell) {
-        row.style.backgroundColor = statusColor(statusCell.textContent.trim());
+    // Подтверждение маршрута водителем
+    if (window.driverId && document.getElementById('ackRoute')) {
+        document.getElementById('ackRoute').addEventListener('click', () => {
+            fetch('/driver/route/ack', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    truck_id: window.truckId
+                })
+            })
+            .then(r => r.json())
+        });
     }
 });
 
+// Toast уведомления
+function showToast(status, data) {
+    const toast = document.createElement('div');
+    toast.className = 'alert alert-info alert-dismissible fade show position-fixed';
+    toast.style.cssText = 'top: 70px; right: 20px; z-index: 9999; min-width: 300px;';
+    
+    let message = '';
+    switch(status) {
+        case 'route_assigned':
+            message = `✅ Маршрут назначен`;
+            break;
+        case 'breakdown':
+            message = `🚨 Поломка`;
+            break;
+        case 'transporting':
+            message = `🚛 В пути`;
+            break;
+        case 'unloading':
+            message = `📦 Разгрузка`;
+            break;
+        case 'loading':
+            message = `⏳ Загрузка`;
+            break;
+        case 'completed':
+            message = `✅ Рейс завершён`;
+            break;
+        default:
+            message = `📢 ${status}`;
+    }
+    
+    toast.innerHTML = `
+        <strong>${message}</strong>
+        <button type="button" class="close" data-dismiss="alert">
+            <span>&times;</span>
+        </button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}

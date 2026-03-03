@@ -11,29 +11,31 @@ class DriverRouteUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, SerializesModels;
 
-    public int $driverId;
+    public int $truckId;
     public array $route;
 
-    public function __construct(int $driverId, array $route)
+    public function __construct(int $truckId, array $route)
     {
-        $this->driverId = $driverId;
+        $this->truckId = $truckId;
         $this->route = $route;
     }
 
     public function broadcastOn(): Channel
     {
-        return new Channel('driver.' . $this->driverId);
+        return new Channel('driver.' . $this->truckId);
     }
 
     public function broadcastAs(): string
     {
-        return 'driver.route.updated';
+        return 'DriverRouteUpdated';  // ← Имя класса (без точек)
     }
 
     public function broadcastWith(): array
     {
         return [
+            'action' => $this->route['action'] ?? 'route_assigned',
             'route' => $this->route,
+            'truck_id' => $this->truckId,
             'ts'    => now()->toDateTimeString(),
         ];
     }

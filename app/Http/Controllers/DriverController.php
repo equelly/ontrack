@@ -42,13 +42,42 @@ class DriverController extends Controller
      */
     public function show(Truck $truck)
     {
-        // Базовые проверки (важно для будущего)
         if (! $truck->driver_id) {
             abort(404, 'У грузовика нет водителя');
         }
 
+        // Текущий маршрут (если есть)
+        $currentTrip = \App\Models\TruckTrip::where('truck_id', $truck->id)
+            ->whereNull('completed_at')
+            ->with(['miner', 'dump', 'miningOrder'])
+            ->latest()
+            ->first();
+
+        // Статистика водителя
+        $stats = [
+            'total_trips' => \App\Models\TruckTrip::where('truck_id', $truck->id)
+                ->whereNotNull('completed_at')
+                ->count(),
+            'today_trips' => \App\Models\TruckTrip::where('truck_id', $truck->id)
+                ->whereNotNull('completed_at')
+                ->whereDate('completed_at', today())
+                ->count(),
+            'total_volume' => \App\Models\TruckTrip::where('truck_id', $truck->id)
+                ->whereNotNull('completed_at')
+                ->sum('load_volume'),
+            'total_distance' => \App\Models\TruckTrip::where('truck_id', $truck->id)
+                ->whereNotNull('completed_at')
+                ->join('miner_dump_distances', function($join) {
+                    $join->on('truck_trips.miner_id', '=', 'miner_dump_distances.miner_id')
+                        ->on('truck_trips.dump_id', '=', 'miner_dump_distances.dump_id');
+                })
+                ->sum('miner_dump_distances.distance_km'),
+        ];
+
         return view('drivers.show', [
             'truck' => $truck,
+            'currentTrip' => $currentTrip,
+            'stats' => $stats,
         ]);
     }
 
