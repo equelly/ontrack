@@ -20,6 +20,7 @@
     @php
         use App\Domain\TruckStatus;
         $workingStatuses = ['to_miner', 'loading', 'transporting', 'unloading'];
+        $waitingStatuses = ['waiting_loading', 'waiting_unloading', 'delayed'];
         $transition = TruckStatus::nextTransition($truck->status);
         
         $statusColors = [
@@ -32,6 +33,9 @@
             'breakdown' => 'danger',
             'maintenance' => 'secondary',
             'fueling' => 'secondary',
+            'waiting_loading' => 'warning',
+            'waiting_unloading' => 'warning',
+            'delayed' => 'warning',
         ];
     @endphp
 
@@ -44,7 +48,7 @@
                     <h5 class="mb-0">
                         📍 Текущий маршрут
                     </h5>
-                    <span class="badge bg-white text-dark fs-6">
+                    <span class="badge bg-white text-dark fs-6" id="status-badge">
                         {{ TruckStatus::label($truck->status) }}
                     </span>
                 </div>
@@ -52,37 +56,72 @@
                 <div class="card-body">
                     @if($currentTrip)
                         <!-- Информация о маршруте -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center mb-2">
-                                    <span class="badge bg-primary me-2">Откуда</span>
-                                    <strong>{{ $currentTrip->miner->name ?? 'Забой №' . $currentTrip->miner->name_miner }}</strong>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="border rounded p-2">
+                                    <small class="text-muted d-block">Откуда</small>
+                                    <strong>{{ $currentTrip->miner->name_miner ?? 'Забой #' . $currentTrip->miner_id }}</strong>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center mb-2">
-                                    <span class="badge bg-success me-2">Куда</span>
-                                    <strong>{{ $currentTrip->dump->name ?? 'Пункт разгрузки №' . $currentTrip->dump->name_dump }}</strong>
+                            <div class="col-md-4">
+                                <div class="border rounded p-2">
+                                    <small class="text-muted d-block">Куда (Дамп)</small>
+                                    <strong>{{ $currentTrip->dump->name_dump ?? 'Дамп #' . $currentTrip->dump_id }}</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border rounded p-2 @if($currentTrip->zone) border-success @endif">
+                                    <small class="text-muted d-block">Зона разгрузки</small>
+                                    @if($currentTrip->zone)
+                                        <strong class="text-success">{{ $currentTrip->zone->name_zone }}</strong>
+                                        @if($currentTrip->zone->rocks->isNotEmpty())
+                                            <br><small class="text-muted">{{ $currentTrip->zone->rocks->first()->name_rock }}</small>
+                                        @endif
+                                    @else
+                                        <span class="text-warning">Не назначена</span>
+                                    @endif
                                 </div>
                             </div>
                         </div>
                         
                         <div class="row mb-4">
-                            <div class="col-4">
+                            <div class="col-3">
                                 <small class="text-muted">Расстояние</small>
-                                <p class="mb-0 fw-bold">
-                                    {{ $currentTrip->miningOrder->distance_km ?? '-' }} км
-                                </p>
+                                <p class="mb-0 fw-bold">{{ $currentTrip->miningOrder->distance_km ?? '-' }} км</p>
                             </div>
-                            <div class="col-4">
+                            <div class="col-3">
                                 <small class="text-muted">Начало</small>
                                 <p class="mb-0 fw-bold">{{ $currentTrip->started_at?->format('H:i') ?? '-' }}</p>
                             </div>
-                            <div class="col-4">
+                            <div class="col-3">
                                 <small class="text-muted">Время рейса</small>
                                 <p class="mb-0 fw-bold" id="trip-duration">-</p>
                             </div>
+                            <div class="col-3">
+                                <small class="text-muted">Объём</small>
+                                <p class="mb-0 fw-bold">{{ $truck->load_capacity ?? '-' }} м³</p>
+                            </div>
                         </div>
+                        
+                        <!-- Информация о зоне -->
+                        @if($currentTrip->zone)
+                        <div class="alert alert-light mb-4 py-2">
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">Заполнено:</small>
+                                    <strong>{{ $currentTrip->zone->volume ?? 0 }} / {{ $currentTrip->zone->capacity }} м³</strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Статус зоны:</small>
+                                    @if($currentTrip->zone->delivery)
+                                        <span class="badge bg-success">Готова к приёму</span>
+                                    @else
+                                        <span class="badge bg-danger">Закрыта</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        @endif
                     @else
                         <div class="alert alert-info mb-4">
                             <i class="bi bi-info-circle"></i> Нет активного маршрута
@@ -92,33 +131,13 @@
                     <!-- Управление -->
                     <hr>
                     <div id="status-container">
-                        @if (in_array($truck->status, $workingStatuses) && $transition)
-                            <button id="status-btn" class="btn btn-primary btn-lg w-100">
-                                ✅ {{ $transition['label'] }}
-                            </button>
-                        @elseif($truck->status === 'free')
-                            <button id="assign-btn" class="btn btn-success btn-lg w-100">
-                                🚀 Получить новый маршрут
-                            </button>
-                        @elseif($truck->status === 'breakdown')
-                            <button id="free-btn" class="btn btn-success btn-lg w-100">
-                                🔧 Поломка устранена
-                            </button>
-                        @else
-                            <div class="text-center text-muted py-3">
-                                ⏳ Ожидание нового маршрута...
-                            </div>
-                        @endif
+                        <!-- Динамическое содержимое -->
                     </div>
                     
-                    <!-- Кнопка поломки -->
-                    @if(!in_array($truck->status, ['breakdown', 'maintenance']))
-                        <div class="mt-3 text-center">
-                            <button id="breakdown-btn" class="btn btn-outline-danger btn-sm">
-                                🚨 Сообщить о поломке
-                            </button>
-                        </div>
-                    @endif
+                    <!-- Дополнительные кнопки -->
+                    <div id="extra-buttons" class="mt-3">
+                        <!-- Динамические кнопки -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -133,37 +152,29 @@
                     <div class="row text-center g-3">
                         <div class="col-6">
                             <div class="border rounded p-3">
-                                <h2 class="text-primary mb-0">{{ $stats['total_trips'] }}</h2>
+                                <h2 class="text-primary mb-0">{{ $stats['total_trips'] ?? 0 }}</h2>
                                 <small class="text-muted">Всего рейсов</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="border rounded p-3">
-                                <h2 class="text-success mb-0">{{ $stats['today_trips'] }}</h2>
+                                <h2 class="text-success mb-0">{{ $stats['today_trips'] ?? 0 }}</h2>
                                 <small class="text-muted">Сегодня</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="border rounded p-3">
-                                <h4 class="text-info mb-0">{{ number_format($stats['total_distance'], 1) }}</h4>
+                                <h4 class="text-info mb-0">{{ number_format($stats['total_distance'] ?? 0, 1) }}</h4>
                                 <small class="text-muted">Всего км</small>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="border rounded p-3">
-                                <h4 class="text-warning mb-0">{{ number_format($stats['total_volume'], 1) }}</h4>
+                                <h4 class="text-warning mb-0">{{ number_format($stats['total_volume'] ?? 0, 1) }}</h4>
                                 <small class="text-muted">Объём м³</small>
                             </div>
                         </div>
                     </div>
-                    
-                    @if($truck->load_capacity)
-                        <hr>
-                        <div class="d-flex justify-content-between">
-                            <span class="text-muted">Грузоподъёмность:</span>
-                            <strong>{{ $truck->load_capacity }} т</strong>
-                        </div>
-                    @endif
                 </div>
             </div>
         </div>
@@ -171,12 +182,71 @@
 
 </div>
 
+<!-- Модальное окно выбора зоны -->
+<div class="modal fade" id="zoneModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🔄 Выберите зону разгрузки</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="available-zones">
+                    <!-- Загружается динамически -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно ввода причины задержки -->
+<div class="modal fade" id="delayModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">⚠️ Укажите причину задержки</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Причина:</label>
+                    <select class="form-control" id="delay-reason">
+                        <option value="traffic">Пробки</option>
+                        <option value="road_works">Дорожные работы</option>
+                        <option value="weather">Погодные условия</option>
+                        <option value="technical">Техническая проблема</option>
+                        <option value="other">Другое</option>
+                    </select>
+                </div>
+                <div class="form-group mt-2">
+                    <label>Ожидаемое время задержки (мин):</label>
+                    <input type="number" class="form-control" id="delay-minutes" value="15" min="1" max="120">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-warning" onclick="confirmDelay()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@endsection
+
+@section('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
     const truckId = {{ $truck->id }};
+    const currentTrip = @json($currentTrip);
     const statusContainer = document.getElementById('status-container');
+    const extraButtons = document.getElementById('extra-buttons');
     const workingStatuses = @json($workingStatuses);
+    const waitingStatuses = @json($waitingStatuses);
 
     const statusColors = {
         'free': 'success',
@@ -188,163 +258,258 @@ document.addEventListener('DOMContentLoaded', () => {
         'breakdown': 'danger',
         'maintenance': 'secondary',
         'fueling': 'secondary',
+        'waiting_loading': 'warning',
+        'waiting_unloading': 'warning',
+        'delayed': 'warning',
     };
 
-    function updateStatusButton(status, transition) {
+    // =========================================
+    // ОБНОВЛЕНИЕ UI
+    // =========================================
+    function updateUI(status, transition) {
         statusContainer.innerHTML = '';
+        extraButtons.innerHTML = '';
 
-        if (workingStatuses.includes(status) && transition) {
-            const btn = document.createElement('button');
-            btn.id = 'status-btn';
-            btn.className = 'btn btn-primary btn-lg w-100';
-            btn.innerText = '✅ ' + transition.label;
+        // Основная кнопка перехода
+        if (transition) {
+            const btn = createButton(transition.label, 'btn-primary btn-lg w-100', 'status-btn');
+            btn.addEventListener('click', () => changeStatus(transition.to));
             statusContainer.appendChild(btn);
-            let inProgress = false;
+        }
 
-            btn.addEventListener('click', () => {
-                if (inProgress) return;
-                inProgress = true;
-                btn.disabled = true;
-                btn.innerText = '⏳ Отправка...';
+        // Дополнительные кнопки по статусам
+        switch(status) {
+            case 'to_miner':
+                addExtraButton('⏳ Задержка в пути', 'btn-outline-warning', () => showDelayModal());
+                break;
 
-                fetch('/driver/status', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({
-                        truck_id: truckId,
-                        to: transition.to
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'free') {
-                        setTimeout(() => location.reload(), 300);
-                    } else {
-                        location.reload();
-                    }
-                })
-                .catch(() => {
-                    inProgress = false;
-                    btn.disabled = false;
-                    btn.innerText = '✅ ' + transition.label;
-                });
+            case 'loading':
+                addExtraButton('⏸ Ожидание погрузки', 'btn-outline-info', () => changeStatus('waiting_loading'));
+                break;
+
+            case 'transporting':
+                addExtraButton('⏳ Задержка в пути', 'btn-outline-warning', () => showDelayModal());
+                break;
+
+            case 'unloading':
+                addExtraButton('⏸ Ожидание разгрузки', 'btn-outline-info', () => changeStatus('waiting_unloading'));
+                addExtraButton('🔄 Сменить зону', 'btn-outline-primary', () => showZoneModal());
+                break;
+
+            case 'waiting_loading':
+                showInfo('Ожидание погрузки...');
+                break;
+
+            case 'waiting_unloading':
+                showInfo('Ожидание разгрузки...');
+                addExtraButton('🔄 Сменить зону', 'btn-outline-primary', () => showZoneModal());
+                break;
+
+            case 'delayed':
+                showInfo('Задержка в пути...');
+                break;
+
+            case 'free':
+                const assignBtn = createButton('🚀 Получить маршрут', 'btn-success btn-lg w-100', 'assign-btn');
+                assignBtn.addEventListener('click', assignRoute);
+                statusContainer.appendChild(assignBtn);
+                break;
+
+            case 'breakdown':
+                const freeBtn = createButton('✅ Поломка устранена', 'btn-success btn-lg w-100', 'free-btn');
+                freeBtn.addEventListener('click', () => changeStatus('free'));
+                statusContainer.appendChild(freeBtn);
+                break;
+        }
+
+        // Кнопка поломки (для всех кроме breakdown, maintenance, fueling)
+        if (!['breakdown', 'maintenance', 'fueling'].includes(status)) {
+            addExtraButton('🚨 Поломка', 'btn-outline-danger', () => {
+                if (confirm('Сообщить о поломке?')) {
+                    changeStatus('breakdown');
+                }
             });
-
-        } else if (status === 'free') {
-            const assignBtn = document.createElement('button');
-            assignBtn.id = 'assign-btn';
-            assignBtn.className = 'btn btn-success btn-lg w-100';
-            assignBtn.innerText = "🚀 Получить новый маршрут";
-            statusContainer.appendChild(assignBtn);
-
-            assignBtn.addEventListener('click', () => {
-                assignBtn.disabled = true;
-                assignBtn.innerText = "⏳ Получение маршрута...";
-                fetch('/driver/assign', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({ truck_id: truckId })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    setTimeout(() => location.reload(), 300);
-                })
-                .catch(err => {
-                    console.error(err);
-                    assignBtn.disabled = false;
-                    assignBtn.innerText = "🚀 Получить новый маршрут";
-                });
-            });
-
-        } else if (status === 'breakdown') {
-            const freeBtn = document.createElement('button');
-            freeBtn.id = 'free-btn';
-            freeBtn.className = 'btn btn-success btn-lg w-100';
-            freeBtn.innerText = "🔧 Поломка устранена";
-            statusContainer.appendChild(freeBtn);
-            
-            freeBtn.addEventListener('click', () => {
-                freeBtn.disabled = true;
-                freeBtn.innerText = "⏳ Отправка...";
-                fetch('/driver/status', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({ truck_id: truckId, to: 'free' })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    setTimeout(() => location.reload(), 300);
-                });
-            });
-
-        } else {
-            const msg = document.createElement('div');
-            msg.className = 'text-center text-muted py-3';
-            msg.innerText = "⏳ Ожидание нового маршрута...";
-            statusContainer.appendChild(msg);
         }
     }
 
-    // Кнопка поломки
-    const breakdownBtn = document.getElementById('breakdown-btn');
-    if (breakdownBtn) {
-        breakdownBtn.addEventListener('click', () => {
-            if (!confirm('Вы уверены, что хотите сообщить о поломке?')) return;
-            
-            breakdownBtn.disabled = true;
-            breakdownBtn.innerText = "⏳ Отправка...";
-            
-            fetch('/driver/status', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({ truck_id: truckId, to: 'breakdown' })
+    function createButton(text, className, id) {
+        const btn = document.createElement('button');
+        btn.className = 'btn ' + className;
+        btn.innerText = text;
+        if (id) btn.id = id;
+        return btn;
+    }
+
+    function addExtraButton(text, className, onClick) {
+        const btn = createButton(text, className + ' btn-sm');
+        btn.addEventListener('click', onClick);
+        extraButtons.appendChild(btn);
+    }
+
+    function showInfo(message) {
+        const div = document.createElement('div');
+        div.className = 'alert alert-warning text-center mb-0';
+        div.innerText = message;
+        statusContainer.appendChild(div);
+    }
+
+    // =========================================
+    // API ЗАПРОСЫ
+    // =========================================
+    function changeStatus(to, context = {}) {
+        fetch('/driver/status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ 
+                truck_id: truckId, 
+                to: to,
+                ...context
             })
-            .then(res => res.json())
-            .then(data => {
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success !== false) {
                 location.reload();
-            })
-            .catch(() => {
-                breakdownBtn.disabled = false;
-                breakdownBtn.innerText = "🚨 Сообщить о поломке";
-            });
+            } else {
+                alert(data.message || 'Ошибка');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Ошибка соединения');
         });
     }
 
-    // Live update через Echo/Reverb
+    function assignRoute() {
+        const btn = document.getElementById('assign-btn');
+        btn.disabled = true;
+        btn.innerText = '⏳ Получение...';
+
+        fetch('/driver/assign', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ truck_id: truckId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            location.reload();
+        })
+        .catch(err => {
+            console.error(err);
+            btn.disabled = false;
+            btn.innerText = '🚀 Получить маршрут';
+        });
+    }
+
+    // =========================================
+    // МОДАЛЬНЫЕ ОКНА
+    // =========================================
+    function showDelayModal() {
+        $('#delayModal').modal('show');
+    }
+
+    window.confirmDelay = function() {
+        const reason = document.getElementById('delay-reason').value;
+        const minutes = document.getElementById('delay-minutes').value;
+        
+        $('#delayModal').modal('hide');
+        changeStatus('delayed', { reason: reason, estimated_delay_minutes: minutes });
+    };
+
+    function showZoneModal() {
+        // Загружаем доступные зоны
+        fetch('/driver/available-zones?truck_id=' + truckId)
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('available-zones');
+                
+                if (!data.zones || data.zones.length === 0) {
+                    container.innerHTML = '<div class="alert alert-warning">Нет доступных зон</div>';
+                } else {
+                    container.innerHTML = data.zones.map(zone => `
+                        <div class="border rounded p-3 mb-2" style="cursor: pointer;" onclick="selectZone(${zone.id})">
+                            <strong>${zone.name}</strong>
+                            <small class="text-muted d-block">${zone.dump_name || ''}</small>
+                            <small class="text-success">Свободно: ${zone.available_capacity} м³</small>
+                        </div>
+                    `).join('');
+                }
+                
+                $('#zoneModal').modal('show');
+            });
+    }
+
+    window.selectZone = function(zoneId) {
+        $('#zoneModal').modal('hide');
+        
+        fetch('/driver/reassign-zone', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({ 
+                truck_id: truckId, 
+                zone_id: zoneId 
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Ошибка');
+            }
+        });
+    };
+
+    // =========================================
+    // REAL-TIME
+    // =========================================
     if (window.Echo) {
         Echo.private('driver.{{ $truck->id }}')
             .listen('App.Events.DriverRouteUpdated', (e) => {
-                console.log('🚛 Driver event:', e);
+                console.log('🚛 Event:', e);
                 
-                if (e.action === 'route_assigned') {
-                    showToast('success', 'Вам назначен новый маршрут!');
+                if (['route_assigned', 'route_reassigned', 'zone_reassigned'].includes(e.action)) {
+                    showToast('success', 'Маршрут обновлён!');
                     setTimeout(() => location.reload(), 1000);
                 }
                 
                 if (e.action === 'route_cancelled') {
-                    showToast('warning', 'Маршрут отменён!');
+                    showToast('danger', 'Маршрут отменён!');
                     setTimeout(() => location.reload(), 1000);
                 }
             });
     }
 
-    // Инициализация
+    function showToast(type, message) {
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        toast.style.cssText = 'top: 70px; right: 20px; z-index: 9999; min-width: 300px;';
+        toast.innerHTML = `
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+    }
+
+    // =========================================
+    // ИНИЦИАЛИЗАЦИЯ
+    // =========================================
     @php
         $transition = TruckStatus::nextTransition($truck->status);
     @endphp
-    updateStatusButton('{{ $truck->status }}', @json($transition));
+    updateUI('{{ $truck->status }}', @json($transition));
 
     // Обновление времени в пути
     @if($currentTrip && $currentTrip->started_at)
@@ -354,7 +519,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const diff = Math.floor((now - startedAt) / 1000);
         const min = Math.floor(diff / 60);
         const sec = diff % 60;
-        document.getElementById('trip-duration').innerText = min + ' мин ' + sec + ' сек';
+        const durationEl = document.getElementById('trip-duration');
+        if (durationEl) {
+            durationEl.innerText = min + ' мин ' + sec + ' сек';
+        }
     }, 1000);
     @endif
 

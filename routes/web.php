@@ -12,6 +12,7 @@ use App\Events\DriverRouteUpdated;
 use App\Http\Controllers\DriverController;
 use App\Http\Controllers\DriverRouteController;
 use App\Http\Controllers\DispatcherController;
+use App\Http\Controllers\ExcavatorController;
 
 
 
@@ -21,10 +22,24 @@ Route::middleware(['auth', 'role:driver'])->group(function () {
     Route::post('/driver/status', [DriverController::class, 'updateStatus']);
     Route::post('/driver/assign', [DriverController::class, 'assignForTruck']);
     Route::get('/driver/{truck}', [DriverController::class, 'show']);
+        // маршруты для зон
+    Route::get('/driver/available-zones', [DriverController::class, 'availableZones']);
+    Route::post('/driver/reassign-zone', [DriverController::class, 'reassignZone']);
+
 });
 
 
 Route::resource('drivers', DriverController::class)->parameters(['drivers' => 'truck']);
+/*
+|--------------------------------------------------------------------------
+| Панель машиниста экскаватора
+|--------------------------------------------------------------------------
+*/
+Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excavator_operator,admin'])->group(function () {
+    Route::get('/', [ExcavatorController::class, 'index'])->name('index');
+    Route::post('/set-miner', [ExcavatorController::class, 'setMiner'])->name('set-miner');
+    Route::post('/set-rock', [ExcavatorController::class, 'setRock'])->name('set-rock');
+});
 
 
 

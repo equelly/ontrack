@@ -27,7 +27,10 @@ class Miner extends Model
         'active' => 'boolean',
         'last_updated_at' => 'datetime',  //  Кастим как дату
     ];
-
+        public function rocks()
+    {
+        return $this->belongsToMany(Rock::class, 'miner_rock');
+    }
     
         public function dumps()
     {

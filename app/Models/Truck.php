@@ -29,6 +29,10 @@ class Truck extends Model
     {
         return $this->belongsTo(TruckModel::class);
     }
+    public function trips()
+    {
+        return $this->hasMany(TruckTrip::class, 'truck_id');
+    }
 
     public function plannedTasks()
     {

@@ -22,6 +22,8 @@ class MiningOrder extends Model
         'completed_at',
         'wrr_cursor',           // ← добавлено для wrr распределения рейсов
         'last_assigned_at',     // ← добавлено 
+        'rock_id',
+        'zone_id',
     ];
 
     protected $casts = [
@@ -34,6 +36,15 @@ class MiningOrder extends Model
         'last_assigned_at' => 'datetime', // ← добавлено
     ];
 
+    public function rock()
+    {
+        return $this->belongsTo(Rock::class);
+    }
+
+    public function zone()
+    {
+        return $this->belongsTo(Zone::class);
+    }
     public function miner() 
     { 
         return $this->belongsTo(Miner::class); 

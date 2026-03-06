@@ -16,12 +16,17 @@ class TruckTrip extends Model
         'load_volume',
         'started_at',
         'completed_at',
+        'zone_id',
     ];
 
     protected $casts = [
         'started_at'   => 'datetime',
         'completed_at' => 'datetime',
     ];
+    public function zone()
+    {
+        return $this->belongsTo(Zone::class);
+    }
     // 
     public function miner()
     {

@@ -4,11 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Domain\TruckStatus;
 use App\Models\Truck;
+use App\Models\TruckTrip;
+use App\Models\Zone;
 use App\Services\RouteAssignmentService;
 use App\Services\TruckStatusService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-
 
 
 class DriverController extends Controller
@@ -95,23 +96,36 @@ class DriverController extends Controller
      */
     public function updateStatus(Request $request, TruckStatusService $service)
     {
-        logger()->info('Driver status request', $request->all());
+        $request->validate([
+            'truck_id' => 'required|exists:trucks,id',
+            'to' => 'required|string',
+        ]);
 
         $truck = Truck::findOrFail($request->truck_id);
-            if (! TruckStatus::canTransition($truck->status, $request->to)) {
+
+        // Проверяем что это грузовик водителя
+        if ((int)$truck->driver_id !== auth()->id()) {
+            return response()->json([
+                'message' => 'Это не ваш грузовик',
+            ], 403);
+        }
+
+        if (!TruckStatus::canTransition($truck->status, $request->to)) {
+            return response()->json([
+                'message' => 'Недопустимый переход статуса',
+            ], 409);
+        }
+
+        // Передаём контекст (причина задержки и т.д.)
+        $context = $request->only(['reason', 'estimated_delay_minutes']);
+
+        $service->changeStatus($truck, $request->to, $context);
+
         return response()->json([
-            'message' => 'Не допустимый переход статуса',
-        ], 409);
-    }
-
-        $service->changeStatus($truck, $request->to);
-
-        return response()->json([
-                'status'       => $truck->status,
-                'statusLabel'  => TruckStatus::label($truck->status),
-                'transition'   => TruckStatus::nextTransition($truck->status),
-            ]);
-
+            'status' => $truck->status,
+            'statusLabel' => TruckStatus::label($truck->status),
+            'transition' => TruckStatus::nextTransition($truck->status),
+        ]);
     }
 
 
@@ -127,38 +141,99 @@ class DriverController extends Controller
     /**
  * Назначить маршрут грузовику (по запросу водителя)
  */
-public function assignForTruck(Request $request, RouteAssignmentService $service)
-{
-    $request->validate([
-        'truck_id' => 'required|exists:trucks,id',
-    ]);
+    public function assignForTruck(Request $request, RouteAssignmentService $service)
+    {
+        $request->validate([
+            'truck_id' => 'required|exists:trucks,id',
+        ]);
 
-    $truck = Truck::findOrFail($request->truck_id);
+        $truck = Truck::findOrFail($request->truck_id);
 
-        // Лог для диагностики
-    Log::debug('Assign check', [
-        'auth_id' => auth()->id(),
-        'driver_id' => $truck->driver_id,
-        'truck_status' => $truck->status,
-    ]);
+            // Лог для диагностики
+        Log::debug('Assign check', [
+            'auth_id' => auth()->id(),
+            'driver_id' => $truck->driver_id,
+            'truck_status' => $truck->status,
+        ]);
 
-    // Проверяем что грузовик принадлежит текущему водителю
-    if ((int)$truck->driver_id !== auth()->id()) {
+        // Проверяем что грузовик принадлежит текущему водителю
+        if ((int)$truck->driver_id !== auth()->id()) {
+            return response()->json([
+                'message' => 'Это не ваш грузовик',
+            ], 403);
+        }
+
+        // Вызываем сервис назначения маршрута
+        $service->assignForTruck($truck);
+
+        // Перезагружаем грузовик
+        $truck->refresh();
+
         return response()->json([
-            'message' => 'Это не ваш грузовик',
-        ], 403);
+            'status' => $truck->status,
+            'statusLabel' => TruckStatus::label($truck->status),
+            'transition' => TruckStatus::nextTransition($truck->status),
+        ]);
+    }
+        /**
+     * Получить доступные зоны для переназначения
+     */
+    public function availableZones(Request $request)
+    {
+        $truck = Truck::findOrFail($request->truck_id);
+        
+        $trip = TruckTrip::where('truck_id', $truck->id)
+            ->whereNull('completed_at')
+            ->first();
+
+        if (!$trip || !$trip->miningOrder) {
+            return response()->json(['zones' => []]);
+        }
+
+        $rockId = $trip->miningOrder->rock_id;
+        $currentZoneId = $trip->zone_id;
+
+        $zones = Zone::where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->where('id', '!=', $currentZoneId)
+            ->with('dump', 'rocks')
+            ->get()
+            ->map(fn($zone) => [
+                'id' => $zone->id,
+                'name' => $zone->name_zone,
+                'dump_name' => $zone->dump?->name_dump,
+                'available_capacity' => $zone->capacity - $zone->volume,
+            ]);
+
+        return response()->json(['zones' => $zones]);
     }
 
-    // Вызываем сервис назначения маршрута
-    $service->assignForTruck($truck);
+    /**
+     * Переназначить зону (водителем)
+     */
+    public function reassignZone(Request $request, RouteAssignmentService $service)
+    {
+        $request->validate([
+            'truck_id' => 'required|exists:trucks,id',
+            'zone_id' => 'required|exists:zones,id',
+        ]);
 
-    // Перезагружаем грузовик
-    $truck->refresh();
+        $truck = Truck::findOrFail($request->truck_id);
 
-    return response()->json([
-        'status' => $truck->status,
-        'statusLabel' => TruckStatus::label($truck->status),
-        'transition' => TruckStatus::nextTransition($truck->status),
-    ]);
-}
+        // Проверяем что это грузовик водителя
+        if ((int)$truck->driver_id !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Это не ваш грузовик',
+            ], 403);
+        }
+
+        $result = $service->reassignZone($truck, $request->zone_id);
+
+        return response()->json([
+            'success' => $result,
+            'message' => $result ? 'Зона изменена' : 'Не удалось изменить зону',
+        ]);
+    }
 }

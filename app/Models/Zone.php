@@ -17,6 +17,7 @@ class Zone extends Model
         'volume',         // Объём
         'ship',           // Отгрузка (boolean)
         'delivery',       //завозка (boolean)
+        'capacity',
     ];
 
     protected $casts = [

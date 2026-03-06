@@ -5,11 +5,12 @@ namespace App\Services;
 use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Models\MiningOrder;
+use App\Models\Zone;
 use App\Events\DispatcherNotification;
 use App\Events\DriverRouteUpdated;
+use App\Domain\TruckStatus;
 use DomainException;
 use Illuminate\Support\Facades\Log;
-
 
 class TruckStatusService
 {
@@ -49,25 +50,39 @@ class TruckStatusService
             case 'fueling':
                 $this->onPlannedStop($truck, $to);
                 break;
+
+            case 'waiting_loading':
+                $this->onWaitingLoading($truck, $context);
+                break;
+
+            case 'waiting_unloading':
+                $this->onWaitingUnloading($truck, $context);
+                break;
+
+            case 'delayed':
+                $this->onDelayed($truck, $context);
+                break;
         }
     }
 
     protected function canTransition(string $from, string $to): bool
     {
         $map = [
-            'to_miner'     => ['loading'],
-            'loading'      => ['transporting'],
-            'transporting' => ['unloading'],
-            'unloading'    => ['completed'],
-            'completed'    => [],
-            'free'         => ['to_miner', 'maintenance', 'fueling'],
-            'maintenance'  => ['free'],
-            'fueling'      => ['free'],
-            '*'            => ['breakdown'],
-            'breakdown'    => ['free'],
+            'free'              => ['to_miner', 'maintenance', 'fueling'],
+            'to_miner'          => ['loading', 'delayed', 'breakdown'],
+            'loading'           => ['transporting', 'waiting_loading', 'breakdown'],
+            'transporting'      => ['unloading', 'delayed', 'breakdown'],
+            'unloading'         => ['completed', 'waiting_unloading', 'breakdown'],
+            'completed'         => [],
+            'waiting_loading'   => ['loading', 'breakdown'],
+            'waiting_unloading' => ['unloading', 'breakdown'],
+            'delayed'           => ['transporting', 'breakdown'],
+            'breakdown'         => ['free'],
+            'maintenance'       => ['free'],
+            'fueling'           => ['free'],
         ];
 
-        if (isset($map['*']) && in_array($to, $map['*'], true)) {
+        if ($to === 'breakdown') {
             return true;
         }
 
@@ -85,7 +100,7 @@ class TruckStatusService
             [
                 'from' => $old,
                 'to'   => $new,
-                'label'=> \App\Domain\TruckStatus::label($new),
+                'label'=> TruckStatus::label($new),
             ]
         ));
     }
@@ -108,7 +123,7 @@ class TruckStatusService
         $order = MiningOrder::where('truck_id', $truck->id)->first();
 
         if ($order) {
-            $order->update(['truck_id' => null]);
+            $order->update(['truck_id' => null, 'zone_id' => null]);
         }
 
         // 3. Уведомляем водителя
@@ -149,25 +164,48 @@ class TruckStatusService
                     'delivered_volume' => $dump->delivered_volume,
                 ]);
             }
+
+            // 3. Обновляем объём в зоне
+            $zone = $trip->zone;
+            if ($zone) {
+                $zone->increment('volume', $loadVolume);
+                
+                Log::info("Zone {$zone->id} volume updated", [
+                    'volume' => $zone->fresh()->volume,
+                    'capacity' => $zone->capacity,
+                    'added' => $loadVolume,
+                ]);
+
+                // Если зона заполнена - логируем предупреждение
+                if ($zone->fresh()->volume >= $zone->capacity) {
+                    Log::warning("Zone {$zone->id} is FULL!", [
+                        'volume' => $zone->fresh()->volume,
+                        'capacity' => $zone->capacity,
+                    ]);
+                }
+            }
         }
 
-        // 3. Освобождаем mining_order (НЕ деактивируем!)
+        // 4. Освобождаем mining_order (НЕ деактивируем!)
         $order = MiningOrder::where('truck_id', $truck->id)->first();
 
         if ($order) {
-            $order->update(['truck_id' => null]);
+            $order->update([
+                'truck_id' => null,
+                'zone_id' => null,
+            ]);
         }
 
-        // 4. Уведомляем водителя
+        // 5. Уведомляем водителя
         if ($truck->driver_id) {
             $this->notifyDriver($truck->driver_id, [
                 'action' => 'route_completed',
             ]);
         }
 
-        // 5. Переводим в free и назначаем следующий маршрут
+        // 6. Переводим в free и назначаем следующий маршрут
         $truck->update(['status' => 'free']);
-        $this->onFree($truck);
+        $this->assignmentService->assignForTruck($truck);
     }
 
     protected function onFree(Truck $truck): void
@@ -185,7 +223,10 @@ class TruckStatusService
         $order = MiningOrder::where('truck_id', $truck->id)->first();
 
         if ($order) {
-            $order->update(['truck_id' => null]);
+            $order->update([
+                'truck_id' => null,
+                'zone_id' => null,
+            ]);
         }
 
         if ($truck->driver_id) {
@@ -194,5 +235,26 @@ class TruckStatusService
                 'type'   => $type,
             ]);
         }
+    }
+
+    protected function onWaitingLoading(Truck $truck, array $context = []): void
+    {
+        Log::info("Truck {$truck->id} waiting for loading", $context);
+        
+        // Уведомление уже отправлено в notifyDispatcher
+    }
+
+    protected function onWaitingUnloading(Truck $truck, array $context = []): void
+    {
+        Log::info("Truck {$truck->id} waiting for unloading", $context);
+        
+        // Уведомление уже отправлено в notifyDispatcher
+    }
+
+    protected function onDelayed(Truck $truck, array $context = []): void
+    {
+        Log::info("Truck {$truck->id} delayed in transit", $context);
+        
+        // Уведомление уже отправлено в notifyDispatcher
     }
 }

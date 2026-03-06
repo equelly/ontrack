@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Truck;
 use App\Models\MiningOrder;
 use App\Models\TruckTrip;
+use App\Models\Zone;
 use App\Events\DriverRouteUpdated;
 use App\Events\DispatcherNotification;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,7 @@ class RouteAssignmentService
 
             $routes = MiningOrder::query()
                 ->where('active', 1)
+                ->whereNotNull('rock_id') // Только маршруты с породой
                 ->join('miner_dump_distances', function ($join) {
                     $join->on('mining_orders.miner_id', '=', 'miner_dump_distances.miner_id')
                          ->on('mining_orders.dump_id', '=', 'miner_dump_distances.dump_id');
@@ -42,10 +44,26 @@ class RouteAssignmentService
                 return;
             }
 
-            $availableRoutes = $routes->filter(fn($route) => $this->canAssignToMiner($route));
+            // Фильтруем маршруты с доступными зонами
+            $availableRoutes = $routes->filter(function($route) {
+                if (!$this->canAssignToMiner($route)) {
+                    return false;
+                }
+                
+                // Проверяем есть ли доступная зона
+                $zone = $this->selectZone($route);
+                if (!$zone) {
+                    Log::debug("Нет доступной зоны для маршрута {$route->id}");
+                    return false;
+                }
+                
+                // Сохраняем найденную зону во временное свойство
+                $route->selected_zone = $zone;
+                return true;
+            });
 
             if ($availableRoutes->isEmpty()) {
-                Log::info("Все miner перегружены для грузовика {$truck->id}");
+                Log::info("Нет маршрутов с доступными зонами для грузовика {$truck->id}");
                 return;
             }
 
@@ -56,11 +74,26 @@ class RouteAssignmentService
                 return;
             }
 
-            $this->createTripAndAssign($truck, $order);
-            $this->notifyDriver($truck, $order);
+            $this->createTripAndAssign($truck, $order, $order->selected_zone);
+            $this->notifyDriver($truck, $order, 'route_assigned');
             $this->notifyDispatcher($truck, $order, 'route_assigned');
 
         });
+    }
+
+    /**
+     * Выбрать зону для маршрута
+     */
+    protected function selectZone(MiningOrder $order): ?Zone
+    {
+        return Zone::where('dump_id', $order->dump_id)
+            ->where('delivery', true)
+            ->whereHas('rocks', function($q) use ($order) {
+                $q->where('rocks.id', $order->rock_id);
+            })
+            ->whereRaw('volume < capacity')
+            ->orderBy('volume', 'asc') // Меньше заполнена = выше приоритет
+            ->first();
     }
 
     /**
@@ -74,7 +107,7 @@ class RouteAssignmentService
             return false;
         }
 
-        DB::transaction(function () use ($truck, $newOrder) {
+        return DB::transaction(function () use ($truck, $newOrder) {
 
             // 1. Удаляем текущий trip если есть
             $this->cancelCurrentTrip($truck);
@@ -95,18 +128,24 @@ class RouteAssignmentService
                 return false;
             }
 
-            // 4. Создаём новый trip и назначаем
-            $this->createTripAndAssign($truck, $newOrder);
+            // 4. Выбираем зону
+            $zone = $this->selectZone($newOrder);
+            if (!$zone) {
+                Log::warning("Нет доступной зоны для маршрута {$newOrder->id}");
+                return false;
+            }
 
-            // 5. Уведомляем водителя о НОВОМ маршруте
+            // 5. Создаём новый trip и назначаем
+            $this->createTripAndAssign($truck, $newOrder, $zone);
+
+            // 6. Уведомляем водителя о НОВОМ маршруте
             $this->notifyDriver($truck, $newOrder, 'route_reassigned');
 
-            // 6. Уведомляем диспетчера
+            // 7. Уведомляем диспетчера
             $this->notifyDispatcher($truck, $newOrder, 'route_reassigned');
 
+            return true;
         });
-
-        return true;
     }
 
     /**
@@ -128,10 +167,11 @@ class RouteAssignmentService
     /**
      * Создать trip и назначить маршрут
      */
-    protected function createTripAndAssign(Truck $truck, MiningOrder $order): void
+    protected function createTripAndAssign(Truck $truck, MiningOrder $order, Zone $zone): void
     {
         Log::debug('createTripAndAssign called', [
             'order_id' => $order->id,
+            'zone_id' => $zone->id,
             'old_cursor' => $order->wrr_cursor,
             'score' => $order->score,
         ]);
@@ -142,6 +182,7 @@ class RouteAssignmentService
             'driver_id' => $truck->driver_id,
             'miner_id' => $order->miner_id,
             'dump_id' => $order->dump_id,
+            'zone_id' => $zone->id,
             'mining_order_id' => $order->id,
             'started_at' => now(),
         ]);
@@ -151,14 +192,15 @@ class RouteAssignmentService
         
         $order->update([
             'truck_id' => $truck->id,
+            'zone_id' => $zone->id,
             'last_assigned_at' => now(),
             'wrr_cursor' => $newCursor,
         ]);
 
         Log::debug('createTripAndAssign after update', [
             'order_id' => $order->id,
+            'zone_id' => $zone->id,
             'new_cursor' => $newCursor,
-            'fresh_cursor' => $order->fresh()->wrr_cursor,
         ]);
 
         // Обновляем статус грузовика
@@ -166,7 +208,68 @@ class RouteAssignmentService
             'status' => 'to_miner',
         ]);
 
-        Log::info("Маршрут {$order->id} назначен грузовику {$truck->id}");
+        Log::info("Маршрут {$order->id} назначен грузовику {$truck->id} в зону {$zone->id}");
+    }
+
+    /**
+     * Получить доступные зоны для переназначения водителем
+     */
+    public function getAvailableZonesForReassign(int $rockId, ?int $excludeZoneId = null): array
+    {
+        $query = Zone::where('delivery', true)
+            ->whereHas('rocks', function($q) use ($rockId) {
+                $q->where('rocks.id', $rockId);
+            })
+            ->whereRaw('volume < capacity');
+
+        if ($excludeZoneId) {
+            $query->where('id', '!=', $excludeZoneId);
+        }
+
+        return $query->with('dump', 'rocks')
+            ->orderBy('volume', 'asc')
+            ->get()
+            ->toArray();
+    }
+
+    /**
+     * Переназначить зону (водителем)
+     */
+    public function reassignZone(Truck $truck, int $newZoneId): bool
+    {
+        if (!in_array($truck->status, ['transporting', 'waiting_unloading'])) {
+            Log::warning("Нельзя переназначить зону в статусе {$truck->status}");
+            return false;
+        }
+
+        $zone = Zone::findOrFail($newZoneId);
+
+        if (!$zone->delivery || $zone->volume >= $zone->capacity) {
+            Log::warning("Зона {$newZoneId} недоступна");
+            return false;
+        }
+
+        return DB::transaction(function () use ($truck, $zone) {
+            $trip = TruckTrip::where('truck_id', $truck->id)
+                ->whereNull('completed_at')
+                ->latest()
+                ->first();
+
+            if ($trip) {
+                $trip->update(['zone_id' => $zone->id]);
+                
+                if ($trip->miningOrder) {
+                    $trip->miningOrder->update(['zone_id' => $zone->id]);
+                }
+
+                Log::info("Грузовик {$truck->id} переназначен в зону {$zone->id}");
+                
+                $this->notifyDriver($truck, $trip->miningOrder, 'zone_reassigned');
+                $this->notifyDispatcher($truck, $trip->miningOrder, 'zone_reassigned');
+            }
+
+            return true;
+        });
     }
 
     /**
@@ -174,7 +277,6 @@ class RouteAssignmentService
      */
     protected function canAssignToMiner($route): bool
     {
-        // Если travel_time_hours не задан — пропускаем маршрут
         if (empty($route->travel_time_hours)) {
             Log::warning("travel_time_hours не задан для маршрута {$route->id}");
             return false;
@@ -240,6 +342,7 @@ class RouteAssignmentService
                 'order_id' => $order->id,
                 'miner_id' => $order->miner_id,
                 'dump_id' => $order->dump_id,
+                'zone_id' => $order->zone_id,
                 'score' => $order->score,
             ]
         ));
@@ -258,6 +361,7 @@ class RouteAssignmentService
             [
                 'order_id' => $order->id,
                 'driver_id' => $truck->driver_id,
+                'zone_id' => $order->zone_id,
                 'score' => $order->score,
             ]
         ));
