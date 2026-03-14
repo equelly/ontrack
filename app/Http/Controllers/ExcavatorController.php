@@ -6,8 +6,10 @@ use App\Models\Miner;
 use App\Models\Rock;
 use App\Models\Truck;
 use App\Models\TruckTrip;
+use App\Events\LoadingCompleted;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class ExcavatorController extends Controller
 {
@@ -16,23 +18,17 @@ class ExcavatorController extends Controller
      */
     public function index(Request $request)
     {
-        // Получаем последний выбранный экскаватор из cookies
         $minerId = $request->cookie('selected_miner');
         $miner = $minerId ? Miner::with('rocks')->find($minerId) : null;
 
-        // Все активные экскаваторы для выбора
         $miners = Miner::where('active', true)->orderBy('name_miner')->get();
-
-        // Все породы
         $rocks = Rock::orderBy('name_rock')->get();
 
-        // Данные для отображения
         $trucks = collect();
         $stats = null;
 
         if ($miner) {
-            // Самосвалы, едущие к этому забою
-             $trucks = Truck::with(['trips' => function ($q) use ($miner) {
+            $trucks = Truck::with(['trips' => function ($q) use ($miner) {
                 $q->where('miner_id', $miner->id)
                 ->whereNull('completed_at')
                 ->with(['miningOrder.dump', 'miningOrder.zone']);
@@ -43,7 +39,6 @@ class ExcavatorController extends Controller
             })
             ->get();
 
-            // Статистика за смену
             $stats = $this->getShiftStats($miner);
         }
 
@@ -65,7 +60,9 @@ class ExcavatorController extends Controller
             return response()->json(['success' => false, 'message' => 'Экскаватор не найден или неактивен']);
         }
 
-        // Сохраняем в cookies на 30 дней
+            // Сохраняем привязку оператора к экскаватору
+        Auth::user()->update(['miner_id' => $miner->id]);
+
         return response()->json([
             'success' => true,
             'miner' => $miner->load('rocks')
@@ -84,7 +81,6 @@ class ExcavatorController extends Controller
 
         $miner = Miner::find($request->miner_id);
 
-        // Устанавливаем породу (sync - заменяет текущую)
         $miner->rocks()->sync([$request->rock_id]);
         $miner->update([
             'last_updated_at' => now(),
@@ -98,29 +94,112 @@ class ExcavatorController extends Controller
     }
 
     /**
+     * Подтвердить прибытие самосвала
+     */
+    public function confirmArrival(Request $request, Truck $truck)
+    {
+        if (!in_array($truck->status, ['to_miner', 'waiting_loading'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Самосвал не ожидает погрузки',
+            ], 400);
+        }
+
+        $truck->update(['status' => 'loading']);
+
+        Log::info("Truck {$truck->id} arrived at miner", ['status' => 'loading']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Самосвал прибыл на погрузку',
+        ]);
+    }
+
+    /**
+     * Завершить погрузку
+     */
+    public function completeLoading(Request $request, Truck $truck)
+    {
+        $request->validate([
+            'volume' => 'nullable|numeric|min:0',
+        ]);
+
+        if ($truck->status !== 'loading') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Самосвал не на погрузке',
+            ], 400);
+        }
+
+        $volume = $request->input('volume', $truck->load_capacity ?? 30);
+
+        // Получаем активный рейс
+        $trip = TruckTrip::where('truck_id', $truck->id)
+            ->whereNull('completed_at')
+            ->latest()
+            ->first();
+
+        if (!$trip) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Нет активного рейса',
+            ], 400);
+        }
+
+        // Обновляем рейс
+        $trip->update([
+            'load_volume' => $volume,
+            'loaded_at' => now(),
+        ]);
+
+        // Меняем статус грузовика
+        $truck->update([
+            'status' => 'transporting',
+            'current_load' => $volume,
+        ]);
+
+        // Получаем информацию о зоне и дампе
+        $zone = $trip->miningOrder?->zone;
+        $dump = $trip->miningOrder?->dump;
+
+        // Отправляем уведомление водителю
+        event(new LoadingCompleted(
+            $truck,
+            $zone?->name_zone,
+            $dump?->name_dump
+        ));
+
+        Log::info("Loading completed for truck {$truck->id}", [
+            'volume' => $volume,
+            'zone' => $zone?->name_zone,
+            'dump' => $dump?->name_dump,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Погрузка завершена. Объём: {$volume} т",
+            'volume' => $volume,
+        ]);
+    }
+
+    /**
      * Получить статистику за смену
      */
     protected function getShiftStats(Miner $miner): array
     {
         $shiftStart = $this->getShiftStart();
 
-        // Рейсы за смену
         $trips = TruckTrip::where('miner_id', $miner->id)
             ->whereNotNull('completed_at')
             ->where('completed_at', '>=', $shiftStart)
             ->with('truck')
             ->get();
 
-        // Количество рейсов
         $tripsCount = $trips->count();
-
-        // Объём добытой породы
         $totalVolume = $trips->sum('load_volume');
 
-        // Среднее время погрузки (от started_at до completed_at, минус время в пути)
-        // Для точности можно хранить время начала погрузки отдельно
         $avgLoadingTime = $trips->whereNotNull('started_at')->whereNotNull('completed_at')->avg(function ($trip) {
-            return $trip->started_at->diffInSeconds($trip->completed_at) / 60; // в минутах
+            return $trip->started_at->diffInSeconds($trip->completed_at) / 60;
         });
 
         return [
@@ -141,27 +220,17 @@ class ExcavatorController extends Controller
         $hour = $now->hour;
         $minute = $now->minute;
 
-        // 1 смена: 7:30 - 19:30
-        // 2 смена: 19:30 - 7:30
-
         if ($hour >= 7 && $hour < 19) {
-            // Утро/день - проверяем, началась ли смена
             if ($hour === 7 && $minute < 30) {
-                // Ещё 2-я смена предыдущего дня
                 return $now->copy()->subDay()->setTime(19, 30);
             }
-            // 1-я смена сегодня
             return $now->copy()->setTime(7, 30);
         } elseif ($hour >= 19) {
-            // Вечер - началась 2-я смена
             if ($hour === 19 && $minute < 30) {
-                // Ещё 1-я смена
                 return $now->copy()->setTime(7, 30);
             }
-            // 2-я смена сегодня
             return $now->copy()->setTime(19, 30);
         } else {
-            // Ночь (0:00 - 6:59) - это 2-я смена предыдущего дня
             return $now->copy()->subDay()->setTime(19, 30);
         }
     }

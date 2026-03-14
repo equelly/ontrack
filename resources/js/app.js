@@ -10,22 +10,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const channel = window.Echo.channel('dispatcher');
             
             channel.listen('.DispatcherNotification', (e) => {
-                
-                // Показываем уведомление
                 showToast(e.status, e);
-
-                // Обновляем страницу
                 setTimeout(() => location.reload(), 2000);
-            });
-            // Дополнительно: слушаем все сообщения
-            window.Echo.connector.pusher.connection.bind('message', (msg) => {
             });
             
         } else {
             console.error('❌ window.Echo is not defined!');
         }
 
-        // Статусы
         const STATUS_LABELS = {
             to_miner: 'в пути к забою',
             loading: 'идет загрузка',
@@ -49,14 +41,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // =========================================
+    // ПАНЕЛЬ ЭКСКАВАТОРЩИКА
+    // =========================================
+    if (window.location.pathname.includes('/excavator')) {
+        
+        const minerId = window.currentMinerId || document.body.dataset.minerId;
+        
+        console.log('🚜 Экскаватор - minerId:', minerId);
+        
+        if (window.Echo && minerId) {
+            
+            // Приватный канал для уведомлений о начале погрузки
+            window.Echo.private('miner.' + minerId)
+                .listen('.loading.started', (e) => {
+                    console.log('🚛 Событие loading.started:', e);
+                    
+                    showToast('loading', {
+                        message: e.message || `Самосвал ${e.truck_number} начал погрузку`
+                    });
+
+                    setTimeout(() => location.reload(), 2000);
+                });
+        }
+    }
+    
+    // =========================================
     // ПАНЕЛЬ ВОДИТЕЛЯ
     // =========================================
     if (window.location.pathname.includes('/driver/')) {
         
         const truckId = window.truckId || document.body.dataset.truckId;
         
+        console.log('🚚 Водитель - truckId:', truckId);
+        
         if (window.Echo && truckId) {
             
+            // Приватный канал для уведомлений о маршруте
             window.Echo.private('driver.' + truckId)
                 .listen('App.Events.DriverRouteUpdated', (e) => {
                     
@@ -69,6 +89,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     setTimeout(() => location.reload(), 1000);
+                });
+            
+            // Приватный канал для уведомления о завершении погрузки
+            window.Echo.private('truck.' + truckId)
+                .listen('.loading.completed', (e) => {
+                    console.log('✅ Событие loading.completed:', e);
+                    
+                    showToast('loading_completed', e);
+                    
+                    setTimeout(() => location.reload(), 2000);
                 });
         }
     }
@@ -137,11 +167,14 @@ function showToast(status, data) {
         case 'loading':
             message = `⏳ Загрузка`;
             break;
+        case 'loading_completed':
+            message = data?.message || '✅ Погрузка завершена';
+            break;
         case 'completed':
             message = `✅ Рейс завершён`;
             break;
         default:
-            message = `📢 ${status}`;
+            message = `📢 ${data?.message || status}`;
     }
     
     toast.innerHTML = `

@@ -8,12 +8,18 @@ use App\Models\MiningOrder;
 use App\Models\Zone;
 use App\Events\DispatcherNotification;
 use App\Events\DriverRouteUpdated;
+use App\Events\TruckStartedLoading;
+use App\Events\ZoneChanged;
+use App\Events\NoZoneAvailable;
 use App\Domain\TruckStatus;
 use DomainException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class TruckStatusService
 {
+    const TRAIN_CAPACITY = 380; // куб.м в одном ж.д. составе
+
     protected RouteAssignmentService $assignmentService;
 
     public function __construct(RouteAssignmentService $assignmentService)
@@ -62,6 +68,10 @@ class TruckStatusService
             case 'delayed':
                 $this->onDelayed($truck, $context);
                 break;
+
+            case 'loading':
+                $this->onLoading($truck, $context);
+                break;
         }
     }
 
@@ -73,7 +83,7 @@ class TruckStatusService
             'loading'           => ['transporting', 'waiting_loading', 'breakdown'],
             'transporting'      => ['unloading', 'delayed', 'breakdown'],
             'unloading'         => ['completed', 'waiting_unloading', 'breakdown'],
-            'completed'         => [],
+            'completed'         => ['free'], // для автоперехода
             'waiting_loading'   => ['loading', 'breakdown'],
             'waiting_unloading' => ['unloading', 'breakdown'],
             'delayed'           => ['transporting', 'breakdown'],
@@ -82,11 +92,109 @@ class TruckStatusService
             'fueling'           => ['free'],
         ];
 
+        // Поломка возможна из любого статуса
         if ($to === 'breakdown') {
+            return true;
+        }
+        
+        // Delayed возможен из транзитных статусов
+        if ($to === 'delayed' && in_array($from, ['to_miner', 'transporting'])) {
             return true;
         }
 
         return in_array($to, $map[$from] ?? [], true);
+    }
+
+    /* =========================
+       НОВЫЙ МЕТОД: Начало погрузки
+       ========================= */
+    protected function onLoading(Truck $truck, array $context = []): void
+    {
+        $trip = $this->getActiveTrip($truck);
+        
+        if (!$trip) {
+            Log::warning("Truck {$truck->id} has no active trip on loading start");
+            return;
+        }
+
+        $miner = $trip->miner;
+        $currentZone = $trip->zone;
+        $minerRock = $miner?->rocks->first();
+
+        // Проверяем соответствие породы
+        if ($minerRock && $currentZone) {
+            $zoneAcceptsRock = $currentZone->rocks->contains($minerRock->id);
+
+            if (!$zoneAcceptsRock) {
+                Log::info("Zone mismatch for truck {$truck->id}", [
+                    'rock' => $minerRock->name_rock,
+                    'zone' => $currentZone->name_zone,
+                ]);
+
+                // Ищем новую зону
+                $newZone = $this->findAvailableZone($trip->dump_id, $minerRock->id);
+
+                if ($newZone) {
+                    $oldZoneName = $currentZone->name_zone;
+                    
+                    // Переназначаем зону
+                    $trip->update(['zone_id' => $newZone->id]);
+                    $trip->miningOrder?->update(['zone_id' => $newZone->id]);
+
+                    Log::info("Zone reassigned for truck {$truck->id}", [
+                        'old_zone' => $oldZoneName,
+                        'new_zone' => $newZone->name_zone,
+                    ]);
+
+                    // Уведомляем водителя об изменении зоны
+                    event(new ZoneChanged(
+                        $truck,
+                        $oldZoneName,
+                        $newZone->name_zone,
+                        $trip->dump->name_dump
+                    ));
+                } else {
+                    // Зоны нет - уведомляем диспетчера
+                    Log::warning("No available zone for truck {$truck->id}", [
+                        'rock' => $minerRock->name_rock,
+                    ]);
+                    
+                    event(new NoZoneAvailable($truck, $minerRock->name_rock));
+                }
+            }
+        }
+
+        // Обновляем время начала погрузки в рейсе
+        $trip->update(['load_time' => now()]);
+
+        // Уведомляем машиниста о начале погрузки
+        if ($miner) {
+            event(new TruckStartedLoading($truck, $miner->id));
+        }
+    }
+
+    /* =========================
+       НОВЫЙ МЕТОД: Поиск доступной зоны
+       ========================= */
+    public function findAvailableZone(int $dumpId, int $rockId): ?Zone
+    {
+        return Zone::where('dump_id', $dumpId)
+            ->where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->orderBy('volume', 'asc')
+            ->first();
+    }
+
+    /* =========================
+       НОВЫЙ МЕТОД: Получить активный рейс
+       ========================= */
+    protected function getActiveTrip(Truck $truck): ?TruckTrip
+    {
+        return $truck->trips()
+            ->whereNull('completed_at')
+            ->latest()
+            ->first();
     }
 
     /* =========================
@@ -165,15 +273,18 @@ class TruckStatusService
                 ]);
             }
 
-            // 3. Обновляем объём в зоне
+            // 3. Обновляем объём в зоне (в ж.д. составах)
             $zone = $trip->zone;
             if ($zone) {
-                $zone->increment('volume', $loadVolume);
-                
+                // Переводим куб.м в доли ж.д. состава
+                $volumeInTrains = $loadVolume / self::TRAIN_CAPACITY;
+                $zone->increment('volume', $volumeInTrains);
+
                 Log::info("Zone {$zone->id} volume updated", [
-                    'volume' => $zone->fresh()->volume,
-                    'capacity' => $zone->capacity,
-                    'added' => $loadVolume,
+                    'volume_trains' => $zone->fresh()->volume,
+                    'capacity_trains' => $zone->capacity,
+                    'added_m3' => $loadVolume,
+                    'added_trains' => round($volumeInTrains, 4),
                 ]);
 
                 // Если зона заполнена - логируем предупреждение
@@ -205,6 +316,7 @@ class TruckStatusService
 
         // 6. Переводим в free и назначаем следующий маршрут
         $truck->update(['status' => 'free']);
+        $truck->refresh(); // Обновляем объект из БД
         $this->assignmentService->assignForTruck($truck);
     }
 

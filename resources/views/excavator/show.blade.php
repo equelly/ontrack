@@ -50,11 +50,11 @@
                     <div class="mb-3">
                         <span class="text-muted">Текущая порода:</span>
                         @if($miner->rocks->first())
-                            <span class="badge badge-success" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                            <span id="currentRockBadge" class="badge badge-success" style="font-size: 1rem; padding: 0.5rem 1rem;">
                                 {{ $miner->rocks->first()->name_rock }}
                             </span>
                         @else
-                            <span class="badge badge-secondary" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                            <span id="currentRockBadge" class="badge badge-secondary" style="font-size: 1rem; padding: 0.5rem 1rem;">
                                 Не установлена
                             </span>
                         @endif
@@ -140,6 +140,7 @@
                                     <th>Грузоподъёмность</th>
                                     <th>Перегрузка</th>
                                     <th>Зона</th>
+                                    <th>Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -163,6 +164,26 @@
                                     <td>{{ $truck->load_capacity }} т</td>
                                     <td>{{ $trip?->miningOrder?->dump?->name_dump ?? '-' }}</td>
                                     <td>{{ $trip?->miningOrder?->zone?->name_zone ?? '-' }}</td>
+                                    <td>
+                                        @if($truck->status === 'loading')
+                                            <div class="d-flex align-items-center gap-2">
+                                                <input type="number" class="form-control form-control-sm" 
+                                                       id="volume-{{ $truck->id }}" 
+                                                       value="{{ $truck->load_capacity }}" 
+                                                       min="0" step="0.1" style="width: 80px;">
+                                                <span>т</span>
+                                                <button class="btn btn-sm btn-success" onclick="completeLoading({{ $truck->id }})">
+                                                    <i class="fas fa-check"></i> Загружен
+                                                </button>
+                                            </div>
+                                        @elseif($truck->status === 'to_miner')
+                                            <button class="btn btn-sm btn-primary" onclick="confirmArrival({{ $truck->id }})">
+                                                <i class="fas fa-truck-loading"></i> Прибыл
+                                            </button>
+                                        @else
+                                            <span class="text-muted">-</span>
+                                        @endif
+                                    </td>
                                 </tr>
                             @endforeach
                             </tbody>
@@ -177,17 +198,19 @@
             </div>
         </div>
     </div>
+</div>
 @endif
 @endsection
 
 @section('scripts')
 <script>
+    window.currentMinerId = {{ $miner?->id ?? 'null' }};
+    
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const currentMinerId = {{ $miner?->id ?? 'null' }};
 
-    // Функция показа уведомлений
     function showToast(message, type = 'info') {
-        alert(message); // Простая версия - можно заменить на toast
+        alert(message);
     }
 
     // Выбор экскаватора
@@ -245,9 +268,60 @@
         .then(data => {
             if (data.success) {
                 showToast('Порода установлена', 'success');
-                location.reload();
+                // Обновляем badge без перезагрузки
+                const badge = document.getElementById('currentRockBadge');
+                const rockSelect = document.getElementById('rockSelect');
+                const rockName = rockSelect.options[rockSelect.selectedIndex].text;
+                badge.textContent = rockName;
+                badge.className = 'badge badge-success';
+                badge.style.fontSize = '1rem';
+                badge.style.padding = '0.5rem 1rem';
             } else {
                 showToast('Ошибка при установке породы', 'error');
+            }
+        });
+    }
+
+    // Подтвердить прибытие самосвала
+    function confirmArrival(truckId) {
+        fetch(`/excavator/truck/${truckId}/confirm`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, 'success');
+                location.reload();
+            } else {
+                showToast(data.message || 'Ошибка', 'error');
+            }
+        });
+    }
+
+    // Завершить погрузку
+    function completeLoading(truckId) {
+        const volumeInput = document.getElementById('volume-' + truckId);
+        const volume = volumeInput ? volumeInput.value : 30;
+        
+        fetch(`/excavator/truck/${truckId}/complete`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ volume: parseFloat(volume) })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, 'success');
+                location.reload();
+            } else {
+                showToast(data.message || 'Ошибка', 'error');
             }
         });
     }

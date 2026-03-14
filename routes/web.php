@@ -13,33 +13,43 @@ use App\Http\Controllers\DriverController;
 use App\Http\Controllers\DriverRouteController;
 use App\Http\Controllers\DispatcherController;
 use App\Http\Controllers\ExcavatorController;
-
-
+use App\Livewire\ExcavatorPanel;
+use Illuminate\Support\Facades\Log;
 
 
 Route::middleware(['auth', 'role:driver'])->group(function () {
     Route::post('/driver/route/ack', [DriverRouteController::class, 'ack']);
     Route::post('/driver/status', [DriverController::class, 'updateStatus']);
     Route::post('/driver/assign', [DriverController::class, 'assignForTruck']);
-    Route::get('/driver/{truck}', [DriverController::class, 'show']);
-        // маршруты для зон
+    
+    // API endpoints
     Route::get('/driver/available-zones', [DriverController::class, 'availableZones']);
     Route::post('/driver/reassign-zone', [DriverController::class, 'reassignZone']);
-
+    
+    // Livewire панель водителя
+    Route::get('/driver/{truck}', \App\Livewire\DriverPanel::class)->name('driver.panel');
 });
 
 
 Route::resource('drivers', DriverController::class)->parameters(['drivers' => 'truck']);
 /*
 |--------------------------------------------------------------------------
-| Панель машиниста экскаватора
+| Панель машиниста экскаватора (Livewire)
 |--------------------------------------------------------------------------
 */
+Route::get('/excavator', function () {
+    return view('excavator.index');
+})->name('excavator.index')->middleware(['auth', 'role:excavator_operator,admin']);
+
+// Старые API маршруты (оставляем для совместимости, если нужны)
 Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excavator_operator,admin'])->group(function () {
-    Route::get('/', [ExcavatorController::class, 'index'])->name('index');
-    Route::post('/set-miner', [ExcavatorController::class, 'setMiner'])->name('set-miner');
-    Route::post('/set-rock', [ExcavatorController::class, 'setRock'])->name('set-rock');
+    // API для внешних запросов, если понадобятся
+    // Route::post('/set-miner', [ExcavatorController::class, 'setMiner'])->name('set-miner');
+    // Route::post('/set-rock', [ExcavatorController::class, 'setRock'])->name('set-rock');
+    // Route::post('/truck/{truck}/confirm', [ExcavatorController::class, 'confirmArrival'])->name('confirm-arrival');
+    // Route::post('/truck/{truck}/complete', [ExcavatorController::class, 'completeLoading'])->name('complete-loading');
 });
+
 
 
 
@@ -47,20 +57,8 @@ Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excava
 Route::get('/test', TestComponent::class)->name('test'); 
 Route::get('/driver/{truckId}', DriverPanel::class)->name('driver.panel');
 
-Route::get('/test-broadcast', function () {
-    return view('test-broadcast');
-});
 
-Route::get('/test-broadcast/send', function () {
-    broadcast(new TestBroadcast(''));
-    return 'event sent';
-});
-
-Route::get('/driver-test/{driverId}', function ($driverId) {
-    return view('driver-test', compact('driverId'));
-});
-
-
+// базовый в приложении не применяю
 Route::get('/dump/distribution', [DistributionController::class, 'index']);
 
 

@@ -12,6 +12,7 @@
   <!-- Google Fonts Roboto -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
   @vite(['resources/sass/app.scss', 'resources/js/app.js', 'resources/css/app.css'])
+  @livewireStyles
   <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="mt-3">
@@ -393,6 +394,8 @@ function markZoneForDeletion(zoneId) {
 
 }
 </script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 @yield('scripts')
+@livewireScripts
 </body>
 </html>                

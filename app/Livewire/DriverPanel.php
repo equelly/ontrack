@@ -2,224 +2,321 @@
 
 namespace App\Livewire;
 
-use App\Models\MiningOrder;
-use Livewire\Component;
-use Livewire\Attributes\Url;
+use App\Domain\TruckStatus;
 use App\Models\Truck;
-use Illuminate\Support\Facades\Cache;
+use App\Models\TruckTrip;
+use App\Models\Zone;
+use App\Services\TruckStatusService;
+use App\Services\RouteAssignmentService;
+use Livewire\Component;
+use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
-
 
 class DriverPanel extends Component
 {
-    #[Url]
-    public $truckId;  // ← Берет из URL автоматически!
-    
-    public $truck;
-    public $currentOrder;
-    public $nextAction = 'Ожидание задания';
+    public Truck $truck;
+    public ?TruckTrip $currentTrip = null;
+    public array $stats = [];
+    public string $statusColor = 'secondary';
+    public string $statusLabel = '';
 
-    public function mount($truckId = null)
-{
-    $this->truckId = $truckId;
-    if ($this->truckId) {
-        $this->loadTruck(); // ← АВТОЗАГРУЗКА при входе!
-    }
-}
+    // Время начала рейса для таймера
+    public ?string $tripStartedAt = null;
 
-    public function updatedTruckId()
+    // Модальные окна
+    public bool $showZoneModal = false;
+    public bool $showDelayModal = false;
+    public string $delayReason = 'traffic';
+    public int $delayMinutes = 15;
+    public $availableZones = [];
+
+    public function mount(Truck $truck)
     {
-        if ($this->truckId) {
-            $this->loadTruck();
+        $this->truck = $truck;
+        $this->loadData();
+    }
+
+    protected function loadData(): void
+    {
+        $this->truck->refresh();
+
+        $this->currentTrip = TruckTrip::where('truck_id', $this->truck->id)
+            ->whereNull('completed_at')
+            ->with(['miner.rocks', 'dump', 'zone', 'miningOrder.rock', 'rock'])
+            ->latest()
+            ->first();
+
+        $this->statusColor = TruckStatus::color($this->truck->status);
+        $this->statusLabel = TruckStatus::label($this->truck->status);
+
+        // Устанавливаем время начала рейса для таймера
+        $this->tripStartedAt = $this->currentTrip?->started_at?->toIso8601String();
+
+        $this->stats = [
+            'total_trips' => TruckTrip::where('truck_id', $this->truck->id)
+                ->whereNotNull('completed_at')
+                ->count(),
+            'today_trips' => TruckTrip::where('truck_id', $this->truck->id)
+                ->whereNotNull('completed_at')
+                ->whereDate('completed_at', today())
+                ->count(),
+            'total_volume' => TruckTrip::where('truck_id', $this->truck->id)
+                ->whereNotNull('completed_at')
+                ->sum('load_volume'),
+        ];
+    }
+
+    // =========================================
+    // ДЕЙСТВИЯ ВОДИТЕЛЯ
+    // =========================================
+
+    public function assignRoute(): void
+    {
+        try {
+            $routeService = app(RouteAssignmentService::class);
+            $routeService->assignForTruck($this->truck);
+
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Маршрут назначен!',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Route assignment failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Не удалось назначить маршрут: ' . $e->getMessage(),
+            ]);
         }
     }
-public function loadTruck()
-{
-    $this->truck = Truck::with('driver')->findOrFail($this->truckId)->fresh();
-    $this->currentOrder = MiningOrder::where('truck_id', $this->truckId)
-        ->where('active', true)
-        ->with(['miner', 'dump'])
-        ->first();
-    $this->setNextAction();
-}
 
-
-    public function loadCurrentOrder()
+    public function startLoading(): void
     {
-        $this->currentOrder = $this->truck->currentOrder;
-        $this->setNextAction();
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'loading');
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Вы прибыли на погрузку. Ожидайте.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Start loading failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
-public function setNextAction(): void
-{
-    $status = $this->truck->status ?? 'free';
-
-    // ✅ Логика статусов:
-    if ($status === 'free') {
-        $this->nextAction = '🟡 Получить назначение';
-        return;
-    }
-    
-    if ($status === 'completed') {
-        $this->nextAction = '🟡 Рейс завершён, ждём новое назначение';
-        return;
-    }
-    
-    if (!$this->currentOrder) {
-        $this->nextAction = '❌ Нет активного маршрута';
-        return;
-    }
-
-    $actions = [
-        'to_miner'    => ' Движение к забою',
-        'loading'     => ' Погрузка',
-        'transporting'=> ' К месту разргрузки',
-        'unloading'   => ' Разгрузка',
-        'maintenance' => '🔧 Обслуживание',
-        'fueling'     => '⛽ Заправка', 
-        'breakdown'   => 'Неисправность',
-    ];
-
-    $this->nextAction = $actions[$status] ?? '❓ Неизвестный статус';
-}
-public function markAs($status)
-{
-    $this->validateOnly('status', [
-        'status' => 'required|in:free,to_miner,loading,transporting,unloading,completed'
-    ]);
-    
-    $this->truck->update(['status' => $status]);
-    
-    // 🔥 🔥 🔥 ГЛАВНОЕ!
-    if ($status === 'completed') {
-        Cache::put('realtime_notification', [
-            'message' => "🚛 {$this->truck->number} завершил рейс", 
-            'truck_id' => $this->truck->id  // ← ЭТО КРИТИЧНО!
-        ], 30);
-        
-        Log::info('✅ Cache ПОСТАВЛЕН!', ['truck_id' => $this->truck->id]);
-    }
-    
-    $this->loadTruck();
-}
-
-
-
-    public function driverAction(): void
+    public function startUnloading(): void
     {
-        $status = $this->truck->status ?? 'free';
-        
-        if (in_array($status, ['free', 'to_miner', 'loading', 'transporting', 'unloading', 'completed'])) {
-            $this->handleRouteCycle($status);
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'unloading');
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Прибыл на выгрузку',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Start unloading failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function completeTrip(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'completed');
+            $this->loadData();
+        } catch (\Exception $e) {
+            Log::error('Complete trip failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function reportBreakdown(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'breakdown');
+            $this->loadData();
+        } catch (\Exception $e) {
+            Log::error('Report breakdown failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function reportBreakdownResolved(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'free');
+            $this->loadData();
+        } catch (\Exception $e) {
+            Log::error('Breakdown resolved failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // =========================================
+    // МОДАЛЬНЫЕ ОКНА
+    // =========================================
+
+    public function openZoneModal(): void
+    {
+        $this->loadAvailableZones();
+        $this->showZoneModal = true;
+    }
+
+    public function closeZoneModal(): void
+    {
+        $this->showZoneModal = false;
+    }
+
+    public function openDelayModal(): void
+    {
+        $this->showDelayModal = true;
+    }
+
+    public function closeDelayModal(): void
+    {
+        $this->showDelayModal = false;
+    }
+
+    public function confirmDelay(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'delayed', [
+                'reason' => $this->delayReason,
+                'estimated_delay_minutes' => $this->delayMinutes,
+            ]);
+
+            $this->loadData();
+            $this->showDelayModal = false;
+
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => 'Задержка зарегистрирована',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Delay report failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function selectZone(int $zoneId): void
+    {
+        try {
+            $routeService = app(RouteAssignmentService::class);
+            $routeService->reassignZone($this->truck, $zoneId);
+
+            $this->loadData();
+            $this->showZoneModal = false;
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Зона изменена!',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Zone selection failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function loadAvailableZones(): void
+    {
+        if (!$this->currentTrip || !$this->currentTrip->miningOrder) {
+            $this->availableZones = collect();
             return;
         }
-        
-        if (in_array($status, ['maintenance', 'fueling', 'breakdown'])) {
-            $this->truck->markAs('free');
-            $this->loadTruck();
-            $this->setNextAction();
 
-            // 🔥 ДЛЯ ВСЕХ: водитель + диспетчер
-            $message = "✅ {$this->truck->number}: {$this->nextAction}";
-            Cache::put('realtime_notification', $message, 30);  // ← ГЛАВНЫЙ канал
-            
-            session()->flash('success', 'Грузовик восстановлен и готов к рейсам!');
-            return;
-        }
+        $rockId = $this->currentTrip->miningOrder->rock_id;
+        $currentZoneId = $this->currentTrip->zone_id;
+
+        $this->availableZones = Zone::where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->where('id', '!=', $currentZoneId)
+            ->with('dump', 'rocks')
+            ->get()
+            ->map(fn($zone) => [
+                'id' => $zone->id,
+                'name' => $zone->name_zone,
+                'dump_name' => $zone->dump?->name_dump,
+                'available_capacity' => $zone->capacity - $zone->volume,
+            ]);
     }
 
+    // =========================================
+    // REAL-TIME EVENTS (от Echo)
+    // =========================================
 
-private function handleRouteCycle($status): void
-{
-    switch ($status) {
-        case 'free':
-            $this->truck->markAs('to_miner');
-            break;
-        case 'to_miner':
-            $this->truck->markAs('loading');
-            break;
-        case 'loading':
-            $this->truck->markAs('transporting');
-            break;
-        case 'transporting':
-            $this->truck->markAs('unloading');
-            break;
-        case 'unloading':
-            if ($this->currentOrder) {
-                $this->currentOrder->update(['truck_id' => null, 'operator_id' => null]);
-            }
-            
-            $this->truck->markAs('completed');
-            
-            // 🔥 ЭТО НОВОЕ!
-            Cache::put('global_truck_completed', $this->truck->id, 10);
-            
-            $this->loadTruck();
-            break;
-
-        
-    }
-    
-    $this->loadTruck();
-    $this->setNextAction();
-    
-    $message = "🚛 {$this->truck->number} → {$this->nextAction}";
-    Cache::put('realtime_notification', $message, 30); // Только message!
-}
-
-
-
-
-// метод выхода из режимов обслуживания, заправки и ремонта
-public function setInService(): void
-{
-    if (!in_array($this->truck->status, ['maintenance', 'fueling', 'breakdown'])) {
-        session()->flash('error', 'Статус можно менять только после обслуживания!');
-        return;
-    }
-    
-    $this->truck->update(['status' => 'in_service']);
-    
-    Cache::put('realtime_notification', "✅ {$this->truck->number} готов к работе!", 30);
-    $this->loadTruck();
-    
-    session()->flash('success', 'Грузовик готов к рейсам!');
-}
-
-// функция неисправности
-public function reportBreakdown(): void
-{
-    $this->truck->update(['status' => 'breakdown']);
-    
-    Cache::put('realtime_notification', "🚛 {$this->truck->number}: ⚠️ НЕИСПРАВНОСТЬ! Срочно!", 60);
-    $this->loadTruck();
-    
-    session()->flash('warning', 'Неисправность сообщена диспетчеру!');
-}
-
-
-
-    public function checkRealtimeUpdates()
+    #[On('loading-completed')]
+    public function onLoadingCompleted(array $data): void
     {
-        $this->loadTruck();
         
-        // 🔥 Читаем СВОЙ персональный канал
-        $personalNotification = Cache::get("driver_notification_{$this->truckId}");
-        if ($personalNotification) {
-            session()->flash('realtime', $personalNotification);
-            Cache::forget("driver_notification_{$this->truckId}");
-        }
+        $this->loadData();
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => $data['message'] ?? 'Погрузка завершена! Можете отправляться.',
+        ]);
     }
 
+    #[On('route-updated')]
+    public function onRouteUpdated(array $data): void
+    {
+        
+        $this->loadData();
 
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => 'Маршрут обновлён!',
+        ]);
+    }
+
+    #[On('zone-changed')]
+    public function onZoneChanged(array $data): void
+    {
+      
+        $this->loadData();
+
+        $this->dispatch('notify', [
+            'type' => 'info',
+            'message' => $data['message'] ?? 'Зона изменена!',
+        ]);
+    }
 
     public function render()
     {
-        
-        
         return view('livewire.driver-panel');
     }
-
-
-
 }

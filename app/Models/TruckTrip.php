@@ -14,6 +14,7 @@ class TruckTrip extends Model
         'dump_id',
         'mining_order_id',
         'load_volume',
+        'rock_id',
         'started_at',
         'completed_at',
         'zone_id',
@@ -41,6 +42,14 @@ class TruckTrip extends Model
     public function miningOrder()
     {
         return $this->belongsTo(MiningOrder::class);
+    }
+    public function truck()
+    {
+        return $this->belongsTo(Truck::class);
+    }
+    public function rock()
+    {
+        return $this->belongsTo(Rock::class);
     }
 }
 

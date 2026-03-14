@@ -6,6 +6,7 @@ use App\Models\Truck;
 use App\Models\MiningOrder;
 use App\Models\TruckTrip;
 use App\Models\Zone;
+use App\Models\Miner;
 use App\Events\DriverRouteUpdated;
 use App\Events\DispatcherNotification;
 use Illuminate\Support\Facades\DB;
@@ -21,46 +22,83 @@ class RouteAssignmentService
      */
     public function assignForTruck(Truck $truck): void
     {
+        Log::info('assignForTruck START', ['truck_id' => $truck->id, 'status' => $truck->status]);
+
         if ($truck->status !== 'free') {
             Log::info("Грузовик {$truck->id} не свободен", ['status' => $truck->status]);
             return;
         }
 
         DB::transaction(function () use ($truck) {
+            Log::info('Inside transaction');
 
+            // Получаем все активные маршруты с расстояниями
             $routes = MiningOrder::query()
                 ->where('active', 1)
-                ->whereNotNull('rock_id') // Только маршруты с породой
+                ->whereNotNull('rock_id')
                 ->join('miner_dump_distances', function ($join) {
                     $join->on('mining_orders.miner_id', '=', 'miner_dump_distances.miner_id')
-                         ->on('mining_orders.dump_id', '=', 'miner_dump_distances.dump_id');
+                        ->on('mining_orders.dump_id', '=', 'miner_dump_distances.dump_id');
                 })
                 ->select('mining_orders.*', 'miner_dump_distances.travel_time_hours')
                 ->lockForUpdate()
                 ->get();
+
+            Log::info('Routes found', ['count' => $routes->count()]);
 
             if ($routes->isEmpty()) {
                 Log::info("Нет доступных маршрутов для грузовика {$truck->id}");
                 return;
             }
 
+            // Фильтруем маршруты по текущей породе в забое
+            $routesWithCurrentRock = $routes->filter(function($route) {
+                $miner = Miner::with('rocks')->find($route->miner_id);
+                $currentRock = $miner?->rocks->first();
+                
+                if (!$currentRock) {
+                    Log::debug("Нет породы в забое {$route->miner_id}");
+                    return false;
+                }
+                
+                // Порода маршрута должна совпадать с текущей породой в забое
+                $matches = $route->rock_id == $currentRock->id;
+                
+                if (!$matches) {
+                    Log::debug("Порода не совпадает для маршрута {$route->id}", [
+                        'route_rock_id' => $route->rock_id,
+                        'current_rock_id' => $currentRock->id,
+                        'miner_id' => $route->miner_id,
+                    ]);
+                }
+                
+                return $matches;
+            });
+
+            Log::info('Routes after rock filter', ['count' => $routesWithCurrentRock->count()]);
+
+            if ($routesWithCurrentRock->isEmpty()) {
+                Log::info("Нет маршрутов с текущей породой для грузовика {$truck->id}");
+                return;
+            }
+
             // Фильтруем маршруты с доступными зонами
-            $availableRoutes = $routes->filter(function($route) {
+            $availableRoutes = $routesWithCurrentRock->filter(function($route) {
                 if (!$this->canAssignToMiner($route)) {
                     return false;
                 }
                 
-                // Проверяем есть ли доступная зона
                 $zone = $this->selectZone($route);
                 if (!$zone) {
-                    Log::debug("Нет доступной зоны для маршрута {$route->id}");
+                    Log::info("Нет доступной зоны для маршрута {$route->id}");
                     return false;
                 }
                 
-                // Сохраняем найденную зону во временное свойство
                 $route->selected_zone = $zone;
                 return true;
             });
+
+            Log::info('Available routes after filter', ['count' => $availableRoutes->count()]);
 
             if ($availableRoutes->isEmpty()) {
                 Log::info("Нет маршрутов с доступными зонами для грузовика {$truck->id}");
@@ -69,15 +107,26 @@ class RouteAssignmentService
 
             $order = $this->selectByWRR($availableRoutes);
 
+            Log::info('Selected order', ['order_id' => $order?->id, 'zone_id' => $order?->selected_zone?->id]);
+
             if (!$order) {
                 Log::info("Не удалось выбрать маршрут для грузовика {$truck->id}");
                 return;
             }
 
+            Log::info('Before createTripAndAssign', [
+                'order_id' => $order->id,
+                'zone_id' => $order->selected_zone->id
+            ]);
+
             $this->createTripAndAssign($truck, $order, $order->selected_zone);
+
+            Log::info('After createTripAndAssign');
+
             $this->notifyDriver($truck, $order, 'route_assigned');
             $this->notifyDispatcher($truck, $order, 'route_assigned');
 
+            Log::info('assignForTruck END');
         });
     }
 
@@ -169,46 +218,53 @@ class RouteAssignmentService
      */
     protected function createTripAndAssign(Truck $truck, MiningOrder $order, Zone $zone): void
     {
-        Log::debug('createTripAndAssign called', [
+        Log::info('createTripAndAssign START', [
+            'truck_id' => $truck->id,
             'order_id' => $order->id,
             'zone_id' => $zone->id,
-            'old_cursor' => $order->wrr_cursor,
-            'score' => $order->score,
         ]);
 
-        // Создаём truck_trip
-        TruckTrip::create([
-            'truck_id' => $truck->id,
-            'driver_id' => $truck->driver_id,
-            'miner_id' => $order->miner_id,
-            'dump_id' => $order->dump_id,
-            'zone_id' => $zone->id,
-            'mining_order_id' => $order->id,
-            'started_at' => now(),
-        ]);
+        try {
+            // Создаём truck_trip
+            $trip = TruckTrip::create([
+                'truck_id' => $truck->id,
+                'driver_id' => $truck->driver_id,
+                'miner_id' => $order->miner_id,
+                'dump_id' => $order->dump_id,
+                'zone_id' => $zone->id,
+                'mining_order_id' => $order->id,
+                'started_at' => now(),
+            ]);
 
-        // Обновляем маршрут
-        $newCursor = ($order->wrr_cursor ?? 0) + $order->score;
-        
-        $order->update([
-            'truck_id' => $truck->id,
-            'zone_id' => $zone->id,
-            'last_assigned_at' => now(),
-            'wrr_cursor' => $newCursor,
-        ]);
+            Log::info('TruckTrip created', ['trip_id' => $trip->id]);
 
-        Log::debug('createTripAndAssign after update', [
-            'order_id' => $order->id,
-            'zone_id' => $zone->id,
-            'new_cursor' => $newCursor,
-        ]);
+            // Обновляем маршрут через DB - ТОЛЬКО нужные поля!
+            $newCursor = ($order->wrr_cursor ?? 0) + $order->score;
+            
+            DB::table('mining_orders')
+                ->where('id', $order->id)
+                ->update([
+                    'truck_id' => $truck->id,
+                    'zone_id' => $zone->id,
+                    'last_assigned_at' => now(),
+                    'wrr_cursor' => $newCursor,
+                    'updated_at' => now(),
+                ]);
 
-        // Обновляем статус грузовика
-        $truck->update([
-            'status' => 'to_miner',
-        ]);
+            Log::info('MiningOrder updated', ['order_id' => $order->id]);
 
-        Log::info("Маршрут {$order->id} назначен грузовику {$truck->id} в зону {$zone->id}");
+            // Обновляем статус грузовика
+            $truck->update([
+                'status' => 'to_miner',
+            ]);
+
+            Log::info("Маршрут {$order->id} назначен грузовику {$truck->id} в зону {$zone->id}");
+
+        } catch (\Exception $e) {
+            Log::error('createTripAndAssign ERROR', [
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

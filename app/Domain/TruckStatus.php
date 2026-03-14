@@ -4,6 +4,25 @@ namespace App\Domain;
 
 class TruckStatus
 {
+    public static function color(string $status): string
+    {
+        return match ($status) {
+            'free'               => 'success',
+            'to_miner'           => 'primary',
+            'loading'            => 'warning',
+            'transporting'       => 'info',
+            'unloading'          => 'secondary',
+            'completed'          => 'dark',
+            'breakdown'          => 'danger',
+            'maintenance'        => 'secondary',
+            'fueling'            => 'secondary',
+            'waiting_loading'    => 'warning',
+            'waiting_unloading'  => 'warning',
+            'delayed'            => 'warning',
+            default              => 'secondary',
+        };
+    }
+
     public static function label(string $status): string
     {
         return match ($status) {
@@ -28,7 +47,7 @@ class TruckStatus
         return match ($status) {
             'free'              => ['to' => 'to_miner',    'label' => 'Получить маршрут'],
             'to_miner'          => ['to' => 'loading',     'label' => 'Начать загрузку'],
-            'loading'           => ['to' => 'transporting','label' => 'Завершить загрузку'],
+            'loading'           => null,  // Водитель НЕ завершает погрузку - ждёт экскаваторщика
             'transporting'      => ['to' => 'unloading',   'label' => 'Прибыл на выгрузку'],
             'unloading'         => ['to' => 'completed',   'label' => 'Завершить рейс'],
             'waiting_loading'   => ['to' => 'loading',     'label' => 'Начать загрузку'],
@@ -49,7 +68,7 @@ class TruckStatus
             'loading'           => ['transporting', 'waiting_loading', 'breakdown'],
             'transporting'      => ['unloading', 'delayed', 'breakdown'],
             'unloading'         => ['completed', 'waiting_unloading', 'breakdown'],
-            'completed'         => [],
+            'completed'         => ['free'], // Добавлено для автоперехода после завершения рейса
             'waiting_loading'   => ['loading', 'breakdown'],
             'waiting_unloading' => ['unloading', 'breakdown'],
             'delayed'           => ['transporting', 'breakdown'],
