@@ -42,9 +42,29 @@ class DriverPanel extends Component
 
         $this->currentTrip = TruckTrip::where('truck_id', $this->truck->id)
             ->whereNull('completed_at')
-            ->with(['miner.rocks', 'dump', 'zone', 'miningOrder.rock', 'rock'])
+            ->with(['miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock'])
             ->latest()
             ->first();
+
+        // Логирование данных водителя
+        if ($this->currentTrip) {
+            Log::info('DRIVER PANEL DATA', [
+                'truck_id' => $this->truck->id,
+                'truck_number' => $this->truck->number,
+                'truck_status' => $this->truck->status,
+                'trip_id' => $this->currentTrip->id,
+                'trip_miner_id' => $this->currentTrip->miner_id,
+                'trip_miner_name' => $this->currentTrip->miner?->name_miner,
+                'trip_dump_id' => $this->currentTrip->dump_id,
+                'trip_dump_name' => $this->currentTrip->dump?->name_dump,
+                'trip_zone_id' => $this->currentTrip->zone_id,
+                'trip_zone_name' => $this->currentTrip->zone?->name_zone,
+                'trip_rock_id' => $this->currentTrip->rock_id,
+                'trip_rock_name' => $this->currentTrip->rock?->name_rock,
+                'miner_rock_name' => $this->currentTrip->miner?->rocks?->first()?->name_rock,
+                'zone_rock_name' => $this->currentTrip->zone?->rocks?->first()?->name_rock,
+            ]);
+        }
 
         $this->statusColor = TruckStatus::color($this->truck->status);
         $this->statusLabel = TruckStatus::label($this->truck->status);
@@ -78,10 +98,6 @@ class DriverPanel extends Component
 
             $this->loadData();
 
-            $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => 'Маршрут назначен!',
-            ]);
 
         } catch (\Exception $e) {
             Log::error('Route assignment failed', ['error' => $e->getMessage()]);
@@ -276,42 +292,49 @@ class DriverPanel extends Component
     }
 
     // =========================================
-    // REAL-TIME EVENTS (от Echo)
+    // REAL-TIME EVENTS (от Echo через Livewire)
     // =========================================
-
-    #[On('loading-completed')]
-    public function onLoadingCompleted(array $data): void
+        // Слушаем общий канал dispatcher для обновления при любых изменениях статуса
+    #[On('echo:dispatcher,.truck-updated')]
+    public function onTruckUpdated(): void
     {
-        
+        Log::info('DispatcherNotification received in DriverPanel');
         $this->loadData();
+    }
 
+    // DriverRouteUpdated использует public Channel, не private!
+    #[On('echo:driver.{truck.id},.route.updated')]
+    public function onDriverRouteUpdated(): void
+    {
+        Log::info('DriverRouteUpdated event received');
+        $this->loadData();
         $this->dispatch('notify', [
             'type' => 'success',
-            'message' => $data['message'] ?? 'Погрузка завершена! Можете отправляться.',
+            'message' => 'Назначен новый маршрут!',
         ]);
     }
 
-    #[On('route-updated')]
-    public function onRouteUpdated(array $data): void
+    // LoadingCompleted использует PrivateChannel
+    #[On('echo-private:truck.{truck.id},.loading.completed')]
+    public function onLoadingCompleted(): void
     {
-        
+        Log::info('LoadingCompleted event received');
         $this->loadData();
-
         $this->dispatch('notify', [
             'type' => 'success',
-            'message' => 'Маршрут обновлён!',
+            'message' => 'Погрузка завершена! Можете отправляться.',
         ]);
     }
 
-    #[On('zone-changed')]
-    public function onZoneChanged(array $data): void
+    // ZoneChanged использует PrivateChannel('driver.{truck.id}') с broadcastAs 'zone.changed'
+    #[On('echo-private:driver.{truck.id},.zone.changed')]
+    public function onZoneChangedEcho(): void
     {
-      
+        Log::info('ZoneChanged event received via Echo');
         $this->loadData();
-
         $this->dispatch('notify', [
             'type' => 'info',
-            'message' => $data['message'] ?? 'Зона изменена!',
+            'message' => 'Зона изменена!',
         ]);
     }
 

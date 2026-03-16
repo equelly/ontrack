@@ -60,7 +60,7 @@ class ExcavatorController extends Controller
             return response()->json(['success' => false, 'message' => 'Экскаватор не найден или неактивен']);
         }
 
-            // Сохраняем привязку оператора к экскаватору
+        // Сохраняем привязку оператора к экскаватору
         Auth::user()->update(['miner_id' => $miner->id]);
 
         return response()->json([
@@ -81,15 +81,35 @@ class ExcavatorController extends Controller
 
         $miner = Miner::find($request->miner_id);
 
+        // Получаем старую породу
+        $oldRock = $miner->rocks->first();
+
         $miner->rocks()->sync([$request->rock_id]);
         $miner->update([
             'last_updated_at' => now(),
             'last_updated_by' => Auth::id()
         ]);
 
+        // Если порода изменилась - обновляем rock_id в заказах (зону НЕ меняем)
+        $updatedCount = 0;
+        if (!$oldRock || $oldRock->id != $request->rock_id) {
+            $routeService = app(\App\Services\RouteAssignmentService::class);
+            $updatedCount = $routeService->updateRockForMinerChange(
+                $miner->id,
+                $request->rock_id
+            );
+
+            Log::info("Rock changed for miner {$miner->id}", [
+                'old_rock' => $oldRock?->name_rock,
+                'new_rock' => $miner->fresh()->rocks->first()?->name_rock,
+                'updated_orders' => $updatedCount,
+            ]);
+        }
+
         return response()->json([
             'success' => true,
-            'miner' => $miner->fresh()->load('rocks')
+            'miner' => $miner->fresh()->load('rocks'),
+            'updated_orders' => $updatedCount,
         ]);
     }
 
@@ -146,11 +166,69 @@ class ExcavatorController extends Controller
             ], 400);
         }
 
-        // Обновляем рейс
+        // Получаем текущую породу в забое (фактическая загруженная порода)
+        $actualRock = $trip->miner?->rocks?->first();
+
+        // Обновляем рейс - записываем ФАКТИЧЕСКУЮ породу
         $trip->update([
             'load_volume' => $volume,
             'loaded_at' => now(),
+            'rock_id' => $actualRock?->id, // Фактическая порода из забоя
         ]);
+
+        // Проверяем: соответствует ли зона загруженной породе?
+        $zone = $trip->zone;
+        $zoneReassigned = false;
+        $newZoneName = $zone?->name_zone;
+
+        if ($actualRock && $zone) {
+            // Проверяем, есть ли эта порода в текущей зоне
+            $zoneHasRock = $zone->rocks()->where('rocks.id', $actualRock->id)->exists();
+
+            if (!$zoneHasRock) {
+                Log::info("Zone {$zone->id} doesn't have rock {$actualRock->id}, looking for new zone");
+
+                // Ищем новую зону для этой породы
+                $routeService = app(\App\Services\RouteAssignmentService::class);
+                $newZone = $routeService->selectZoneForRock($trip->dump_id, $actualRock->id);
+
+                if ($newZone) {
+                    // Обновляем зону
+                    $trip->update(['zone_id' => $newZone->id]);
+                    if ($trip->miningOrder) {
+                        $trip->miningOrder->update([
+                            'zone_id' => $newZone->id,
+                            'rock_id' => $actualRock->id,
+                        ]);
+                    }
+
+                    $zoneReassigned = true;
+                    $newZoneName = $newZone->name_zone;
+
+                    Log::info("Zone reassigned for truck {$truck->id}", [
+                        'old_zone' => $zone->name_zone,
+                        'new_zone' => $newZone->name_zone,
+                        'rock' => $actualRock->name_rock,
+                    ]);
+                } else {
+                    // Нет зоны для этой породы - уведомляем диспетчера
+                    event(new \App\Events\DispatcherNotification(
+                        $truck->id,
+                        'no_zone_for_rock',
+                        [
+                            'trip_id' => $trip->id,
+                            'rock_id' => $actualRock->id,
+                            'rock_name' => $actualRock->name_rock,
+                            'dump_id' => $trip->dump_id,
+                            'current_zone_id' => $zone->id,
+                            'message' => "Нет зоны для породы {$actualRock->name_rock}",
+                        ]
+                    ));
+
+                    Log::warning("No zone for rock {$actualRock->id} in dump {$trip->dump_id}");
+                }
+            }
+        }
 
         // Меняем статус грузовика
         $truck->update([
@@ -158,27 +236,39 @@ class ExcavatorController extends Controller
             'current_load' => $volume,
         ]);
 
-        // Получаем информацию о зоне и дампе
-        $zone = $trip->miningOrder?->zone;
+        // Получаем актуальную информацию о зоне и дампе
+        $trip->refresh();
+        $finalZone = $trip->zone;
         $dump = $trip->miningOrder?->dump;
 
         // Отправляем уведомление водителю
         event(new LoadingCompleted(
             $truck,
-            $zone?->name_zone,
+            $finalZone?->name_zone,
             $dump?->name_dump
         ));
 
         Log::info("Loading completed for truck {$truck->id}", [
             'volume' => $volume,
-            'zone' => $zone?->name_zone,
+            'zone' => $finalZone?->name_zone,
             'dump' => $dump?->name_dump,
+            'actual_rock_id' => $actualRock?->id,
+            'actual_rock_name' => $actualRock?->name_rock,
+            'zone_reassigned' => $zoneReassigned,
         ]);
+
+        $message = "Погрузка завершена. Объём: {$volume} т";
+        if ($zoneReassigned) {
+            $message .= ". Зона изменена на {$newZoneName}";
+        }
 
         return response()->json([
             'success' => true,
-            'message' => "Погрузка завершена. Объём: {$volume} т",
+            'message' => $message,
             'volume' => $volume,
+            'rock_name' => $actualRock?->name_rock,
+            'zone_reassigned' => $zoneReassigned,
+            'new_zone' => $newZoneName,
         ]);
     }
 
@@ -249,4 +339,5 @@ class ExcavatorController extends Controller
             return '2-я смена';
         }
     }
+    
 }

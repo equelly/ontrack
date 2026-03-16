@@ -273,8 +273,8 @@
 
                     setTimeout(() => {
                         toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 300);
-                    }, 5000);
+                        setTimeout(() => toast.remove(), 3000);
+                    }, 10000);
                 });
         }
 
@@ -303,7 +303,7 @@
 
                     setTimeout(() => {
                         toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 300);
+                        setTimeout(() => toast.remove(), 3000);
                     }, 5000);
                 });
 

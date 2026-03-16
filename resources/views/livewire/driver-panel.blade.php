@@ -68,19 +68,28 @@
                                     <div class="border rounded p-2 border-info">
                                         <small class="text-muted d-block">Порода</small>
                                         @php
-                                            // После загрузки - порода из trip, до загрузки - из забоя
-                                            $rock = $currentTrip->rock ?? $currentTrip->miner?->rocks?->first();
-                                        @endphp
-                                        @if($rock)
-                                            <strong class="text-info">{{ $rock->name_rock }}</strong>
-                                            @if($currentTrip->rock_id)
-                                                <small class="text-success d-block">✓ Загружена</small>
-                                            @else
-                                                <small class="text-muted d-block">Текущая в забое</small>
-                                            @endif
+                                        // Статусы "до загрузки": to_miner, loading
+                                        // Статусы "после загрузки": transporting, unloading
+                                        $isLoaded = in_array($truck->status, ['transporting', 'unloading']);
+
+                                        if ($isLoaded && $currentTrip->rock_id) {
+                                            // После загрузки - порода из trip (фактическая)
+                                            $rock = $currentTrip->rock;
+                                            $rockSource = 'loaded';
+                                        } else {
+                                            // До загрузки - порода из MiningOrder (назначение)
+                                            $rock = $currentTrip->miningOrder?->rock;
+                                            $rockSource = 'planned';
+                                        }
+                                    @endphp
+                                    @if($rock)
+                                        <strong class="text-info">{{ $rock->name_rock }}</strong>
+                                        @if($isLoaded)
+                                            <small class="text-success d-block">✓ Загружена</small>
                                         @else
-                                            <span class="text-warning">Не определена</span>
+                                            <small class="text-muted d-block">По маршруту</small>
                                         @endif
+                                    @endif
                                     </div>
                                 </div>
                             </div>

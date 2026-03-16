@@ -3,15 +3,14 @@
 namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
-
-class DispatcherNotification implements ShouldBroadcastNow
+class DispatcherNotification implements ShouldBroadcast
 {
-    use Dispatchable, SerializesModels;
+    use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public int $truckId;
     public string $status;
@@ -27,27 +26,25 @@ class DispatcherNotification implements ShouldBroadcastNow
         $this->payload = $payload;
     }
 
-    public function broadcastOn(): Channel
+    public function broadcastOn(): array
     {
-        return new Channel('dispatcher');  // имя канала
-    }
-
-    public function broadcastAs(): string
-    {
-        return 'DispatcherNotification';  // Имя класса
+        return [
+            new Channel('dispatcher'),
+        ];
     }
 
     public function broadcastWith(): array
     {
-        Log::debug('DispatcherNotification broadcastWith', [
-        'truck_id' => $this->truckId,
-        'status' => $this->status,
-    ]);
         return [
             'truck_id' => $this->truckId,
-            'status'   => $this->status,
-            'data'     => $this->payload,
-            'ts'       => now()->toDateTimeString(),
+            'status' => $this->status,
+            'payload' => $this->payload,
+            'time' => now()->format('H:i:s')
         ];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'truck-updated';
     }
 }

@@ -1,13 +1,19 @@
-import 'bootstrap/dist/css/bootstrap.min.css';
+// bootstrap.js
+
+// ---------------------------
+// CSS & Bootstrap
+// ---------------------------
+// Bootstrap CSS подключен через CDN в layouts/app.blade.php
+// import 'bootstrap/dist/css/bootstrap.min.css';
 import * as bootstrap from 'bootstrap';
 
 // ---------------------------
-// Alpine.js - НЕ запускаем вручную!
-// Livewire v3 уже включает Alpine и сам его запускает
-// Просто делаем Alpine доступным глобально для пользовательских функций
+// Alpine.js - НЕ ЗАПУСКАЕМ! Livewire v3 сам управляет Alpine
 // ---------------------------
 import Alpine from 'alpinejs';
 window.Alpine = Alpine;
+// Alpine.start(); // ← ЗАКОММЕНТИРОВАНО! Livewire v3 запускает Alpine автоматически
+
 // ---------------------------
 // Axios
 // ---------------------------

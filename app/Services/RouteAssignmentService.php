@@ -82,19 +82,29 @@ class RouteAssignmentService
                 return;
             }
 
-            // Фильтруем маршруты с доступными зонами
+            // Фильтруем маршруты с доступными зонами (используем ТЕКУЩУЮ породу в забое!)
             $availableRoutes = $routesWithCurrentRock->filter(function($route) {
                 if (!$this->canAssignToMiner($route)) {
                     return false;
                 }
                 
-                $zone = $this->selectZone($route);
+                // Получаем ТЕКУЩУЮ породу в забое
+                $miner = Miner::with('rocks')->find($route->miner_id);
+                $currentRock = $miner?->rocks->first();
+                
+                if (!$currentRock) {
+                    return false;
+                }
+                
+                // Выбираем зону по ТЕКУЩЕЙ породе, а не по породе из заказа!
+                $zone = $this->selectZoneForRock($route->dump_id, $currentRock->id);
                 if (!$zone) {
-                    Log::info("Нет доступной зоны для маршрута {$route->id}");
+                    Log::info("Нет доступной зоны для маршрута {$route->id} с породой {$currentRock->id}");
                     return false;
                 }
                 
                 $route->selected_zone = $zone;
+                $route->current_rock_id = $currentRock->id;
                 return true;
             });
 
@@ -116,10 +126,11 @@ class RouteAssignmentService
 
             Log::info('Before createTripAndAssign', [
                 'order_id' => $order->id,
-                'zone_id' => $order->selected_zone->id
+                'zone_id' => $order->selected_zone->id,
+                'current_rock_id' => $order->current_rock_id ?? null,
             ]);
 
-            $this->createTripAndAssign($truck, $order, $order->selected_zone);
+            $this->createTripAndAssign($truck, $order, $order->selected_zone, $order->current_rock_id ?? null);
 
             Log::info('After createTripAndAssign');
 
@@ -131,18 +142,27 @@ class RouteAssignmentService
     }
 
     /**
-     * Выбрать зону для маршрута
+     * Выбрать зону для КОНКРЕТНОЙ породы (текущей в забое)
+     */
+    public function selectZoneForRock(int $dumpId, int $rockId): ?Zone
+    {
+        return Zone::where('dump_id', $dumpId)
+            ->where('delivery', true)
+            ->whereHas('rocks', function($q) use ($rockId) {
+                $q->where('rocks.id', $rockId);
+            })
+            ->whereRaw('volume < capacity')
+            ->orderBy('volume', 'asc')
+            ->first();
+    }
+
+    /**
+     * Выбрать зону для маршрута (DEPRECATED - используйте selectZoneForRock)
+     * @deprecated
      */
     protected function selectZone(MiningOrder $order): ?Zone
     {
-        return Zone::where('dump_id', $order->dump_id)
-            ->where('delivery', true)
-            ->whereHas('rocks', function($q) use ($order) {
-                $q->where('rocks.id', $order->rock_id);
-            })
-            ->whereRaw('volume < capacity')
-            ->orderBy('volume', 'asc') // Меньше заполнена = выше приоритет
-            ->first();
+        return $this->selectZoneForRock($order->dump_id, $order->rock_id);
     }
 
     /**
@@ -150,18 +170,14 @@ class RouteAssignmentService
      */
     public function reassignTruck(Truck $truck, MiningOrder $newOrder): bool
     {
-        // Нельзя переназначить если идёт загрузка или разгрузка
         if (in_array($truck->status, ['loading', 'unloading'])) {
             Log::warning("Нельзя переназначить грузовик {$truck->id} в статусе {$truck->status}");
             return false;
         }
 
         return DB::transaction(function () use ($truck, $newOrder) {
-
-            // 1. Удаляем текущий trip если есть
             $this->cancelCurrentTrip($truck);
 
-            // 2. Получаем travel_time для нового маршрута
             $newOrderWithTime = MiningOrder::query()
                 ->where('mining_orders.id', $newOrder->id)
                 ->join('miner_dump_distances', function ($join) {
@@ -171,26 +187,20 @@ class RouteAssignmentService
                 ->select('mining_orders.*', 'miner_dump_distances.travel_time_hours')
                 ->first();
 
-            // 3. Проверяем нагрузку на miner нового маршрута
             if (!$this->canAssignToMiner($newOrderWithTime)) {
                 Log::warning("Miner {$newOrder->miner_id} перегружен, переназначение невозможно");
                 return false;
             }
 
-            // 4. Выбираем зону
             $zone = $this->selectZone($newOrder);
             if (!$zone) {
                 Log::warning("Нет доступной зоны для маршрута {$newOrder->id}");
                 return false;
             }
 
-            // 5. Создаём новый trip и назначаем
             $this->createTripAndAssign($truck, $newOrder, $zone);
 
-            // 6. Уведомляем водителя о НОВОМ маршруте
             $this->notifyDriver($truck, $newOrder, 'route_reassigned');
-
-            // 7. Уведомляем диспетчера
             $this->notifyDispatcher($truck, $newOrder, 'route_reassigned');
 
             return true;
@@ -198,7 +208,7 @@ class RouteAssignmentService
     }
 
     /**
-     * Отменить текущее назначение (breakdown или при переназначении)
+     * Отменить текущее назначение
      */
     public function cancelCurrentTrip(Truck $truck): void
     {
@@ -215,30 +225,34 @@ class RouteAssignmentService
 
     /**
      * Создать trip и назначить маршрут
+     * rock_id НЕ записываем - порода будет установлена при завершении погрузки
      */
-    protected function createTripAndAssign(Truck $truck, MiningOrder $order, Zone $zone): void
+    protected function createTripAndAssign(Truck $truck, MiningOrder $order, Zone $zone, ?int $rockId = null): void
     {
         Log::info('createTripAndAssign START', [
             'truck_id' => $truck->id,
             'order_id' => $order->id,
             'zone_id' => $zone->id,
+            'order_rock_id' => $order->rock_id, // Порода из назначения (для логирования)
         ]);
 
         try {
-            // Создаём truck_trip
+            // rock_id = NULL - порода будет установлена при завершении погрузки
+            // До загрузки водитель видит породу из miningOrder->rock (планируемая)
+            
             $trip = TruckTrip::create([
                 'truck_id' => $truck->id,
                 'driver_id' => $truck->driver_id,
                 'miner_id' => $order->miner_id,
                 'dump_id' => $order->dump_id,
                 'zone_id' => $zone->id,
+                'rock_id' => null,  // NULL - порода ещё не загружена!
                 'mining_order_id' => $order->id,
                 'started_at' => now(),
             ]);
 
-            Log::info('TruckTrip created', ['trip_id' => $trip->id]);
+            Log::info('TruckTrip created', ['trip_id' => $trip->id, 'rock_id' => null]);
 
-            // Обновляем маршрут через DB - ТОЛЬКО нужные поля!
             $newCursor = ($order->wrr_cursor ?? 0) + $order->score;
             
             DB::table('mining_orders')
@@ -253,22 +267,17 @@ class RouteAssignmentService
 
             Log::info('MiningOrder updated', ['order_id' => $order->id]);
 
-            // Обновляем статус грузовика
-            $truck->update([
-                'status' => 'to_miner',
-            ]);
+            $truck->update(['status' => 'to_miner']);
 
             Log::info("Маршрут {$order->id} назначен грузовику {$truck->id} в зону {$zone->id}");
 
         } catch (\Exception $e) {
-            Log::error('createTripAndAssign ERROR', [
-                'message' => $e->getMessage(),
-            ]);
+            Log::error('createTripAndAssign ERROR', ['message' => $e->getMessage()]);
         }
     }
 
     /**
-     * Получить доступные зоны для переназначения водителем
+     * Получить доступные зоны для переназначения
      */
     public function getAvailableZonesForReassign(int $rockId, ?int $excludeZoneId = null): array
     {
@@ -289,7 +298,7 @@ class RouteAssignmentService
     }
 
     /**
-     * Переназначить зону (водителем)
+     * Переназначить зону
      */
     public function reassignZone(Truck $truck, int $newZoneId): bool
     {
@@ -329,6 +338,68 @@ class RouteAssignmentService
     }
 
     /**
+     * Обновить породу в заказах при смене породы в забое
+     * НЕ меняет зону - только обновляет rock_id и уведомляет диспетчера
+     */
+    public function updateRockForMinerChange(int $minerId, int $newRockId): int
+    {
+        Log::info("updateRockForMinerChange START", [
+            'miner_id' => $minerId,
+            'new_rock_id' => $newRockId,
+        ]);
+
+        // Находим все грузовики у этого экскаватора со статусами "до загрузки"
+        $trucks = Truck::whereIn('status', ['to_miner', 'loading'])
+            ->whereHas('trips', function ($q) use ($minerId) {
+                $q->where('miner_id', $minerId)
+                  ->whereNull('completed_at');
+            })
+            ->with(['trips' => function ($q) use ($minerId) {
+                $q->where('miner_id', $minerId)
+                  ->whereNull('completed_at')
+                  ->with('miningOrder');
+            }])
+            ->get();
+
+        Log::info("Found trucks for rock update", ['count' => $trucks->count()]);
+
+        $updatedCount = 0;
+
+        foreach ($trucks as $truck) {
+            $trip = $truck->trips->first();
+            if (!$trip || !$trip->miningOrder) {
+                continue;
+            }
+
+            // Обновляем только породу в заказе, зону НЕ меняем
+            $trip->miningOrder->update([
+                'rock_id' => $newRockId,
+            ]);
+
+            Log::info("Truck {$truck->id}: rock_id updated to {$newRockId}");
+
+            // Уведомляем диспетчера о смене породы
+            event(new DispatcherNotification(
+                $truck->id,
+                'rock_changed',
+                [
+                    'miner_id' => $minerId,
+                    'old_rock_id' => $trip->miningOrder->getOriginal('rock_id'),
+                    'new_rock_id' => $newRockId,
+                    'zone_id' => $trip->zone_id,
+                    'message' => "Порода в забое изменилась",
+                ]
+            ));
+
+            $updatedCount++;
+        }
+
+        Log::info("updateRockForMinerChange END", ['updated' => $updatedCount]);
+
+        return $updatedCount;
+    }
+
+    /**
      * Проверка: можно ли назначить на miner
      */
     protected function canAssignToMiner($route): bool
@@ -345,7 +416,7 @@ class RouteAssignmentService
     }
 
     /**
-     * Количество грузовиков на miner (to_miner + loading)
+     * Количество грузовиков на miner
      */
     protected function getCountOnMiner(int $minerId): int
     {
@@ -394,6 +465,7 @@ class RouteAssignmentService
         event(new DriverRouteUpdated(
             (int) $truck->driver_id,
             [
+                'truck_id' => $truck->id,  // ВАЖНО: truck_id для канала вещания!
                 'action' => $action,
                 'order_id' => $order->id,
                 'miner_id' => $order->miner_id,
@@ -403,7 +475,7 @@ class RouteAssignmentService
             ]
         ));
 
-        Log::info("DriverRouteUpdated ({$action}) sent to driver {$truck->driver_id}");
+        Log::info("DriverRouteUpdated ({$action}) sent to driver {$truck->driver_id} for truck {$truck->id}");
     }
 
     /**

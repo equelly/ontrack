@@ -143,16 +143,30 @@ Route::get('/', [App\Http\Controllers\IndexController::class, 'index'])->name('w
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
 
 // =========================================
-// МАРШРУТЫ ДИСПЕТЧЕРА
+// МАРШРУТЫ ДИСПЕТЧЕРА обыяный js
 // =========================================
-Route::middleware(['auth', 'role:dispatcher'])->group(function () {
-    Route::get('/dispatcher', [App\Http\Controllers\DispatcherController::class, 'index'])->name('dispatcher.index');
+// Route::middleware(['auth', 'role:dispatcher'])->group(function () {
+//     Route::get('/dispatcher', [App\Http\Controllers\DispatcherController::class, 'index'])->name('dispatcher.index');
     
-    // Управление грузовиками
-    Route::post('/dispatcher/truck/{truck}/reassign', [App\Http\Controllers\DispatcherController::class, 'reassign']);
-    Route::post('/dispatcher/truck/{truck}/breakdown', [App\Http\Controllers\DispatcherController::class, 'breakdown']);
-    Route::post('/dispatcher/truck/{truck}/maintenance', [App\Http\Controllers\DispatcherController::class, 'maintenance']);
-    Route::post('/dispatcher/truck/{truck}/fueling', [App\Http\Controllers\DispatcherController::class, 'fueling']);
-    Route::post('/dispatcher/truck/{truck}/free', [App\Http\Controllers\DispatcherController::class, 'setFree']);
-    Route::get('/dispatcher/routes', [App\Http\Controllers\DispatcherController::class, 'availableRoutes']);
-});
+//     // Управление грузовиками
+//     Route::post('/dispatcher/truck/{truck}/reassign', [App\Http\Controllers\DispatcherController::class, 'reassign']);
+//     Route::post('/dispatcher/truck/{truck}/breakdown', [App\Http\Controllers\DispatcherController::class, 'breakdown']);
+//     Route::post('/dispatcher/truck/{truck}/maintenance', [App\Http\Controllers\DispatcherController::class, 'maintenance']);
+//     Route::post('/dispatcher/truck/{truck}/fueling', [App\Http\Controllers\DispatcherController::class, 'fueling']);
+//     Route::post('/dispatcher/truck/{truck}/free', [App\Http\Controllers\DispatcherController::class, 'setFree']);
+//     Route::get('/dispatcher/routes', [App\Http\Controllers\DispatcherController::class, 'availableRoutes']);
+// });
+    // =========================================
+    // МАРШРУТЫ ДИСПЕТЧЕРА
+    // =========================================
+    Route::middleware(['auth', 'role:dispatcher,admin'])->group(function () {
+        Route::get('/dispatcher', function () {
+            return view('dispatcher.index');
+        })->name('dispatcher.index');
+
+        // API маршруты для AJAX запросов (если нужны)
+        Route::post('/dispatcher/assign', [DispatcherController::class, 'assignRoute']);
+        Route::post('/dispatcher/assign-all', [DispatcherController::class, 'assignAll']);
+        Route::get('/dispatcher/orders/{order}/zones', [DispatcherController::class, 'getAvailableZones']);
+        Route::put('/dispatcher/zones/{zone}', [DispatcherController::class, 'updateZone']);
+    });

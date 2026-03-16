@@ -83,7 +83,7 @@ class TruckStatusService
             'loading'           => ['transporting', 'waiting_loading', 'breakdown'],
             'transporting'      => ['unloading', 'delayed', 'breakdown'],
             'unloading'         => ['completed', 'waiting_unloading', 'breakdown'],
-            'completed'         => ['free'], // для автоперехода
+            'completed'         => [],
             'waiting_loading'   => ['loading', 'breakdown'],
             'waiting_unloading' => ['unloading', 'breakdown'],
             'delayed'           => ['transporting', 'breakdown'],
@@ -92,13 +92,7 @@ class TruckStatusService
             'fueling'           => ['free'],
         ];
 
-        // Поломка возможна из любого статуса
         if ($to === 'breakdown') {
-            return true;
-        }
-        
-        // Delayed возможен из транзитных статусов
-        if ($to === 'delayed' && in_array($from, ['to_miner', 'transporting'])) {
             return true;
         }
 
@@ -213,9 +207,13 @@ class TruckStatusService
         ));
     }
 
-    protected function notifyDriver(int $driverId, array $payload): void
+    protected function notifyDriver(Truck $truck, array $payload): void
     {
-        event(new DriverRouteUpdated($driverId, $payload));
+        // Передаём truck_id для правильного канала вещания
+        $payload['truck_id'] = $truck->id;
+        $payload['driver_id'] = $truck->driver_id;
+        
+        event(new DriverRouteUpdated($truck->driver_id, $payload));
     }
 
     /* =========================
@@ -236,7 +234,7 @@ class TruckStatusService
 
         // 3. Уведомляем водителя
         if ($truck->driver_id) {
-            $this->notifyDriver($truck->driver_id, [
+            $this->notifyDriver($truck, [
                 'action'   => 'route_cancelled',
                 'reason'   => 'truck_breakdown',
                 'truck_id' => $truck->id,
@@ -309,7 +307,7 @@ class TruckStatusService
 
         // 5. Уведомляем водителя
         if ($truck->driver_id) {
-            $this->notifyDriver($truck->driver_id, [
+            $this->notifyDriver($truck, [
                 'action' => 'route_completed',
             ]);
         }
@@ -342,7 +340,7 @@ class TruckStatusService
         }
 
         if ($truck->driver_id) {
-            $this->notifyDriver($truck->driver_id, [
+            $this->notifyDriver($truck, [
                 'action' => 'planned_stop',
                 'type'   => $type,
             ]);
