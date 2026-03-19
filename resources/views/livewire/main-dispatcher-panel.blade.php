@@ -84,9 +84,11 @@
                             'transporting' => ['label' => 'Перевозка', 'class' => 'bg-primary'],
                             'unloading' => ['label' => 'Разгрузка', 'class' => 'bg-secondary'],
                             'breakdown' => ['label' => 'Поломка', 'class' => 'bg-danger'],
+                            'delayed' => ['label' => 'Задержка', 'class' => 'bg-warning'],
                         ];
                         $status = $statusLabels[$truck->status] ?? ['label' => $truck->status, 'class' => 'bg-secondary'];
-                        $trip = $truck->trips->whereNull('completed_at')->first();
+                        // После latest() в запросе - первый = последний активный trip
+                        $trip = $truck->trips->first();
                         
                         // Определяем породу грузовика
                         $truckRock = null;
@@ -357,13 +359,17 @@
                 });
             }
 
-            // WebSocket для обновлений диспетчера
-            // Используем Echo напрямую для прослушивания канала dispatcher
+            // WebSocket для обновлений
             if (window.Echo) {
                 window.Echo.channel('dispatcher')
-                    .listen('.truck-updated', (data) => {
-                        console.log('Dispatcher: truck-updated event received', data);
-                        // Livewire автоматически обновит через #[On('truck-updated')]
+                    .listen('truck-updated', (data) => {
+                        console.log('Truck status updated:', data);
+
+                        // Обновляем Livewire компонент
+                        const component = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
+                        if (component) {
+                            component.call('loadData');
+                        }
                     });
             }
         });

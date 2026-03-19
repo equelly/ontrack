@@ -24,11 +24,17 @@ class TruckTrip extends Model
         'started_at'   => 'datetime',
         'completed_at' => 'datetime',
     ];
+
+    public function truck()
+    {
+        return $this->belongsTo(Truck::class);
+    }
+
     public function zone()
     {
         return $this->belongsTo(Zone::class);
     }
-    // 
+
     public function miner()
     {
         return $this->belongsTo(Miner::class);
@@ -43,13 +49,57 @@ class TruckTrip extends Model
     {
         return $this->belongsTo(MiningOrder::class);
     }
-    public function truck()
-    {
-        return $this->belongsTo(Truck::class);
-    }
+
     public function rock()
     {
         return $this->belongsTo(Rock::class);
     }
-}
 
+    /**
+     * Все паузы рейса
+     */
+    public function pauses()
+    {
+        return $this->hasMany(TripPause::class, 'truck_trip_id');
+    }
+
+    /**
+     * Активная (незавершённая) пауза
+     */
+    public function activePause()
+    {
+        return $this->hasOne(TripPause::class, 'truck_trip_id')->whereNull('ended_at');
+    }
+
+    /**
+     * Есть ли активная пауза?
+     */
+    public function isPaused(): bool
+    {
+        return $this->activePause()->exists();
+    }
+
+    /**
+     * Общее время всех пауз (для таймера)
+     */
+    public function getTotalPauseSeconds(): int
+    {
+        $total = 0;
+
+        // Используем загруженную коллекцию если есть
+        $pauses = $this->relationLoaded('pauses')
+            ? $this->pauses
+            : $this->pauses()->get();
+
+        foreach ($pauses as $pause) {
+            if ($pause->ended_at) {
+                $total += $pause->duration_seconds;
+            } else {
+                // Активная пауза - считаем текущую длительность
+                $total += $pause->getCurrentDuration();
+            }
+        }
+
+        return (int) $total;
+    }
+}

@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Domain\TruckStatus;
 use App\Models\Truck;
 use App\Models\TruckTrip;
+use App\Models\TripPause;
 use App\Models\Zone;
 use App\Services\TruckStatusService;
 use App\Services\RouteAssignmentService;
@@ -16,16 +17,21 @@ class DriverPanel extends Component
 {
     public Truck $truck;
     public ?TruckTrip $currentTrip = null;
+    public ?TripPause $activePause = null;
     public array $stats = [];
     public string $statusColor = 'secondary';
     public string $statusLabel = '';
 
-    // Время начала рейса для таймера
+    // Данные для таймера
     public ?string $tripStartedAt = null;
+    public ?string $pauseStartedAt = null;
+    public ?string $pauseType = null;
+    public int $totalPauseSeconds = 0;
 
     // Модальные окна
     public bool $showZoneModal = false;
     public bool $showDelayModal = false;
+    public bool $showBreakdownModal = false; // Для выбора: продолжить или отменить
     public string $delayReason = 'traffic';
     public int $delayMinutes = 15;
     public $availableZones = [];
@@ -42,35 +48,54 @@ class DriverPanel extends Component
 
         $this->currentTrip = TruckTrip::where('truck_id', $this->truck->id)
             ->whereNull('completed_at')
-            ->with(['miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock'])
+            ->with(['miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock', 'pauses'])
             ->latest()
             ->first();
 
-        // Логирование данных водителя
+        // Находим активную паузу
+        $this->activePause = null;
         if ($this->currentTrip) {
-            Log::info('DRIVER PANEL DATA', [
-                'truck_id' => $this->truck->id,
-                'truck_number' => $this->truck->number,
-                'truck_status' => $this->truck->status,
-                'trip_id' => $this->currentTrip->id,
-                'trip_miner_id' => $this->currentTrip->miner_id,
-                'trip_miner_name' => $this->currentTrip->miner?->name_miner,
-                'trip_dump_id' => $this->currentTrip->dump_id,
-                'trip_dump_name' => $this->currentTrip->dump?->name_dump,
-                'trip_zone_id' => $this->currentTrip->zone_id,
-                'trip_zone_name' => $this->currentTrip->zone?->name_zone,
-                'trip_rock_id' => $this->currentTrip->rock_id,
-                'trip_rock_name' => $this->currentTrip->rock?->name_rock,
-                'miner_rock_name' => $this->currentTrip->miner?->rocks?->first()?->name_rock,
-                'zone_rock_name' => $this->currentTrip->zone?->rocks?->first()?->name_rock,
-            ]);
+            $this->activePause = $this->currentTrip->pauses
+                ->whereNull('ended_at')
+                ->first();
         }
+
+        // Данные для таймера
+        $this->tripStartedAt = $this->currentTrip?->started_at?->toIso8601String();
+        $this->pauseStartedAt = $this->activePause?->started_at?->toIso8601String();
+        $this->pauseType = $this->activePause?->type;
+
+        // Считаем общее время пауз (завершённые + текущая)
+        $this->totalPauseSeconds = $this->currentTrip?->getTotalPauseSeconds() ?? 0;
 
         $this->statusColor = TruckStatus::color($this->truck->status);
         $this->statusLabel = TruckStatus::label($this->truck->status);
 
-        // Устанавливаем время начала рейса для таймера
-        $this->tripStartedAt = $this->currentTrip?->started_at?->toIso8601String();
+        Log::info('DriverPanel loadData', [
+            'truck_id' => $this->truck->id,
+            'truck_number' => $this->truck->number,
+            'truck_status' => $this->truck->status,
+            '--- TRIP ---' => '---',
+            'trip_id' => $this->currentTrip?->id,
+            'trip_miner_id' => $this->currentTrip?->miner_id,
+            'trip_miner_name' => $this->currentTrip?->miner?->name_miner,
+            'trip_dump_id' => $this->currentTrip?->dump_id,
+            'trip_dump_name' => $this->currentTrip?->dump?->name_dump,
+            'trip_zone_id' => $this->currentTrip?->zone_id,
+            'trip_zone_name' => $this->currentTrip?->zone?->name_zone,
+            'trip_rock_id' => $this->currentTrip?->rock_id,
+            'trip_rock_name' => $this->currentTrip?->rock?->name_rock,
+            '--- MINER ROCK ---' => '---',
+            'miner_rock_name' => $this->currentTrip?->miner?->rocks?->first()?->name_rock,
+            '--- ORDER ---' => '---',
+            'order_id' => $this->currentTrip?->miningOrder?->id,
+            'order_rock_id' => $this->currentTrip?->miningOrder?->rock_id,
+            'order_rock_name' => $this->currentTrip?->miningOrder?->rock?->name_rock,
+            '--- PAUSE ---' => '---',
+            'pause_started_at' => $this->pauseStartedAt,
+            'pause_type' => $this->pauseType,
+            'total_pause_seconds' => $this->totalPauseSeconds,
+        ]);
 
         $this->stats = [
             'total_trips' => TruckTrip::where('truck_id', $this->truck->id)
@@ -95,10 +120,7 @@ class DriverPanel extends Component
         try {
             $routeService = app(RouteAssignmentService::class);
             $routeService->assignForTruck($this->truck);
-
             $this->loadData();
-
-
         } catch (\Exception $e) {
             Log::error('Route assignment failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
@@ -169,6 +191,11 @@ class DriverPanel extends Component
             $statusService = app(TruckStatusService::class);
             $statusService->changeStatus($this->truck, 'breakdown');
             $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => 'Поломка зарегистрирована. Маршрут сохранён.',
+            ]);
         } catch (\Exception $e) {
             Log::error('Report breakdown failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
@@ -178,14 +205,68 @@ class DriverPanel extends Component
         }
     }
 
-    public function reportBreakdownResolved(): void
+    /**
+     * Поломка устранена - продолжить рейс
+     */
+    public function resolveBreakdownContinue(): void
     {
         try {
             $statusService = app(TruckStatusService::class);
-            $statusService->changeStatus($this->truck, 'free');
+            $statusService->resolveBreakdown($this->truck, true);
             $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Поломка устранена. Продолжайте маршрут.',
+            ]);
         } catch (\Exception $e) {
-            Log::error('Breakdown resolved failed', ['error' => $e->getMessage()]);
+            Log::error('Breakdown continue failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Поломка устранена - отменить рейс
+     */
+    public function resolveBreakdownCancel(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->resolveBreakdown($this->truck, false);
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => 'Рейс отменён. Получен новый маршрут.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Breakdown cancel failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Возобновление после задержки
+     */
+    public function resumeFromDelay(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->resumeFromDelay($this->truck);
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Задержка окончена. Продолжайте маршрут.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Resume from delay failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => $e->getMessage(),
@@ -294,15 +375,14 @@ class DriverPanel extends Component
     // =========================================
     // REAL-TIME EVENTS (от Echo через Livewire)
     // =========================================
-        // Слушаем общий канал dispatcher для обновления при любых изменениях статуса
-    #[On('echo:dispatcher,.truck-updated')]
+
+    #[On('echo:dispatcher,truck-updated')]
     public function onTruckUpdated(): void
     {
         Log::info('DispatcherNotification received in DriverPanel');
         $this->loadData();
     }
 
-    // DriverRouteUpdated использует public Channel, не private!
     #[On('echo:driver.{truck.id},.route.updated')]
     public function onDriverRouteUpdated(): void
     {
@@ -314,7 +394,6 @@ class DriverPanel extends Component
         ]);
     }
 
-    // LoadingCompleted использует PrivateChannel
     #[On('echo-private:truck.{truck.id},.loading.completed')]
     public function onLoadingCompleted(): void
     {
@@ -326,7 +405,6 @@ class DriverPanel extends Component
         ]);
     }
 
-    // ZoneChanged использует PrivateChannel('driver.{truck.id}') с broadcastAs 'zone.changed'
     #[On('echo-private:driver.{truck.id},.zone.changed')]
     public function onZoneChangedEcho(): void
     {

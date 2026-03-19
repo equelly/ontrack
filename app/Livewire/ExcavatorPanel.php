@@ -83,7 +83,8 @@ class ExcavatorPanel extends Component
         $this->trucks = Truck::with(['trips' => function ($q) {
             $q->where('miner_id', $this->miner->id)
                 ->whereNull('completed_at')
-                ->with(['miningOrder.dump', 'miningOrder.zone', 'miningOrder.rock']);
+                ->with(['miningOrder.dump', 'miningOrder.zone', 'miningOrder.rock'])
+                ->latest(); // ВАЖНО: берём последний trip!
         }])
             ->whereIn('status', ['to_miner', 'loading', 'waiting_loading'])
             ->whereHas('trips', function ($q) {
@@ -268,6 +269,22 @@ class ExcavatorPanel extends Component
             // Получаем текущую породу из забоя (фактическая)
             $actualRock = $this->miner?->rocks()->first();
 
+            Log::info('completeLoading START', [
+                'truck_id' => $truck->id,
+                'truck_number' => $truck->number,
+                'trip_id' => $trip->id,
+                'trip_dump_id' => $trip->dump_id,
+                'trip_zone_id' => $trip->zone_id,
+                'trip_mining_order_id' => $trip->mining_order_id,
+                'miner_id' => $this->miner?->id,
+                'miner_name' => $this->miner?->name_miner,
+                'actual_rock_id' => $actualRock?->id,
+                'actual_rock_name' => $actualRock?->name_rock,
+                'mining_order_dump_id' => $trip->miningOrder?->dump_id,
+                'mining_order_zone_id' => $trip->miningOrder?->zone_id,
+                'mining_order_rock_id' => $trip->miningOrder?->rock_id,
+            ]);
+
             // Обновляем рейс с породой
             $trip->update([
                 'load_volume' => $volume,
@@ -281,15 +298,31 @@ class ExcavatorPanel extends Component
             $newZoneName = $zone?->name_zone;
 
             if ($actualRock && $zone) {
-                // Проверяем, есть ли эта порода в текущей зоне
-                $zoneHasRock = $zone->rocks()->where('rocks.id', $actualRock->id)->exists();
+                // Получаем породы зоны
+                $zoneRockIds = $zone->rocks()->pluck('rocks.id')->toArray();
+                
+                Log::info('Zone rock check', [
+                    'zone_id' => $zone->id,
+                    'zone_name' => $zone->name_zone,
+                    'zone_rock_ids' => $zoneRockIds,
+                    'actual_rock_id' => $actualRock->id,
+                    'zone_has_rock' => in_array($actualRock->id, $zoneRockIds),
+                ]);
 
-                if (!$zoneHasRock) {
+                // Проверяем, есть ли эта порода в текущей зоне
+                if (!in_array($actualRock->id, $zoneRockIds)) {
                     Log::info("Zone {$zone->id} doesn't have rock {$actualRock->id}, looking for new zone");
 
                     // Ищем новую зону для этой породы
                     $routeService = app(\App\Services\RouteAssignmentService::class);
                     $newZone = $routeService->selectZoneForRock($trip->dump_id, $actualRock->id);
+
+                    Log::info('New zone search result', [
+                        'dump_id' => $trip->dump_id,
+                        'rock_id' => $actualRock->id,
+                        'new_zone_found' => $newZone ? $newZone->id : null,
+                        'new_zone_name' => $newZone?->name_zone,
+                    ]);
 
                     if ($newZone) {
                         // Обновляем зону

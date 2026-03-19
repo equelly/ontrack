@@ -33,7 +33,8 @@
             <div class="col-lg-8 mb-4">
                 <div class="card">
                     <!-- Заголовок со статусом -->
-                    <div class="card-header bg-{{ $statusColor }} text-white d-flex justify-content-between align-items-center">
+                    <div class="card-header bg-{{ $statusColor }} text-white d-flex justify-content-between align-items-center"
+                         data-truck-status="{{ $truck->status }}">
                         <h5 class="mb-0">📍 Текущий маршрут</h5>
                         <span class="badge bg-white text-dark fs-6">{{ $statusLabel }}</span>
                     </div>
@@ -68,28 +69,21 @@
                                     <div class="border rounded p-2 border-info">
                                         <small class="text-muted d-block">Порода</small>
                                         @php
-                                        // Статусы "до загрузки": to_miner, loading
-                                        // Статусы "после загрузки": transporting, unloading
-                                        $isLoaded = in_array($truck->status, ['transporting', 'unloading']);
-
-                                        if ($isLoaded && $currentTrip->rock_id) {
-                                            // После загрузки - порода из trip (фактическая)
-                                            $rock = $currentTrip->rock;
-                                            $rockSource = 'loaded';
-                                        } else {
-                                            // До загрузки - порода из MiningOrder (назначение)
-                                            $rock = $currentTrip->miningOrder?->rock;
-                                            $rockSource = 'planned';
-                                        }
-                                    @endphp
-                                    @if($rock)
-                                        <strong class="text-info">{{ $rock->name_rock }}</strong>
-                                        @if($isLoaded)
-                                            <small class="text-success d-block">✓ Загружена</small>
-                                        @else
-                                            <small class="text-muted d-block">По маршруту</small>
+                                            $isLoaded = in_array($truck->status, ['transporting', 'unloading']);
+                                            if ($isLoaded && $currentTrip->rock_id) {
+                                                $rock = $currentTrip->rock;
+                                            } else {
+                                                $rock = $currentTrip->miningOrder?->rock;
+                                            }
+                                        @endphp
+                                        @if($rock)
+                                            <strong class="text-info">{{ $rock->name_rock }}</strong>
+                                            @if($isLoaded)
+                                                <small class="text-success d-block">✓ Загружена</small>
+                                            @else
+                                                <small class="text-muted d-block">По маршруту</small>
+                                            @endif
                                         @endif
-                                    @endif
                                     </div>
                                 </div>
                             </div>
@@ -109,7 +103,11 @@
                                 </div>
                                 <div class="col-3">
                                     <small class="text-muted">Время</small>
-                                    <p class="mb-0 fw-bold" id="trip-time" data-started="{{ $tripStartedAt ?? '' }}">-</p>
+                                    <p class="mb-0 fw-bold" id="trip-time"
+                                       data-started="{{ $tripStartedAt ?? '' }}"
+                                       data-pause-started="{{ $pauseStartedAt ?? '' }}"
+                                       data-pause-type="{{ $pauseType ?? '' }}"
+                                       data-total-pause="{{ $totalPauseSeconds }}">-</p>
                                 </div>
                             </div>
                         @else
@@ -153,7 +151,7 @@
                                 </button>
                             @endif
 
-                            {{-- На погрузке - ждём экскаваторщика --}}
+                            {{-- На погрузке --}}
                             @if($status === 'loading')
                                 <div class="alert alert-warning mb-0 text-center py-4">
                                     <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
@@ -190,13 +188,55 @@
                                 </button>
                             @endif
 
+                            {{-- Задержка --}}
+                            @if($status === 'delayed')
+                                @if($currentTrip)
+                                    <div class="alert alert-warning mb-3">
+                                        <i class="bi bi-clock-history me-2"></i>
+                                        <strong>Маршрут приостановлен</strong><br>
+                                        <small>Тип: {{ \App\Models\TripPause::typeLabel($pauseType ?? 'other') }}</small>
+                                    </div>
+                                @endif
+                                <button
+                                    wire:click="resumeFromDelay"
+                                    class="btn btn-success btn-lg w-100 mb-2">
+                                    <i class="bi bi-play-circle"></i> Задержка окончена
+                                </button>
+                                <button
+                                    wire:click="reportBreakdown"
+                                    wire:confirm="Сообщить о поломке?"
+                                    class="btn btn-outline-danger w-100">
+                                    <i class="bi bi-exclamation-triangle"></i> Поломка
+                                </button>
+                            @endif
+
                             {{-- Поломка --}}
                             @if($status === 'breakdown')
-                                <button
-                                    wire:click="reportBreakdownResolved"
-                                    class="btn btn-success btn-lg w-100">
-                                    <i class="bi bi-check-circle"></i> Поломка устранена
-                                </button>
+                                <div class="alert alert-danger mb-3">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    <strong>Поломка</strong><br>
+                                    <small>Время рейса остановлено. После ремонта выберите действие.</small>
+                                </div>
+
+                                @if($currentTrip)
+                                    <button
+                                        wire:click="resolveBreakdownContinue"
+                                        class="btn btn-success btn-lg w-100 mb-2">
+                                        <i class="bi bi-play-circle"></i> Продолжить рейс
+                                    </button>
+                                    <button
+                                        wire:click="resolveBreakdownCancel"
+                                        wire:confirm="Отменить текущий рейс?"
+                                        class="btn btn-outline-danger w-100 mb-2">
+                                        <i class="bi bi-x-circle"></i> Отменить рейс (серьёзная поломка)
+                                    </button>
+                                @else
+                                    <button
+                                        wire:click="resolveBreakdownContinue"
+                                        class="btn btn-success btn-lg w-100">
+                                        <i class="bi bi-check-circle"></i> Поломка устранена
+                                    </button>
+                                @endif
                             @endif
 
                             {{-- Кнопка поломки для рабочих статусов --}}
@@ -287,11 +327,12 @@
                         <div class="mb-3">
                             <label class="form-label">Причина:</label>
                             <select class="form-select" wire:model="delayReason">
-                                <option value="traffic">Пробки</option>
-                                <option value="road_works">Дорожные работы</option>
-                                <option value="weather">Погодные условия</option>
-                                <option value="technical">Техническая проблема</option>
-                                <option value="other">Другое</option>
+                                <option value="traffic">🚗 Пробки</option>
+                                <option value="road_works">🚧 Дорожные работы</option>
+                                <option value="waiting_loading">⏳ Ожидание погрузки</option>
+                                <option value="waiting_unloading">⏳ Ожидание выгрузки</option>
+                                <option value="weather">🌧️ Погодные условия</option>
+                                <option value="other">❓ Другое</option>
                             </select>
                         </div>
                         <div class="mb-3">
@@ -316,39 +357,136 @@
         // Таймер времени в пути
         let timerInterval = null;
 
+        // Форматирование времени
+        function formatTime(seconds, prefix = '') {
+            if (seconds === null || seconds < 0) return '-';
+            const hours = Math.floor(seconds / 3600);
+            const min = Math.floor((seconds % 3600) / 60);
+            const sec = seconds % 60;
+            if (hours > 0) {
+                return prefix + hours + ' ч ' + min + ' мин ' + sec + ' сек';
+            }
+            return prefix + min + ' мин ' + sec + ' сек';
+        }
+
+        // Получить текущий статус
+        function getCurrentStatus() {
+            const el = document.querySelector('[data-truck-status]');
+            return el ? el.getAttribute('data-truck-status') : 'free';
+        }
+
+        // Вычислить чистое время в пути (без пауз)
+        function calculateTripSeconds() {
+            const el = document.getElementById('trip-time');
+            if (!el) return null;
+
+            const startedAtStr = el.getAttribute('data-started');
+            if (!startedAtStr) return null;
+
+            const startedAt = new Date(startedAtStr);
+            if (isNaN(startedAt.getTime())) return null;
+
+            const now = new Date();
+            let totalSeconds = Math.floor((now - startedAt) / 1000);
+
+            // Вычитаем время завершённых пауз
+            const totalPause = parseInt(el.getAttribute('data-total-pause') || '0', 10);
+            totalSeconds -= totalPause;
+
+            // Вычитаем время текущей активной паузы
+            const pauseStartedStr = el.getAttribute('data-pause-started');
+            if (pauseStartedStr) {
+                const pauseStarted = new Date(pauseStartedStr);
+                if (!isNaN(pauseStarted.getTime())) {
+                    const currentPauseSeconds = Math.floor((now - pauseStarted) / 1000);
+                    totalSeconds -= currentPauseSeconds;
+                }
+            }
+
+            return totalSeconds;
+        }
+
+        // Вычислить "замороженное" время на момент начала паузы
+        function calculateFrozenSeconds() {
+            const el = document.getElementById('trip-time');
+            if (!el) return null;
+
+            const startedAtStr = el.getAttribute('data-started');
+            const pauseStartedStr = el.getAttribute('data-pause-started');
+
+            if (!startedAtStr || !pauseStartedStr) return null;
+
+            const startedAt = new Date(startedAtStr);
+            const pauseStarted = new Date(pauseStartedStr);
+
+            if (isNaN(startedAt.getTime()) || isNaN(pauseStarted.getTime())) return null;
+
+            // Время до паузы
+            let frozenSeconds = Math.floor((pauseStarted - startedAt) / 1000);
+
+            // Вычитаем завершённые паузы
+            const totalPause = parseInt(el.getAttribute('data-total-pause') || '0', 10);
+            frozenSeconds -= totalPause;
+
+            return frozenSeconds;
+        }
+
+        // Обновление таймера
         function updateTimer() {
             const el = document.getElementById('trip-time');
             if (!el) return;
 
-            const startedAtStr = el.getAttribute('data-started');
-            if (!startedAtStr) {
+            const status = getCurrentStatus();
+            const pauseType = el.getAttribute('data-pause-type');
+            let seconds;
+            let prefix = '';
+
+            // Статусы с активной паузой - показываем замороженное время
+            if (status === 'breakdown' || status === 'delayed') {
+                seconds = calculateFrozenSeconds();
+
+                // Иконка по типу паузы
+                if (pauseType === 'breakdown') {
+                    prefix = '🔧 ';
+                } else {
+                    prefix = '⏸ ';
+                }
+            } else if (status === 'free') {
                 el.innerText = '-';
                 return;
+            } else {
+                // Рабочие статусы - показываем чистое время
+                seconds = calculateTripSeconds();
             }
 
-            const startedAt = new Date(startedAtStr);
-            if (isNaN(startedAt.getTime())) {
-                el.innerText = '-';
-                return;
-            }
-
-            const now = new Date();
-            const diff = Math.floor((now - startedAt) / 1000);
-
-            if (diff < 0) {
-                el.innerText = '-';
-                return;
-            }
-
-            const min = Math.floor(diff / 60);
-            const sec = diff % 60;
-            el.innerText = min + ' мин ' + sec + ' сек';
+            el.innerText = formatTime(seconds, prefix);
         }
 
+        // Запуск таймера
         function startTimer() {
+            const el = document.getElementById('trip-time');
+            if (!el) return;
+
+            console.log('startTimer:', {
+                status: getCurrentStatus(),
+                started: el.getAttribute('data-started'),
+                pauseStarted: el.getAttribute('data-pause-started'),
+                pauseType: el.getAttribute('data-pause-type'),
+                totalPause: el.getAttribute('data-total-pause'),
+            });
+
             if (timerInterval) {
                 clearInterval(timerInterval);
+                timerInterval = null;
             }
+
+            const status = getCurrentStatus();
+            const started = el.getAttribute('data-started');
+            if (status === 'free' && !started) {
+                el.innerText = '-';
+                return;
+            }
+
             updateTimer();
             timerInterval = setInterval(updateTimer, 1000);
         }

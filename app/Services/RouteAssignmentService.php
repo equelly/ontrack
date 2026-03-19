@@ -237,6 +237,19 @@ class RouteAssignmentService
         ]);
 
         try {
+            // ВАЖНО: Завершаем все старые незавершённые trip этого грузовика!
+            $oldTrips = TruckTrip::where('truck_id', $truck->id)
+                ->whereNull('completed_at')
+                ->get();
+            
+            foreach ($oldTrips as $oldTrip) {
+                $oldTrip->update([
+                    'completed_at' => now(),
+                    'load_volume' => 0,
+                ]);
+                Log::warning("Old trip {$oldTrip->id} auto-completed (was orphaned)");
+            }
+            
             // rock_id = NULL - порода будет установлена при завершении погрузки
             // До загрузки водитель видит породу из miningOrder->rock (планируемая)
             
@@ -267,7 +280,7 @@ class RouteAssignmentService
 
             Log::info('MiningOrder updated', ['order_id' => $order->id]);
 
-            $truck->update(['status' => 'to_miner']);
+            $truck->update(['status' => Truck::STATUS_TO_MINER]);
 
             Log::info("Маршрут {$order->id} назначен грузовику {$truck->id} в зону {$zone->id}");
 
@@ -371,12 +384,32 @@ class RouteAssignmentService
                 continue;
             }
 
+            // Логируем ДО изменений
+            Log::info("BEFORE update", [
+                'truck_id' => $truck->id,
+                'truck_number' => $truck->number,
+                'trip_id' => $trip->id,
+                'trip_miner_id' => $trip->miner_id,
+                'trip_dump_id' => $trip->dump_id,
+                'trip_zone_id' => $trip->zone_id,
+                'order_id' => $trip->miningOrder->id,
+                'order_rock_id_old' => $trip->miningOrder->rock_id,
+                'new_rock_id' => $newRockId,
+            ]);
+
             // Обновляем только породу в заказе, зону НЕ меняем
             $trip->miningOrder->update([
                 'rock_id' => $newRockId,
             ]);
 
-            Log::info("Truck {$truck->id}: rock_id updated to {$newRockId}");
+            // Логируем ПОСЛЕ изменений
+            $trip->refresh();
+            Log::info("AFTER update", [
+                'truck_id' => $truck->id,
+                'trip_zone_id' => $trip->zone_id,
+                'trip_dump_id' => $trip->dump_id,
+                'order_rock_id_new' => $trip->miningOrder->rock_id,
+            ]);
 
             // Уведомляем диспетчера о смене породы
             event(new DispatcherNotification(

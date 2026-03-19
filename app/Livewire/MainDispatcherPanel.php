@@ -46,7 +46,8 @@ class MainDispatcherPanel extends Component
 
     public function loadData(): void
     {
-        // Загружаем trucks с trips - используем latest() как в DriverPanel!
+        Log::info('=== MainDispatcherPanel loadData START ===');
+        
         $this->trucks = Truck::with(['truckModel', 'driver', 'trips' => function ($q) {
             $q->whereNull('completed_at')
                 ->with([
@@ -55,15 +56,14 @@ class MainDispatcherPanel extends Component
                     'miner.rocks',
                     'dump',
                 ])
-                ->latest(); // ВАЖНО: берём самый свежий trip
+                ->latest(); // ВАЖНО: берём последний trip!
         }])->get();
 
         // Полное логирование всех данных рейса
         foreach ($this->trucks as $truck) {
-            // Берём первый trip (теперь они отсортированы по latest())
-            $trip = $truck->trips->first();
+            $trip = $truck->trips->first(); // После latest() первый = последний
             if ($trip) {
-                Log::info('DISPATCHER: FULL TRUCK DATA', [
+                Log::info('TRUCK DATA', [
                     'truck_id' => $truck->id,
                     'truck_number' => $truck->number,
                     'truck_status' => $truck->status,
@@ -81,8 +81,6 @@ class MainDispatcherPanel extends Component
                     'miner_rock_name' => $trip->miner?->rocks?->first()?->name_rock,
                     '--- ZONE ROCK ---' => '---',
                     'zone_rock_name' => $trip->zone?->rocks?->first()?->name_rock,
-                    '--- ALL TRIPS ---' => '---',
-                    'trips_count' => $truck->trips->count(),
                 ]);
             }
         }
@@ -100,6 +98,8 @@ class MainDispatcherPanel extends Component
         $this->orders = MiningOrder::with(['miner.rocks', 'dump', 'zone.rocks', 'rock', 'truck'])
             ->where('active', true)
             ->get();
+        
+        Log::info('=== MainDispatcherPanel loadData END ===');
     }
 
     public function updatedSelectedMinerId(?int $value): void
@@ -278,16 +278,15 @@ class MainDispatcherPanel extends Component
     }
 
     #[On('truck-status-changed')]
-    public function onTruckStatusChanged(): void
+    public function onTruckStatusChanged(array $data): void
     {
-        Log::info('Dispatcher: truck-status-changed received');
         $this->loadData();
     }
 
     #[On('echo:dispatcher,.truck-updated')]
     public function onTruckUpdated(): void
     {
-        Log::info('Dispatcher: truck-updated received via Echo');
+        Log::info('MainDispatcherPanel: truck-updated received via Echo');
         $this->loadData();
     }
 

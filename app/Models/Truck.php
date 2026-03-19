@@ -6,29 +6,42 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Log;
 
-
-
-class Truck extends Model 
+class Truck extends Model
 {
     protected $fillable = [
-        'number', 'brand', 'load_capacity', 
-        'driver_id', 'status', 'current_load', 'last_free_at', 'fuel_level', 'truck_model_id', 
-        'route_version', 'route_ack_version'
+        'number', 'brand', 'load_capacity',
+        'driver_id', 'status', 'current_load', 'last_free_at', 'fuel_level', 'truck_model_id',
+        'route_version', 'route_ack_version',
+        'before_breakdown', 'pause_started_at',  // Для сохранения состояния при поломке/задержке
     ];
 
     protected $casts = [
         'load_capacity' => 'decimal:2',
         'current_load' => 'decimal:2',
         'last_free_at' => 'datetime',
+        'pause_started_at' => 'datetime',
     ];
+
     protected $appends = ['fuelLiters', 'fuelCapacity', 'fuelConsumption', 'fullName'];
-    
-    
+
+    // Константы статусов
+    const STATUS_FREE = 'free';
+    const STATUS_TO_MINER = 'to_miner';
+    const STATUS_LOADING = 'loading';
+    const STATUS_TRANSPORTING = 'transporting';
+    const STATUS_UNLOADING = 'unloading';
+    const STATUS_BREAKDOWN = 'breakdown';
+    const STATUS_MAINTENANCE = 'maintenance';
+    const STATUS_FUELING = 'fueling';
+    const STATUS_WAITING_LOADING = 'waiting_loading';
+    const STATUS_WAITING_UNLOADING = 'waiting_unloading';
+    const STATUS_DELAYED = 'delayed';
 
     public function truckModel()
     {
         return $this->belongsTo(TruckModel::class);
     }
+
     public function trips()
     {
         return $this->hasMany(TruckTrip::class, 'truck_id');
@@ -43,7 +56,6 @@ class Truck extends Model
     {
         return $this->belongsTo(User::class, 'driver_id');
     }
-    // Связь с 
 
     public function currentTrip()
     {
@@ -73,14 +85,11 @@ class Truck extends Model
         return ($this->truckModel?->full_name ?? 'Неизвестная модель') . ' #' . $this->number;
     }
 
-    
     public function miningOrders(): HasMany
     {
         return $this->hasMany(MiningOrder::class);
     }
 
-
-    // app/Models/Truck.php
     public function currentOrder()
     {
         return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
@@ -89,8 +98,6 @@ class Truck extends Model
     // Scope'ы
     public function scopeFree($query)
     {
-        
-        //  'free' И 'completed' - оба свободны для назначения
         return $query->whereIn('status', ['free', 'completed']);
     }
 
@@ -120,14 +127,13 @@ class Truck extends Model
     public function markAs($status): self
     {
         $this->status = $status;
-        
+
         if (in_array($status, ['free'])) {
             $this->current_load = 0;
             $this->last_free_at = now();
         }
-        
+
         $this->save();
         return $this;
     }
 }
-
