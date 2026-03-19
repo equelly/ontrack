@@ -115,7 +115,24 @@
                             </div>
                             <div class="card-body py-2">
                                 <small class="text-muted">{{ $truck->load_capacity }} т</small>
+                                @php
+                                    // Получаем активную паузу для delayed/breakdown
+                                    $activePause = null;
+                                    if (in_array($truck->status, ['delayed', 'breakdown']) && $trip) {
+                                        $activePause = $trip->pauses->first();
+                                    }
+                                @endphp
                                 
+                                @if($activePause)
+                                    <div class="mt-1 mb-1">
+                                        <span class="badge {{ $truck->status === 'breakdown' ? 'bg-danger' : 'bg-warning' }} text-dark">
+                                            <i class="fas fa-clock"></i>
+                                            {{ \App\Models\TripPause::typeLabel($activePause->type) }}
+                                        </span>
+                                        <small class="text-muted ms-1">{{ $activePause->getFormattedDuration() }}</small>
+                                    </div>
+                                @endif
+                               
                                 @if($truckRock)
                                     <div class="mt-1">
                                         <span class="badge bg-secondary">{{ $truckRockLabel }}:</span>

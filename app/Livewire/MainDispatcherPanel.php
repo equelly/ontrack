@@ -55,6 +55,9 @@ class MainDispatcherPanel extends Component
                     'zone.rocks',
                     'miner.rocks',
                     'dump',
+                    'pauses' => function ($q) {
+                        $q->whereNull('ended_at'); // Только активные паузы
+                    },
                 ])
                 ->latest(); // ВАЖНО: берём последний trip!
         }])->get();
