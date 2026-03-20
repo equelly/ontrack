@@ -329,8 +329,12 @@
                             <select class="form-select" wire:model="delayReason">
                                 <option value="traffic">🚗 Пробки</option>
                                 <option value="road_works">🚧 Дорожные работы</option>
-                                <option value="waiting_loading">⏳ Ожидание погрузки</option>
-                                <option value="waiting_unloading">⏳ Ожидание выгрузки</option>
+                                @if(in_array($truck->status, ['to_miner', 'loading']))
+                                    <option value="waiting_loading">⏳ Ожидание погрузки</option>
+                                @endif
+                                @if(in_array($truck->status, ['transporting', 'unloading']))
+                                    <option value="waiting_unloading">⏳ Ожидание выгрузки</option>
+                                @endif
                                 <option value="weather">🌧️ Погодные условия</option>
                                 <option value="other">❓ Другое</option>
                             </select>
