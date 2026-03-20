@@ -95,9 +95,8 @@ class MainDispatcherPanel extends Component
             }
         }
 
-        $this->miners = Miner::with(['rocks'])
-            ->where('active', true)
-            ->get();
+        
+        $this->miners = Miner::with(['rocks'])->get();
 
         $this->dumps = Dump::with(['zones.rocks'])->get();
 
@@ -285,6 +284,48 @@ class MainDispatcherPanel extends Component
     public function getFreeTrucksProperty()
     {
         return $this->trucks->where('status', 'free');
+    }
+     public function toggleMinerStatus(int $minerId): void
+    {
+        $miner = Miner::find($minerId);
+
+        if (!$miner) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Забой не найден']);
+            return;
+        }
+
+        $newStatus = !$miner->active;
+        
+        // Если деактивируем - проверяем есть ли грузовики в работе
+        if (!$newStatus) {
+            $trucksInWork = Truck::whereHas('trips', function ($q) use ($minerId) {
+                $q->where('miner_id', $minerId)
+                  ->whereNull('completed_at');
+            })->whereIn('status', ['to_miner', 'loading'])->count();
+
+            if ($trucksInWork > 0) {
+                $this->dispatch('notify', [
+                    'type' => 'warning',
+                    'message' => "Невозможно деактивировать: {$trucksInWork} самосвалов в пути к забою",
+                ]);
+                return;
+            }
+        }
+
+        $miner->update([
+            'active' => $newStatus,
+            'last_updated_at' => now(),
+            'last_updated_by' => auth()->id(),
+        ]);
+
+        $this->loadData();
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => $newStatus 
+                ? "Забой {$miner->name_miner} активирован" 
+                : "Забой {$miner->name_miner} деактивирован",
+        ]);
     }
 
     // =========================================
