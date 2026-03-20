@@ -111,8 +111,8 @@ class TripPause extends Model
         $secs = $seconds % 60;
 
         if ($hours > 0) {
-            return sprintf('%d ч %d мин %d сек', $hours, $minutes, $secs);
+            return sprintf('%d ч %d м %d с', $hours, $minutes, $secs);
         }
-        return sprintf('%d мин %d сек', $minutes, $secs);
+        return sprintf('%d м %d с', $minutes, $secs);
     }
 }

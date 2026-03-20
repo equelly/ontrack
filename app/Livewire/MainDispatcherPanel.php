@@ -32,6 +32,13 @@ class MainDispatcherPanel extends Component
     public $availableOrders = [];
     public $availableZones = [];
 
+    // Фильтры для статистики простоев
+    public string $pausePeriod = 'shift'; // shift, today, week, month
+    public array $pauseTypes = []; // массив выбранных типов (пусто = все)
+
+    // Активная вкладка
+    public string $activeTab = 'trucksTab';
+
     protected RouteAssignmentService $routeService;
 
     public function boot(RouteAssignmentService $routeService)
@@ -278,6 +285,233 @@ class MainDispatcherPanel extends Component
     public function getFreeTrucksProperty()
     {
         return $this->trucks->where('status', 'free');
+    }
+
+    // =========================================
+    // СТАТИСТИКА ПРОСТОЕВ
+    // =========================================
+
+    public function getPausePeriodStart(): \Carbon\Carbon
+    {
+        return match ($this->pausePeriod) {
+            'shift' => $this->getShiftStart(),
+            'today' => now()->startOfDay(),
+            'week' => now()->startOfWeek(),
+            'month' => now()->startOfMonth(),
+            default => $this->getShiftStart(),
+        };
+    }
+
+    public function getShiftStart(): \Carbon\Carbon
+    {
+        $now = now();
+        $hour = $now->hour;
+        $minute = $now->minute;
+
+        if ($hour >= 7 && $hour < 19) {
+            if ($hour === 7 && $minute < 30) {
+                return $now->copy()->subDay()->setTime(19, 30);
+            }
+            return $now->copy()->setTime(7, 30);
+        } elseif ($hour >= 19) {
+            if ($hour === 19 && $minute < 30) {
+                return $now->copy()->setTime(7, 30);
+            }
+            return $now->copy()->setTime(19, 30);
+        } else {
+            return $now->copy()->subDay()->setTime(19, 30);
+        }
+    }
+
+    public function getPauseStatsProperty(): array
+    {
+        $periodStart = $this->getPausePeriodStart();
+
+        $query = \App\Models\TripPause::with(['truck', 'trip'])
+            ->where('started_at', '>=', $periodStart);
+
+        // Фильтр по нескольким типам
+        if (!empty($this->pauseTypes)) {
+            $query->whereIn('type', $this->pauseTypes);
+        }
+
+        $pauses = $query->orderBy('started_at', 'desc')->get();
+
+        // Общая статистика по типам
+        $byType = $pauses->groupBy('type')->map(function ($items, $type) {
+            $totalSeconds = $items->sum(function ($pause) {
+                return $pause->duration_seconds ?? $pause->getCurrentDuration();
+            });
+
+            return [
+                'type' => $type,
+                'label' => \App\Models\TripPause::typeLabel($type),
+                'count' => $items->count(),
+                'total_seconds' => $totalSeconds,
+                'total_formatted' => $this->formatDuration($totalSeconds),
+            ];
+        })->sortByDesc('total_seconds');
+
+        // Общее время
+        $totalSeconds = $pauses->sum(function ($pause) {
+            return $pause->duration_seconds ?? $pause->getCurrentDuration();
+        });
+
+        // Активные (не завершённые)
+        $activeCount = $pauses->whereNull('ended_at')->count();
+
+        return [
+            'pauses' => $pauses,
+            'by_type' => $byType,
+            'total_count' => $pauses->count(),
+            'total_seconds' => $totalSeconds,
+            'total_formatted' => $this->formatDuration($totalSeconds),
+            'active_count' => $activeCount,
+            'period_label' => $this->getPeriodLabel(),
+        ];
+    }
+
+    protected function formatDuration(int $seconds): string
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+
+        if ($hours > 0) {
+            return sprintf('%d ч %d мин', $hours, $minutes);
+        }
+        return sprintf('%d мин', $minutes);
+    }
+
+    protected function getPeriodLabel(): string
+    {
+        return match ($this->pausePeriod) {
+            'shift' => 'За смену',
+            'today' => 'За сегодня',
+            'week' => 'За неделю',
+            'month' => 'За месяц',
+            default => 'За период',
+        };
+    }
+
+    public function updatedPausePeriod(): void
+    {
+        $this->activeTab = 'pausesTab';
+    }
+
+    public function updatedPauseTypes(): void
+    {
+        $this->activeTab = 'pausesTab';
+    }
+
+    public function setActiveTab(string $tab): void
+    {
+        $this->activeTab = $tab;
+    }
+        // =========================================
+    // ПРИНУДИТЕЛЬНАЯ СМЕНА СТАТУСА
+    // =========================================
+
+    public ?int $forceStatusTruckId = null;
+    public ?string $forceStatusNew = null;
+
+    public function openForceStatusModal(int $truckId): void
+    {
+        $this->forceStatusTruckId = $truckId;        
+        // Автоматически выбираем предыдущий статус если есть
+        $truck = Truck::find($truckId);
+        $this->forceStatusNew = $truck?->before_breakdown;
+   
+    }
+
+    public function closeForceStatusModal(): void
+    {
+        $this->forceStatusTruckId = null;
+        $this->forceStatusNew = null;
+    }
+
+    public function forceChangeStatus(): void
+    {
+        if (!$this->forceStatusTruckId || !$this->forceStatusNew) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Выберите статус']);
+            return;
+        }
+
+        $truck = Truck::find($this->forceStatusTruckId);
+        if (!$truck) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал не найден']);
+            return;
+        }
+
+        try {
+            $oldStatus = $truck->status;
+            
+            // Завершаем активную паузу если есть
+            $trip = TruckTrip::where('truck_id', $truck->id)
+                ->whereNull('completed_at')
+                ->latest()
+                ->first();
+
+            if ($trip) {
+                // Завершаем все активные паузы
+                foreach ($trip->pauses()->whereNull('ended_at')->get() as $pause) {
+                    $pause->end();
+                }
+
+                // Если переводим в free - завершаем рейс
+                if ($this->forceStatusNew === 'free') {
+                    $trip->update(['completed_at' => now()]);
+                    
+                    // Освобождаем заказ
+                    MiningOrder::where('truck_id', $truck->id)
+                        ->update(['truck_id' => null, 'zone_id' => null]);
+                }
+            }
+
+            $truck->update([
+                'status' => $this->forceStatusNew,
+                'before_breakdown' => null,
+                'pause_started_at' => null,
+            ]);
+
+            Log::info("Dispatcher forced status change", [
+                'truck_id' => $truck->id,
+                'truck_number' => $truck->number,
+                'old_status' => $oldStatus,
+                'new_status' => $this->forceStatusNew,
+            ]);
+
+            // Уведомляем диспетчера об изменении
+            event(new \App\Events\DispatcherNotification(
+                $truck->id,
+                $this->forceStatusNew,
+                ['forced' => true, 'from' => $oldStatus]
+            ));
+
+            $this->loadData();
+            $this->closeForceStatusModal();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => "Статус {$truck->number} изменён: {$oldStatus} → {$this->forceStatusNew}",
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Force status change failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
+        }
+    }
+
+    public function getAvailableStatusesProperty(): array
+    {
+        return [
+            'free' => 'Свободен',
+            'to_miner' => 'К забою',
+            'loading' => 'Погрузка',
+            'transporting' => 'Перевозка',
+            'unloading' => 'Разгрузка',
+            'delayed' => 'Задержка',
+            'breakdown' => 'Поломка',
+        ];
     }
 
     #[On('truck-status-changed')]
