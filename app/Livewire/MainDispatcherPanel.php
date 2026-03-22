@@ -95,7 +95,6 @@ class MainDispatcherPanel extends Component
             }
         }
 
-        
         $this->miners = Miner::with(['rocks'])->get();
 
         $this->dumps = Dump::with(['zones.rocks'])->get();
@@ -261,31 +260,7 @@ class MainDispatcherPanel extends Component
         ]);
     }
 
-    public function getFreeTrucksCountProperty(): int
-    {
-        return $this->trucks->where('status', 'free')->count();
-    }
-
-    public function getWorkingTrucksCountProperty(): int
-    {
-        return $this->trucks->whereNotIn('status', ['free', 'breakdown'])->count();
-    }
-
-    public function getActiveMinersCountProperty(): int
-    {
-        return $this->miners->where('active', true)->count();
-    }
-
-    public function getBreakdownCountProperty(): int
-    {
-        return $this->trucks->where('status', 'breakdown')->count();
-    }
-
-    public function getFreeTrucksProperty()
-    {
-        return $this->trucks->where('status', 'free');
-    }
-     public function toggleMinerStatus(int $minerId): void
+    public function toggleMinerStatus(int $minerId): void
     {
         $miner = Miner::find($minerId);
 
@@ -326,6 +301,48 @@ class MainDispatcherPanel extends Component
                 ? "Забой {$miner->name_miner} активирован" 
                 : "Забой {$miner->name_miner} деактивирован",
         ]);
+    }
+
+    public function getFreeTrucksCountProperty(): int
+    {
+        return $this->trucks->where('status', 'free')->count();
+    }
+
+    public function getWorkingTrucksCountProperty(): int
+    {
+        return $this->trucks->whereNotIn('status', ['free', 'breakdown'])->count();
+    }
+
+    public function getActiveMinersCountProperty(): int
+    {
+        return $this->miners->where('active', true)->count();
+    }
+
+    public function getBreakdownCountProperty(): int
+    {
+        return $this->trucks->where('status', 'breakdown')->count();
+    }
+
+    public function getFreeTrucksProperty()
+    {
+        return $this->trucks->where('status', 'free');
+    }
+
+    // =========================================
+    // ПЛАНОВАЯ СТАТИСТИКА ПО РАССТОЯНИЯМ
+    // =========================================
+
+    public function getPlannedDistanceStatsProperty(): array
+    {
+        // Активные заказы с расстоянием
+        $activeOrders = $this->orders->where('active', true);
+        
+        // Среднее расстояние по активным заказам
+        $avgDistance = $activeOrders->avg('distance_km') ?? 0;
+        
+        return [
+            'avg_distance' => round($avgDistance, 1),
+        ];
     }
 
     // =========================================
@@ -448,7 +465,8 @@ class MainDispatcherPanel extends Component
     {
         $this->activeTab = $tab;
     }
-        // =========================================
+
+    // =========================================
     // ПРИНУДИТЕЛЬНАЯ СМЕНА СТАТУСА
     // =========================================
 
@@ -457,11 +475,11 @@ class MainDispatcherPanel extends Component
 
     public function openForceStatusModal(int $truckId): void
     {
-        $this->forceStatusTruckId = $truckId;        
+        $this->forceStatusTruckId = $truckId;
+        
         // Автоматически выбираем предыдущий статус если есть
         $truck = Truck::find($truckId);
         $this->forceStatusNew = $truck?->before_breakdown;
-   
     }
 
     public function closeForceStatusModal(): void

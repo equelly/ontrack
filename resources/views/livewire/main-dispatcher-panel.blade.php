@@ -64,6 +64,20 @@
                         <strong class="text-secondary fs-5">{{ $this->active_miners_count }}</strong>
                     </div>
                 </div>
+                <!-- Разделитель -->
+                <div class="vr"></div>
+                <!-- Среднее расстояние (расчётное) -->
+                @php $distStats = $this->planned_distance_stats; @endphp
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-info bg-opacity-10 rounded px-2 py-1">
+                        <i class="fas fa-route text-info"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block">Ср. расстояние</small>
+                        <strong class="text-info fs-5">{{ $distStats['avg_distance'] }}</strong>
+                        <small class="text-muted">км</small>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
