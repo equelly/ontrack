@@ -2,26 +2,24 @@
 
 namespace App\Http\Controllers\User\Dump;
 
-
-
+use App\Http\Controllers\Controller;
 use App\Models\Dump;
-use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Http\Request;
 
-
-class StoreController extends BaseController
+class StoreController extends Controller
 {
-    public function __invoke(Request $request){
-        $validated = $request->validate([
+    /**
+     * Создать новый отвал
+     */
+    public function __invoke(Request $request)
+    {
+        $data = $request->validate([
             'name_dump' => 'required|string|max:255',
-            
-
         ]);
-        Dump::firstOrCreate($validated);
 
-        return redirect()->route('dump.index')
-            ->with('success', "Перегрузочный пункт № '{$validated['name_dump']}' добавлен!Добавьте небходимые зоны для работы в системе распределения");
+        $dump = Dump::create($data);
 
-     
+        return redirect()->route('dump.edit', $dump->id)
+            ->with('success', 'Отвал создан. Добавьте зоны и породы.');
     }
 }

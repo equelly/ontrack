@@ -9,8 +9,11 @@ use App\Models\Zone;
 use App\Models\Rock;
 use App\Models\TruckTrip;
 use App\Models\MiningOrder;
+use App\Models\TripPause;
+use App\Models\SystemSetting;
 use App\Events\DriverRouteUpdated;
 use App\Services\RouteAssignmentService;
+use App\Services\RouteOptimizerService;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 use Livewire\Attributes\On;
@@ -24,6 +27,10 @@ class MainDispatcherPanel extends Component
     public $rocks;
     public $orders;
 
+    // Вкладки
+    public string $activeTab = 'trucksTab';
+
+    // Назначение маршрута
     public ?int $selectedTruckId = null;
     public ?int $selectedMinerId = null;
     public ?int $selectedOrderId = null;
@@ -32,18 +39,29 @@ class MainDispatcherPanel extends Component
     public $availableOrders = [];
     public $availableZones = [];
 
-    // Фильтры для статистики простоев
-    public string $pausePeriod = 'shift'; // shift, today, week, month
-    public array $pauseTypes = []; // массив выбранных типов (пусто = все)
+    // Управление маршрутами
+    public ?int $editOrderId = null;
+    public ?int $editDumpId = null;
+    public ?int $editRockId = null;
+    public ?bool $editActive = null;
+    public ?int $editWeight = null; // Вес маршрута
+    public array $editDistances = []; // Расстояния от забоя до перегрузок
 
-    // Активная вкладка
-    public string $activeTab = 'trucksTab';
+    // Принудительная смена статуса
+    public ?int $forceStatusTruckId = null;
+    public ?string $forceStatusNew = null;
+
+    // Фильтры простоев
+    public string $pausePeriod = 'shift';
+    public array $pauseTypes = [];
 
     protected RouteAssignmentService $routeService;
+    protected RouteOptimizerService $optimizerService;
 
-    public function boot(RouteAssignmentService $routeService)
+    public function boot(RouteAssignmentService $routeService, RouteOptimizerService $optimizerService)
     {
         $this->routeService = $routeService;
+        $this->optimizerService = $optimizerService;
     }
 
     public function mount()
@@ -95,7 +113,7 @@ class MainDispatcherPanel extends Component
             }
         }
 
-        $this->miners = Miner::with(['rocks'])->get();
+        $this->miners = Miner::with(['rocks', 'currentRock'])->get();
 
         $this->dumps = Dump::with(['zones.rocks'])->get();
 
@@ -103,7 +121,7 @@ class MainDispatcherPanel extends Component
 
         $this->rocks = Rock::all();
 
-        $this->orders = MiningOrder::with(['miner.rocks', 'dump', 'zone.rocks', 'rock', 'truck'])
+        $this->orders = MiningOrder::with(['miner.rocks', 'dump', 'zone.rocks', 'rock'])
             ->where('active', true)
             ->get();
         
@@ -118,16 +136,29 @@ class MainDispatcherPanel extends Component
         $this->availableZones = [];
 
         if ($value) {
-            $this->availableOrders = MiningOrder::with(['dump', 'zone'])
+            $miner = Miner::with('rocks')->find($value);
+            $minerRock = $miner?->rocks?->first();
+
+            if (!$minerRock) return;
+
+            // Получаем маршруты с доступными зонами
+            $orders = MiningOrder::with(['dump.zones.rocks'])
                 ->where('miner_id', $value)
                 ->where('active', true)
-                ->get()
-                ->map(fn($o) => [
-                    'id' => $o->id,
-                    'dump_name' => $o->dump?->name_dump,
-                    'distance' => $o->distance_km,
-                ])
-                ->toArray();
+                ->get();
+
+            $this->availableOrders = $orders->filter(function ($order) use ($minerRock) {
+                // Проверяем есть ли доступные зоны для породы
+                return $order->dump && $order->dump->zones->contains(function ($zone) use ($minerRock) {
+                    return $zone->delivery 
+                        && $zone->volume < $zone->capacity
+                        && $zone->rocks->contains('id', $minerRock->id);
+                });
+            })->map(fn($o) => [
+                'id' => $o->id,
+                'dump_name' => $o->dump?->name_dump,
+                'distance' => $o->distance_km,
+            ])->values()->toArray();
         }
     }
 
@@ -136,22 +167,27 @@ class MainDispatcherPanel extends Component
         $this->selectedZoneId = null;
         $this->availableZones = [];
 
-        if ($value) {
-            $order = MiningOrder::find($value);
-            if ($order) {
-                $rock = $order->rock ?? $order->miner?->rocks?->first();
+        if ($value && $this->selectedMinerId) {
+            $miner = Miner::with('rocks')->find($this->selectedMinerId);
+            $minerRock = $miner?->rocks?->first();
+            $order = MiningOrder::with('dump.zones.rocks')->find($value);
 
-                $this->availableZones = Zone::where('dump_id', $order->dump_id)
-                    ->where('delivery', true)
-                    ->when($rock, fn($q) => $q->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id)))
-                    ->whereRaw('volume < capacity')
-                    ->get()
+            if ($minerRock && $order?->dump) {
+                $this->availableZones = $order->dump->zones
+                    ->filter(function ($zone) use ($minerRock) {
+                        return $zone->delivery 
+                            && $zone->volume < $zone->capacity
+                            && $zone->rocks->contains('id', $minerRock->id);
+                    })
                     ->map(fn($z) => [
                         'id' => $z->id,
                         'name' => $z->name_zone,
                         'volume' => $z->volume,
                         'capacity' => $z->capacity,
+                        'fill' => round($z->volume / $z->capacity * 100),
                     ])
+                    ->sortBy('fill')
+                    ->values()
                     ->toArray();
             }
         }
@@ -179,7 +215,10 @@ class MainDispatcherPanel extends Component
         }
 
         if (!$zone) {
-            $zone = $this->routeService->selectZone($order);
+            // Выбираем зону автоматически по породе из заказа
+            if ($order->rock_id) {
+                $zone = $this->routeService->selectZoneForRock($order->dump_id, $order->rock_id);
+            }
         }
 
         if (!$zone) {
@@ -237,6 +276,335 @@ class MainDispatcherPanel extends Component
         }
     }
 
+    // =========================================
+    // УПРАВЛЕНИЕ МАРШРУТАМИ (mining_orders)
+    // =========================================
+
+    public function openEditOrder(int $orderId): void
+    {
+        $order = MiningOrder::find($orderId);
+        if ($order) {
+            $this->editOrderId = $orderId;
+            $this->editDumpId = $order->dump_id;
+            $this->editRockId = $order->rock_id;
+            $this->editActive = $order->active;
+
+            // Загружаем расстояния от забоя до всех перегрузок из других маршрутов
+            $this->editDistances = MiningOrder::where('miner_id', $order->miner_id)
+                ->whereNotNull('distance_km')
+                ->get()
+                ->groupBy('dump_id')
+                ->map(fn($group) => $group->first()->distance_km)
+                ->toArray();
+        }
+    }
+
+    public function closeEditOrder(): void
+    {
+        $this->editOrderId = null;
+        $this->editDumpId = null;
+        $this->editRockId = null;
+        $this->editActive = null;
+        $this->editDistances = [];
+    }
+
+    public function saveOrder(): void
+    {
+        if (!$this->editOrderId) {
+            return;
+        }
+
+        $order = MiningOrder::find($this->editOrderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
+            return;
+        }
+
+        // Получаем расстояние для выбранной перегрузки
+        $distance = $this->editDistances[$this->editDumpId] ?? $order->distance_km;
+
+        $order->update([
+            'dump_id' => $this->editDumpId,
+            'rock_id' => $this->editRockId,
+            'active' => $this->editActive,
+            'distance_km' => $distance,
+        ]);
+
+        $this->loadData();
+        $this->closeEditOrder();
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Маршрут обновлён']);
+    }
+
+    public function toggleOrderActive(int $orderId): void
+    {
+        $order = MiningOrder::find($orderId);
+        if ($order) {
+            $order->update(['active' => !$order->active]);
+            $this->loadData();
+            $status = $order->active ? 'активирован' : 'деактивирован';
+            $this->dispatch('notify', ['type' => 'info', 'message' => "Маршрут {$status}"]);
+        }
+    }
+
+    public function deleteOrder(int $orderId): void
+    {
+        $order = MiningOrder::find($orderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
+            return;
+        }
+
+        // Проверяем есть ли активные назначения
+        $hasActiveTrips = TruckTrip::where('mining_order_id', $orderId)
+            ->whereNull('completed_at')
+            ->exists();
+
+        if ($hasActiveTrips) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Нельзя удалить маршрут с активными назначениями']);
+            return;
+        }
+
+        $order->delete();
+        $this->loadData();
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Маршрут удалён']);
+    }
+
+    public function createNewOrder(): void
+    {
+        // Создаём новый маршрут (потребуется выбрать miner, dump, rock)
+        // Для простоты - открываем модальное окно с формой
+        // Можно расширить позже
+    }
+
+    public function getOrdersForManagementProperty()
+    {
+        return MiningOrder::with(['miner.currentRock', 'dump.zones.rocks'])
+            ->orderBy('miner_id')
+            ->orderBy('active', 'desc') // Активные первыми
+            ->orderBy('weight', 'desc')
+            ->get()
+            ->map(function ($order) {
+                // Текущая порода в забое
+                $currentRock = $order->miner?->currentRock;
+                
+                // Доступные зоны для текущей породы на перегрузке
+                $availableZones = collect();
+                if ($currentRock && $order->dump) {
+                    $availableZones = $order->dump->zones->filter(function ($zone) use ($currentRock) {
+                        return $zone->delivery 
+                            && $zone->volume < $zone->capacity
+                            && $zone->rocks->contains('id', $currentRock->id);
+                    })->map(fn($z) => [
+                        'id' => $z->id,
+                        'name' => $z->name_zone,
+                        'fill' => $z->capacity > 0 ? round($z->volume / $z->capacity * 100) : 0,
+                    ]);
+                }
+                
+                // Расстояние из miner_dump_distances
+                $distance = \App\Models\MinerDumpDistance::where('miner_id', $order->miner_id)
+                    ->where('dump_id', $order->dump_id)
+                    ->value('distance_km');
+                
+                return (object)[
+                    'id' => $order->id,
+                    'miner' => $order->miner,
+                    'dump' => $order->dump,
+                    'current_rock' => $currentRock,
+                    'distance_km' => $distance,
+                    'weight' => $order->weight ?? 100,
+                    'active' => $order->active,
+                    'available_zones' => $availableZones,
+                    'has_zones' => $availableZones->isNotEmpty(),
+                ];
+            });
+    }
+
+    /**
+     * Группировка маршрутов по забоям
+     */
+    public function getOrdersGroupedByMinerProperty()
+    {
+        return $this->getOrdersForManagementProperty()
+            ->groupBy(fn($o) => $o->miner?->name_miner ?? 'Без забоя');
+    }
+
+    /**
+     * Оптимизировать маршруты (выбрать лучшие для каждого забоя)
+     */
+    public function optimizeRoutes(): void
+    {
+        try {
+            $result = $this->optimizerService->optimize();
+            
+            $this->loadData();
+            
+            $message = sprintf(
+                'Оптимизация завершена: %d активных маршрутов в %d раундах',
+                $result['stats']['active_routes'],
+                $result['stats']['rounds_count']
+            );
+            
+            $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
+            
+            Log::info('Routes optimized from UI', $result['stats']);
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Ошибка оптимизации: ' . $e->getMessage()]);
+            Log::error('optimizeRoutes error', ['message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Активировать резервный маршрут вручную
+     */
+    public function activateOrder(int $orderId): void
+    {
+        $order = MiningOrder::find($orderId);
+        
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
+            return;
+        }
+        
+        $order->update(['active' => true]);
+        $this->loadData();
+        
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Маршрут активирован']);
+    }
+
+    /**
+     * Деактивировать маршрут
+     */
+    public function deactivateOrder(int $orderId): void
+    {
+        $order = MiningOrder::find($orderId);
+        
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
+            return;
+        }
+        
+        $order->update(['active' => false]);
+        $this->loadData();
+        
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Маршрут деактивирован']);
+    }
+
+    // =========================================
+    // УПРАВЛЕНИЕ РЕЖИМОМ АКТИВАЦИИ
+    // =========================================
+
+    /**
+     * Получить текущий режим активации
+     */
+    public function getRouteModeProperty(): string
+    {
+        return SystemSetting::getRouteActivationMode();
+    }
+
+    /**
+     * Переключить режим активации
+     */
+    public function toggleRouteMode(): void
+    {
+        $currentMode = SystemSetting::getRouteActivationMode();
+        $newMode = $currentMode === 'auto' ? 'manual' : 'auto';
+        
+        SystemSetting::setRouteActivationMode($newMode);
+        $this->loadData();
+        
+        $modeLabel = $newMode === 'auto' ? 'автоматический' : 'ручной';
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Режим изменён на {$modeLabel}"
+        ]);
+    }
+
+    /**
+     * Установить режим активации
+     */
+    public function setRouteMode(string $mode): void
+    {
+        if (!in_array($mode, ['auto', 'manual'])) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Неверный режим']);
+            return;
+        }
+        
+        SystemSetting::setRouteActivationMode($mode);
+        $this->loadData();
+        
+        $modeLabel = $mode === 'auto' ? 'автоматический' : 'ручной';
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Установлен {$modeLabel} режим"
+        ]);
+    }
+
+    // =========================================
+    // УПРАВЛЕНИЕ ВЕСОМ МАРШРУТОВ
+    // =========================================
+
+    /**
+     * Открыть форму редактирования веса
+     */
+    public function openWeightEditor(int $orderId): void
+    {
+        $order = MiningOrder::find($orderId);
+        if ($order) {
+            $this->editOrderId = $orderId;
+            $this->editWeight = $order->weight ?? 100;
+        }
+    }
+
+    /**
+     * Сохранить вес маршрута
+     */
+    public function saveWeight(): void
+    {
+        if (!$this->editOrderId) {
+            return;
+        }
+
+        $order = MiningOrder::find($this->editOrderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
+            return;
+        }
+
+        $weight = max(1, min(1000, (int)$this->editWeight));
+        $order->update(['weight' => $weight]);
+        
+        $this->editOrderId = null;
+        $this->editWeight = null;
+        $this->loadData();
+        
+        $this->dispatch('notify', ['type' => 'success', 'message' => "Вес маршрута изменён на {$weight}"]);
+    }
+
+    /**
+     * Закрыть форму редактирования веса
+     */
+    public function closeWeightEditor(): void
+    {
+        $this->editOrderId = null;
+        $this->editWeight = null;
+    }
+
+    /**
+     * Быстрое изменение веса (+10 или -10)
+     */
+    public function adjustWeight(int $orderId, int $delta): void
+    {
+        $order = MiningOrder::find($orderId);
+        if (!$order) {
+            return;
+        }
+
+        $newWeight = max(1, min(1000, ($order->weight ?? 100) + $delta));
+        $order->update(['weight' => $newWeight]);
+        $this->loadData();
+    }
+
     public function toggleZone(int $zoneId, bool $delivery): void
     {
         $zone = Zone::find($zoneId);
@@ -257,49 +625,6 @@ class MainDispatcherPanel extends Component
         $this->dispatch('notify', [
             'type' => 'info',
             'message' => $delivery ? "Зона {$zone->name_zone} открыта" : "Зона {$zone->name_zone} закрыта",
-        ]);
-    }
-
-    public function toggleMinerStatus(int $minerId): void
-    {
-        $miner = Miner::find($minerId);
-
-        if (!$miner) {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Забой не найден']);
-            return;
-        }
-
-        $newStatus = !$miner->active;
-        
-        // Если деактивируем - проверяем есть ли грузовики в работе
-        if (!$newStatus) {
-            $trucksInWork = Truck::whereHas('trips', function ($q) use ($minerId) {
-                $q->where('miner_id', $minerId)
-                  ->whereNull('completed_at');
-            })->whereIn('status', ['to_miner', 'loading'])->count();
-
-            if ($trucksInWork > 0) {
-                $this->dispatch('notify', [
-                    'type' => 'warning',
-                    'message' => "Невозможно деактивировать: {$trucksInWork} самосвалов в пути к забою",
-                ]);
-                return;
-            }
-        }
-
-        $miner->update([
-            'active' => $newStatus,
-            'last_updated_at' => now(),
-            'last_updated_by' => auth()->id(),
-        ]);
-
-        $this->loadData();
-
-        $this->dispatch('notify', [
-            'type' => 'success',
-            'message' => $newStatus 
-                ? "Забой {$miner->name_miner} активирован" 
-                : "Забой {$miner->name_miner} деактивирован",
         ]);
     }
 
@@ -328,249 +653,14 @@ class MainDispatcherPanel extends Component
         return $this->trucks->where('status', 'free');
     }
 
-    // =========================================
-    // ПЛАНОВАЯ СТАТИСТИКА ПО РАССТОЯНИЯМ
-    // =========================================
-
-    public function getPlannedDistanceStatsProperty(): array
+    /**
+     * Активные экскаваторы с породой в забое
+     */
+    public function getActiveMinersWithRockProperty()
     {
-        // Активные заказы с расстоянием
-        $activeOrders = $this->orders->where('active', true);
-        
-        // Среднее расстояние по активным заказам
-        $avgDistance = $activeOrders->avg('distance_km') ?? 0;
-        
-        return [
-            'avg_distance' => round($avgDistance, 1),
-        ];
-    }
-
-    // =========================================
-    // СТАТИСТИКА ПРОСТОЕВ
-    // =========================================
-
-    public function getPausePeriodStart(): \Carbon\Carbon
-    {
-        return match ($this->pausePeriod) {
-            'shift' => $this->getShiftStart(),
-            'today' => now()->startOfDay(),
-            'week' => now()->startOfWeek(),
-            'month' => now()->startOfMonth(),
-            default => $this->getShiftStart(),
-        };
-    }
-
-    public function getShiftStart(): \Carbon\Carbon
-    {
-        $now = now();
-        $hour = $now->hour;
-        $minute = $now->minute;
-
-        if ($hour >= 7 && $hour < 19) {
-            if ($hour === 7 && $minute < 30) {
-                return $now->copy()->subDay()->setTime(19, 30);
-            }
-            return $now->copy()->setTime(7, 30);
-        } elseif ($hour >= 19) {
-            if ($hour === 19 && $minute < 30) {
-                return $now->copy()->setTime(7, 30);
-            }
-            return $now->copy()->setTime(19, 30);
-        } else {
-            return $now->copy()->subDay()->setTime(19, 30);
-        }
-    }
-
-    public function getPauseStatsProperty(): array
-    {
-        $periodStart = $this->getPausePeriodStart();
-
-        $query = \App\Models\TripPause::with(['truck', 'trip'])
-            ->where('started_at', '>=', $periodStart);
-
-        // Фильтр по нескольким типам
-        if (!empty($this->pauseTypes)) {
-            $query->whereIn('type', $this->pauseTypes);
-        }
-
-        $pauses = $query->orderBy('started_at', 'desc')->get();
-
-        // Общая статистика по типам
-        $byType = $pauses->groupBy('type')->map(function ($items, $type) {
-            $totalSeconds = $items->sum(function ($pause) {
-                return $pause->duration_seconds ?? $pause->getCurrentDuration();
-            });
-
-            return [
-                'type' => $type,
-                'label' => \App\Models\TripPause::typeLabel($type),
-                'count' => $items->count(),
-                'total_seconds' => $totalSeconds,
-                'total_formatted' => $this->formatDuration($totalSeconds),
-            ];
-        })->sortByDesc('total_seconds');
-
-        // Общее время
-        $totalSeconds = $pauses->sum(function ($pause) {
-            return $pause->duration_seconds ?? $pause->getCurrentDuration();
-        });
-
-        // Активные (не завершённые)
-        $activeCount = $pauses->whereNull('ended_at')->count();
-
-        return [
-            'pauses' => $pauses,
-            'by_type' => $byType,
-            'total_count' => $pauses->count(),
-            'total_seconds' => $totalSeconds,
-            'total_formatted' => $this->formatDuration($totalSeconds),
-            'active_count' => $activeCount,
-            'period_label' => $this->getPeriodLabel(),
-        ];
-    }
-
-    protected function formatDuration(int $seconds): string
-    {
-        $hours = floor($seconds / 3600);
-        $minutes = floor(($seconds % 3600) / 60);
-
-        if ($hours > 0) {
-            return sprintf('%d ч %d мин', $hours, $minutes);
-        }
-        return sprintf('%d мин', $minutes);
-    }
-
-    protected function getPeriodLabel(): string
-    {
-        return match ($this->pausePeriod) {
-            'shift' => 'За смену',
-            'today' => 'За сегодня',
-            'week' => 'За неделю',
-            'month' => 'За месяц',
-            default => 'За период',
-        };
-    }
-
-    public function updatedPausePeriod(): void
-    {
-        $this->activeTab = 'pausesTab';
-    }
-
-    public function updatedPauseTypes(): void
-    {
-        $this->activeTab = 'pausesTab';
-    }
-
-    public function setActiveTab(string $tab): void
-    {
-        $this->activeTab = $tab;
-    }
-
-    // =========================================
-    // ПРИНУДИТЕЛЬНАЯ СМЕНА СТАТУСА
-    // =========================================
-
-    public ?int $forceStatusTruckId = null;
-    public ?string $forceStatusNew = null;
-
-    public function openForceStatusModal(int $truckId): void
-    {
-        $this->forceStatusTruckId = $truckId;
-        
-        // Автоматически выбираем предыдущий статус если есть
-        $truck = Truck::find($truckId);
-        $this->forceStatusNew = $truck?->before_breakdown;
-    }
-
-    public function closeForceStatusModal(): void
-    {
-        $this->forceStatusTruckId = null;
-        $this->forceStatusNew = null;
-    }
-
-    public function forceChangeStatus(): void
-    {
-        if (!$this->forceStatusTruckId || !$this->forceStatusNew) {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Выберите статус']);
-            return;
-        }
-
-        $truck = Truck::find($this->forceStatusTruckId);
-        if (!$truck) {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал не найден']);
-            return;
-        }
-
-        try {
-            $oldStatus = $truck->status;
-            
-            // Завершаем активную паузу если есть
-            $trip = TruckTrip::where('truck_id', $truck->id)
-                ->whereNull('completed_at')
-                ->latest()
-                ->first();
-
-            if ($trip) {
-                // Завершаем все активные паузы
-                foreach ($trip->pauses()->whereNull('ended_at')->get() as $pause) {
-                    $pause->end();
-                }
-
-                // Если переводим в free - завершаем рейс
-                if ($this->forceStatusNew === 'free') {
-                    $trip->update(['completed_at' => now()]);
-                    
-                    // Освобождаем заказ
-                    MiningOrder::where('truck_id', $truck->id)
-                        ->update(['truck_id' => null, 'zone_id' => null]);
-                }
-            }
-
-            $truck->update([
-                'status' => $this->forceStatusNew,
-                'before_breakdown' => null,
-                'pause_started_at' => null,
-            ]);
-
-            Log::info("Dispatcher forced status change", [
-                'truck_id' => $truck->id,
-                'truck_number' => $truck->number,
-                'old_status' => $oldStatus,
-                'new_status' => $this->forceStatusNew,
-            ]);
-
-            // Уведомляем диспетчера об изменении
-            event(new \App\Events\DispatcherNotification(
-                $truck->id,
-                $this->forceStatusNew,
-                ['forced' => true, 'from' => $oldStatus]
-            ));
-
-            $this->loadData();
-            $this->closeForceStatusModal();
-
-            $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => "Статус {$truck->number} изменён: {$oldStatus} → {$this->forceStatusNew}",
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Force status change failed', ['error' => $e->getMessage()]);
-            $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
-        }
-    }
-
-    public function getAvailableStatusesProperty(): array
-    {
-        return [
-            'free' => 'Свободен',
-            'to_miner' => 'К забою',
-            'loading' => 'Погрузка',
-            'transporting' => 'Перевозка',
-            'unloading' => 'Разгрузка',
-            'delayed' => 'Задержка',
-            'breakdown' => 'Поломка',
-        ];
+        return $this->miners
+            ->filter(fn($m) => $m->active && $m->currentRock)
+            ->values();
     }
 
     #[On('truck-status-changed')]
@@ -584,6 +674,198 @@ class MainDispatcherPanel extends Component
     {
         Log::info('MainDispatcherPanel: truck-updated received via Echo');
         $this->loadData();
+    }
+
+    // =========================================
+    // УПРАВЛЕНИЕ ВКЛАДКАМИ
+    // =========================================
+
+    public function setActiveTab(string $tab): void
+    {
+        $this->activeTab = $tab;
+
+        // Обновляем данные при переключении на вкладку самосвалов
+        if ($tab === 'trucksTab') {
+            $this->loadData();
+        }
+    }
+
+    // =========================================
+    // ПРИНУДИТЕЛЬНАЯ СМЕНА СТАТУСА
+    // =========================================
+
+    public function openForceStatusModal(int $truckId): void
+    {
+        $this->forceStatusTruckId = $truckId;
+        $this->forceStatusNew = null;
+    }
+
+    public function closeForceStatusModal(): void
+    {
+        $this->forceStatusTruckId = null;
+        $this->forceStatusNew = null;
+    }
+
+    public function forceChangeStatus(): void
+    {
+        if (!$this->forceStatusTruckId || !$this->forceStatusNew) {
+            return;
+        }
+
+        $truck = Truck::find($this->forceStatusTruckId);
+        if (!$truck) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал не найден']);
+            return;
+        }
+
+        $oldStatus = $truck->status;
+
+        // Если переводим в свободный - завершаем текущий рейс
+        if ($this->forceStatusNew === 'free') {
+            $activeTrip = $truck->trips->first();
+            if ($activeTrip) {
+                $activeTrip->update(['completed_at' => now()]);
+            }
+        }
+
+        $truck->update(['status' => $this->forceStatusNew]);
+
+        Log::warning('DISPATCHER FORCE STATUS CHANGE', [
+            'truck_id' => $truck->id,
+            'truck_number' => $truck->number,
+            'old_status' => $oldStatus,
+            'new_status' => $this->forceStatusNew,
+        ]);
+
+        $this->closeForceStatusModal();
+        $this->loadData();
+
+        $this->dispatch('notify', [
+            'type' => 'warning',
+            'message' => "Статус {$truck->number} изменён: {$oldStatus} → {$this->forceStatusNew}",
+        ]);
+    }
+
+    public function getAvailableStatusesProperty(): array
+    {
+        return [
+            'free' => 'Свободен',
+            'to_miner' => 'К забою',
+            'loading' => 'Погрузка',
+            'transporting' => 'Перевозка',
+            'unloading' => 'Разгрузка',
+            'breakdown' => 'Поломка',
+            'delayed' => 'Задержка',
+        ];
+    }
+
+    // =========================================
+    // УПРАВЛЕНИЕ ЗАБОЯМИ
+    // =========================================
+
+    public function toggleMinerStatus(int $minerId): void
+    {
+        $miner = Miner::find($minerId);
+        if ($miner) {
+            $miner->update(['active' => !$miner->active]);
+            $this->loadData();
+            $status = $miner->active ? 'активирован' : 'деактивирован';
+            $this->dispatch('notify', ['type' => 'info', 'message' => "Забой {$miner->name_miner} {$status}"]);
+        }
+    }
+
+    // =========================================
+    // СТАТИСТИКА
+    // =========================================
+
+    public function getPlannedDistanceStatsProperty(): array
+    {
+        // Получаем активные маршруты с расстоянием
+        $activeOrders = MiningOrder::where('active', true)
+            ->whereNotNull('distance_km')
+            ->get();
+
+        $avgDistance = $activeOrders->avg('distance_km');
+
+        return [
+            'avg_distance' => $avgDistance ? round($avgDistance, 1) : '—',
+            'total_orders' => $activeOrders->count(),
+        ];
+    }
+
+    // =========================================
+    // ПРОСТОИ И ЗАДЕРЖКИ
+    // =========================================
+
+    public function getPauseStatsProperty(): array
+    {
+        $query = TripPause::with(['truck', 'trip'])
+            ->orderBy('started_at', 'desc');
+
+        // Период
+        switch ($this->pausePeriod) {
+            case 'today':
+                $query->whereDate('started_at', today());
+                $periodLabel = 'За сегодня';
+                break;
+            case 'week':
+                $query->where('started_at', '>=', now()->subWeek());
+                $periodLabel = 'За неделю';
+                break;
+            case 'month':
+                $query->where('started_at', '>=', now()->subMonth());
+                $periodLabel = 'За месяц';
+                break;
+            default: // shift
+                $query->where('started_at', '>=', now()->startOfDay());
+                $periodLabel = 'За смену';
+        }
+
+        // Фильтр по типам
+        if (!empty($this->pauseTypes)) {
+            $query->whereIn('type', $this->pauseTypes);
+        }
+
+        $pauses = $query->get();
+
+        // Группировка по типам
+        $byType = $pauses->groupBy('type')->map(function ($group, $type) {
+            $totalSeconds = $group->sum(function ($p) {
+                return $p->getCurrentDuration();
+            });
+            return [
+                'type' => $type,
+                'label' => TripPause::typeLabel($type),
+                'count' => $group->count(),
+                'total_seconds' => $totalSeconds,
+                'total_formatted' => $this->formatSeconds($totalSeconds),
+            ];
+        })->values();
+
+        $totalSeconds = $pauses->sum(function ($p) {
+            return $p->getCurrentDuration();
+        });
+
+        return [
+            'pauses' => $pauses,
+            'total_count' => $pauses->count(),
+            'total_seconds' => $totalSeconds,
+            'total_formatted' => $this->formatSeconds($totalSeconds),
+            'active_count' => $pauses->whereNull('ended_at')->count(),
+            'by_type' => $byType,
+            'period_label' => $periodLabel,
+        ];
+    }
+
+    private function formatSeconds(int $seconds): string
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        
+        if ($hours > 0) {
+            return "{$hours}ч {$minutes}м";
+        }
+        return "{$minutes}м";
     }
 
     public function render()

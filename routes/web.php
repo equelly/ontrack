@@ -3,7 +3,7 @@
 
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\User\Dump\DistributionController;
+use App\Http\Controllers\User\Dumps\DistributionController;
 use App\Livewire\DriverPanel;
 use App\Livewire\TestComponent;
 use App\Events\TestBroadcast;
@@ -89,19 +89,37 @@ Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middl
         Route::get('/search', 'SearchController')->name('order.search');
     });
     Route::group(['namespace'=>'Dump'], function(){
-        Route::get('/dumps', 'IndexController')->name('dump.index');
-         Route::get('/dumps/create', 'CreateController')->name('dump.create');
+        Route::get('/dump', 'IndexController')->name('dump.index');
+         Route::get('/dump/create', 'CreateController')->name('dump.create');
          Route::post('/dump', 'StoreController')->name('dump.store');
          Route::get('/dump/{dump}', 'ShowController')->name('dump.show');
          Route::get('/dump/{dump}/edit', 'EditController')->name('dump.edit');
+         // Маршрут для обновления зоны ДОЛЖЕН БЫТЬ ПЕРЕД /dump/{dump}
+         Route::put('/dump/zone/{zone}', 'UpdateController@zone')->name('dump.zone.update');
          Route::put('/dump/{dump}', 'UpdateController')->name('dump.update');
          Route::delete('/dump/{dump}', 'DestroyController')->name('dump.delete');
+    });
+    Route::group(['namespace'=>'Dumps'], function(){
+        Route::get('/dumps', 'IndexController')->name('dumps.index');
+         Route::get('/dumps/create', 'CreateController')->name('dumps.create');
+         Route::post('/dumps', 'StoreController')->name('dumps.store');
+         Route::get('/dumps/{dump}', 'ShowController')->name('dumps.show');
+         Route::get('/dumps/{dump}/edit', 'EditController')->name('dumps.edit');
+         Route::put('/dumps/{dump}', 'UpdateController')->name('dumps.update');
+         Route::delete('/dumps/{dump}', 'DestroyController')->name('dumps.delete');
     });
 
     Route::group(['namespace' => 'Miner'], function () {
         Route::resource('miners', 'MinersController');   // Создает: miners.index, miners.create, miners.store и т.д.
 
         });    
+        // Маршруты для управления породами
+    Route::group(['namespace' => 'Rock'], function () {
+        Route::get('/rocks', 'IndexController')->name('rocks.index');
+        Route::get('/rocks/create', 'CreateController')->name('rocks.create');
+        Route::post('/rocks', 'StoreController')->name('rocks.store');
+        Route::delete('/rocks/{rock}', 'DestroyController')->name('rocks.destroy');
+    });
         // РОУТЫ ДЛЯ РАСПРЕДЕЛЕНИЯ
     Route::get('/distribution-status', [DistributionController::class, 'status']);
     Route::get('/distribute', [DistributionController::class, 'distribute']);

@@ -1,95 +1,124 @@
 @extends('layouts.app')
+
+@section('title', 'Детали отвала')
+
+@php
+    $VERTUSHKA = 380; // 1 вертушка = 380 м³
+@endphp
+
 @section('content')
-
-        <div class="flex justify-content-center mt-5">
-                {{-- 🔍 FLASH СООБЩЕНИЯ — в самом верху! --}}
-            @if (session('success'))
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    <strong>✅ Информация добавлена в базу данных!</strong> данные пункта разгрузки №{{ session('message') }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<div class="container-fluid">
+    <div class="row mb-4 mt-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4><i class="">данные по п.разгрузки №</i>{{ $dump->name_dump }}</h4>
+                <div>
+                    <a href="{{ route('dump.edit', $dump->id) }}" class="btn btn-outline-primary btn-sm me-2">
+                        <i class="fas fa-cog"></i> Настроить породы
+                    </a>
+                    <a href="{{ route('dump.index') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Назад к списку
+                    </a>
                 </div>
-            @endif
-
-            @if (session('error'))
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <strong>❌ Ошибка!</strong> {{ session('error') }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            @endif
+            </div>
         </div>
-        <div class="flex justify-content-center mt-5">
-        <div class="card shadow p-1 m-1 bg-white rounded" style="width: 40rem">
-                <div class="row g-0">
-                    <div class="col-md-8">
-                        <div class="card-body pl-1">
-                           
-                            <a href="{{route('dump.show', $dump->id)}}">    
-                            <h5 class="card-title"><strong>перегрузка №{{$dump->name_dump}}</strong></h5></a>
-                            <div class="flex justify-content-between mt-1">
-                            <small class="text-muted">обновил: <br>{{ $dump->lastEditor->name?? 'неизвестный' }}</small>
-                            <small class="text-muted">
-                                {!! $dump->last_updated_at? $dump->last_updated_at->format('d.m. H:i'). '<br>('. $dump->last_updated_at->diffForHumans(). ')': 'нет данных'!!}
-                            </small>
+    </div>
 
-                             </div> 
-                             <table class="table-fixed w-full border-collapse border border-gray-400">
-                                @php
-                                    $map = [
-                                        'вскрыша' => 'V',
-                                        'руда' => 'R',
-                                        'песчаник' => 'Kvp',
-                                        'руда_S' => 'Rs',
-                                        ];
-                                    $colorMap = [
-                                        'вскрыша' => 'green',
-                                        'руда' => 'red',
-                                        'песчаник' => 'yellow',
-                                        'руда_S' => 'red',
-                                            ];
-                                @endphp
-                                
-                                <tbody>
-                                  @foreach($dump->zones as $zone) 
-                                    <tr>
-                                    
-                                        <td  class="w-[20px] border border-gray-300">{{ $zone->name_zone }}
-                                        @foreach ($zone->rocks as $rock) 
-                                            
-
-                                                @foreach($zone->rocks as $rock)
-                                                    {{ $map[$rock->name_rock]?? $rock->name_rock }}
-                                                @endforeach
-
-                                                
-                                        
-                                        </td>
-                                        <td class="w-[15px] border border-gray-300">{{ $zone->volume }}</td>
-                                        <td  class="w-[35px] border border-gray-300"><span id="value_{{ $zone->id }}" class="diagramm inline-block h-5"
-                                        style= "width: {{ $zone->volume * 0.2 }} rem;
-                                                background-color: {{ $colorMap[$rock->name_rock]?? 'gray' }};">
-                                        </span></td>
-                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input class="m-auto" type="checkbox" name="delivery" 
-                                        {{ $zone->delivery==true?'checked':'' }} /></td>
-                                        <td  class="w-[10px] text-center align-middle border border-gray-300"> <input type="radio" name="ship_{{$dump->id}}" value="1" 
-                                        {{ $dump->loader_zone_id==$zone->id?'checked':'' }}/></td>
-                                    @endforeach
-                                    </tr>
-                                    @endforeach
-                                </tbody>
-                                    
-                                
-                            </table>     
-                                       
-                                    <div class="flex justify-content-between">  
-                                        <a href="{{route('dump.edit', $dump->id)}}"><small class="btn mt-2">обновить</small></a>
-                                        <a href="{{ route('dump.index') }}"><small class="btn mt-2">вернуться</small></a>
-                                    </div>
-                              
-                        </div>
-                    </div>
-                 
-                    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Статистика</h5>
                 </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td>Доставленный объём:</td>
+                            <td>
+                                <strong>{{ number_format($dump->delivered_volume / $VERTUSHKA, 1) }} вертушек</strong>
+                                <br><small class="text-muted">({{ number_format($dump->delivered_volume, 0) }} м³)</small>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Количество рейсов:</td>
+                            <td><strong>{{ $dump->trips_count }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td>Количество зон:</td>
+                            <td><strong>{{ $dump->zones->count() }}</strong></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
         </div>
-    </div> 
+
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-map me-2"></i>Зоны</h5>
+                </div>
+                <div class="card-body">
+                    @if($dump->zones->count() > 0)
+                        @foreach($dump->zones as $zone)
+                            <div class="d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
+                                <div>
+                                    <strong>{{ $zone->name_zone }}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        Породы: {{ $zone->rocks->pluck('name_rock')->join(', ') ?: 'Не указаны' }}
+                                    </small>
+                                </div>
+                                <div>
+                                    @if($zone->delivery)
+                                        <span class="badge bg-success">Открыта</span>
+                                    @else
+                                        <span class="badge bg-secondary">Закрыта</span>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                    @else
+                        <p class="text-muted mb-0">Нет зон</p>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if($dump->orders->count() > 0)
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-route me-2"></i>Связанные маршруты</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Забой</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($dump->orders as $order)
+                                <tr>
+                                    <td>{{ $order->id }}</td>
+                                    <td>{{ $order->miner?->name_miner ?? '-' }}</td>
+                                    <td>
+                                        @if($order->active)
+                                            <span class="badge bg-success">Активен</span>
+                                        @else
+                                            <span class="badge bg-secondary">Неактивен</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    @endif
+</div>
 @endsection

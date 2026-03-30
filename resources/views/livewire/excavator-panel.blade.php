@@ -51,38 +51,47 @@
                         @if($miner)
                             <div class="mb-3">
                                 <span class="text-muted">Текущая порода:</span>
-                                @if($miner->rocks->first())
+                                @if($miner->currentRock)
                                     <span class="badge bg-success" style="font-size: 1rem; padding: 0.5rem 1rem;">
-                                        {{ $miner->rocks->first()->name_rock }}
+                                        {{ $miner->currentRock->name_rock }}
                                     </span>
                                 @else
-                                    <span class="badge bg-secondary" style="font-size: 1rem; padding: 0.5rem 1rem;">
-                                        Не установлена
+                                    <span class="badge bg-warning text-dark" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                                        Не выбрана
                                     </span>
                                 @endif
                             </div>
 
                             <hr>
 
-                            <div class="row">
-                                <div class="col-md-8">
-                                    <select wire:model="selectedRockId" class="form-control">
-                                        <option value="">-- Выберите породу --</option>
-                                        @foreach($rocks as $rock)
-                                            <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
-                                        @endforeach
-                                    </select>
+                            @if($rocks->count() > 0)
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <select wire:model="selectedRockId" class="form-control">
+                                            <option value="">-- Выберите породу --</option>
+                                            @foreach($rocks as $rock)
+                                                <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                            @endforeach
+                                        </select>
+                                        <small class="text-muted">Выберите добываемую породу</small>
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <button
+                                            wire:click="setRock"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-success w-100">
+                                            <span wire:loading.remove>Установить</span>
+                                            <span wire:loading><i class="fas fa-spinner fa-spin"></i>...</span>
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="col-md-4 d-flex align-items-end">
-                                    <button
-                                        wire:click="setRock"
-                                        wire:loading.attr="disabled"
-                                        class="btn btn-success w-100">
-                                        <span wire:loading.remove>Установить</span>
-                                        <span wire:loading><i class="fas fa-spinner fa-spin"></i>...</span>
-                                    </button>
+                            @else
+                                <div class="alert alert-warning mb-0">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <strong>Нет пород в системе!</strong><br>
+                                    Обратитесь к администратору для добавления пород.
                                 </div>
-                            </div>
+                            @endif
                         @else
                             <div class="text-center text-muted py-3">
                                 Сначала выберите экскаватор
@@ -273,7 +282,7 @@
 
                     setTimeout(() => {
                         toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 3000);
+                        setTimeout(() => toast.remove(), 300);
                     }, 10000);
                 });
         }
@@ -303,8 +312,8 @@
 
                     setTimeout(() => {
                         toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 3000);
-                    }, 5000);
+                        setTimeout(() => toast.remove(), 300);
+                    }, 10000);
                 });
 
                 // Установка cookie

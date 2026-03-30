@@ -4,28 +4,25 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Auth;
-use App\Models\Rock;
 
 class Zone extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'dump_id',        // Связь с dump
-        'name_zone',      // Название зоны
-        'volume',         // Объём
-        'ship',           // Отгрузка (boolean)
-        'delivery',       //завозка (boolean)
+        'dump_id',
+        'name_zone',
+        'volume',
         'capacity',
+        'ship',
+        'delivery'
     ];
 
     protected $casts = [
-        'ship' => 'boolean',
-        'delivery' => 'boolean',
         'volume' => 'decimal:2',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'capacity' => 'decimal:2',
+        'ship' => 'boolean',
+        'delivery' => 'boolean'
     ];
 
         protected static function boot()

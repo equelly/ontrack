@@ -98,6 +98,13 @@
             </button>
         </li>
         <li class="nav-item">
+            <button class="nav-link {{ $activeTab === 'routesTab' ? 'active' : '' }}" 
+                    data-bs-toggle="tab" data-bs-target="#routesTab" type="button"
+                    wire:click="setActiveTab('routesTab')">
+                Маршруты
+            </button>
+        </li>
+        <li class="nav-item">
             <button class="nav-link {{ $activeTab === 'assignTab' ? 'active' : '' }}" 
                     data-bs-toggle="tab" data-bs-target="#assignTab" type="button"
                     wire:click="setActiveTab('assignTab')">
@@ -275,8 +282,8 @@
                                     <span class="fw-bold">{{ $miner->name_miner }}</span>
                                 </td>
                                 <td>
-                                    @if($miner->rocks->first())
-                                        <span class="badge bg-info">{{ $miner->rocks->first()->name_rock }}</span>
+                                    @if($miner->currentRock)
+                                        <span class="badge bg-info">{{ $miner->currentRock->name_rock }}</span>
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
@@ -321,6 +328,239 @@
             </div>
         </div>
 
+        <!-- Маршруты (управление mining_orders) -->
+        <div class="tab-pane fade {{ $activeTab === 'routesTab' ? 'show active' : '' }}" id="routesTab">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <h5 class="mb-0">Маршруты по забоям</h5>
+                    <!-- Индикатор и переключатель режима -->
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button 
+                            type="button"
+                            class="btn {{ $this->routeMode === 'auto' ? 'btn-primary' : 'btn-outline-primary' }}"
+                            wire:click="setRouteMode('auto')"
+                            wire:loading.attr="disabled">
+                            <i class="fas fa-robot"></i> Авто
+                        </button>
+                        <button 
+                            type="button"
+                            class="btn {{ $this->routeMode === 'manual' ? 'btn-warning' : 'btn-outline-warning' }}"
+                            wire:click="setRouteMode('manual')"
+                            wire:loading.attr="disabled">
+                            <i class="fas fa-hand-paper"></i> Ручной
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        @if($this->routeMode === 'auto')
+                            <i class="fas fa-info-circle"></i> Система автоматически выбирает маршруты
+                        @else
+                            <i class="fas fa-exclamation-triangle"></i> Управление маршрутами вручную
+                        @endif
+                    </small>
+                </div>
+                <div>
+                    @if($this->routeMode === 'auto')
+                        <button class="btn btn-primary btn-sm" wire:click="optimizeRoutes" wire:loading.attr="disabled">
+                            <span wire:loading.remove><i class="fas fa-magic"></i> Оптимизировать</span>
+                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Оптимизация...</span>
+                        </button>
+                    @else
+                        <button class="btn btn-outline-secondary btn-sm" wire:click="optimizeRoutes" wire:loading.attr="disabled" title="Принудительная оптимизация (ручной режим)">
+                            <i class="fas fa-magic"></i> Оптимизировать
+                        </button>
+                    @endif
+                </div>
+            </div>
+
+            <div class="alert alert-{{ $this->routeMode === 'auto' ? 'info' : 'warning' }} py-2 small mb-2">
+                @if($this->routeMode === 'auto')
+                    <i class="fas fa-robot"></i> 
+                    <strong>Автоматический режим:</strong> Система сама выбирает лучшие маршруты при оптимизации.
+                @else
+                    <i class="fas fa-hand-paper"></i> 
+                    <strong>Ручной режим:</strong> Диспетчер управляет маршрутами вручную.
+                @endif
+            </div>
+            
+            <div class="alert alert-light py-2 small mb-0">
+                <i class="fas fa-info-circle"></i>
+                <strong>Подсказки:</strong>
+                <span class="badge bg-info ms-1">Порода в забое</span> — текущая добываемая порода.
+                <span class="badge bg-success ms-1">Зелёная</span> — порода в зоне совместима с породой забоя.
+                <span class="badge bg-warning text-dark ms-1">Жёлтая строка</span> — порода забоя не принимается.
+            </div>
+
+            @php
+                $ordersGrouped = $this->ordersGroupedByMiner;
+            @endphp
+
+            @foreach($ordersGrouped as $minerName => $orders)
+                @php
+                    $firstOrder = $orders->first();
+                    $currentRock = $firstOrder?->current_rock;
+                    $minerId = $firstOrder?->miner?->id;
+                    $activeCount = $orders->where('active', true)->count();
+                @endphp
+                <div class="card mb-3">
+                    <div class="card-header bg-secondary text-white py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <strong>
+                                    <i class="fas fa-mountain me-2"></i>{{ $minerName }}
+                                </strong>
+                                @if($currentRock)
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-gem me-1"></i>{{ $currentRock->name_rock }}
+                                    </span>
+                                @else
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>Нет породы
+                                    </span>
+                                @endif
+                            </div>
+                            <div>
+                                <span class="badge bg-light text-dark me-2">
+                                    {{ $orders->count() }} маршрутов
+                                </span>
+                                @if($activeCount > 0)
+                                    <span class="badge bg-success">
+                                        {{ $activeCount }} активен
+                                    </span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Перегрузка</th>
+                                    <th style="width: 200px;">Породы</th>
+                                    <th style="width: 80px;">Расст.</th>
+                                    <th style="width: 100px;">Вес</th>
+                                    <th style="width: 100px;">Доступные зоны</th>
+                                    <th style="width: 80px;">Статус</th>
+                                    <th style="width: 80px;">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($orders as $order)
+                                    @php
+                                        // Получаем все зоны с породами этого отвала
+                                        $dumpZones = $order->dump?->zones ?? collect();
+                                        // Получаем уникальные породы для проверки совместимости
+                                        $dumpRocks = $dumpZones->flatMap(fn($z) => $z->rocks)->unique('id');
+                                        // Проверяем совместимость с породой забоя
+                                        $isCompatible = $currentRock && $dumpRocks?->contains('id', $currentRock->id);
+                                    @endphp
+                                    <tr class="{{ $order->active ? '' : 'table-secondary' }} {{ !$isCompatible ? 'table-warning' : '' }}" style="{{ $order->active ? '' : 'opacity: 0.6' }}">
+                                        <td>
+                                            <strong>{{ $order->dump?->name_dump ?? '—' }}</strong>
+                                        </td>
+                                        <td>
+                                            @if($dumpZones->count() > 0)
+                                                @foreach($dumpZones as $zone)
+                                                    @php
+                                                        $zoneRocks = $zone->rocks->pluck('name_rock')->join(', ');
+                                                        $hasCurrentRock = $currentRock && $zone->rocks->contains('id', $currentRock->id);
+                                                    @endphp
+                                                    <div class="small {{ $hasCurrentRock ? 'text-success fw-bold' : '' }}">
+                                                        {{ $zone->name_zone }}: {{ $zoneRocks ?: '—' }}
+                                                    </div>
+                                                @endforeach
+                                            @else
+                                                <small class="text-muted">Нет зон</small>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <small>{{ $order->distance_km ?? '—' }} км</small>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <button 
+                                                    class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                    wire:click="adjustWeight({{ $order->id }}, -10)"
+                                                    title="Уменьшить вес"
+                                                    style="font-size: 10px;">−</button>
+                                                <span class="badge {{ $order->active ? 'bg-primary' : 'bg-secondary' }}" style="min-width: 35px;">{{ $order->weight }}</span>
+                                                <button 
+                                                    class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                    wire:click="adjustWeight({{ $order->id }}, 10)"
+                                                    title="Увеличить вес"
+                                                    style="font-size: 10px;">+</button>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if($order->available_zones->count() > 0)
+                                                @foreach($order->available_zones->take(2) as $zone)
+                                                    <span class="badge bg-info me-1" title="Заполнено: {{ $zone['fill'] }}%">
+                                                        {{ $zone['name'] }}
+                                                    </span>
+                                                @endforeach
+                                                @if($order->available_zones->count() > 2)
+                                                    <small class="text-muted">+{{ $order->available_zones->count() - 2 }}</small>
+                                                @endif
+                                            @else
+                                                <small class="text-muted">—</small>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @if($order->active && $order->has_zones)
+                                                <span class="badge bg-success">✓ Активен</span>
+                                            @elseif($order->active)
+                                                <span class="badge bg-warning text-dark">⚠️ Нет зон</span>
+                                            @else
+                                                <span class="badge bg-secondary">Резерв</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                @if($order->active)
+                                                    <button 
+                                                        class="btn btn-outline-warning"
+                                                        wire:click="deactivateOrder({{ $order->id }})"
+                                                        title="Деактивировать">
+                                                        <i class="fas fa-pause"></i>
+                                                    </button>
+                                                @else
+                                                    <button 
+                                                        class="btn btn-outline-success"
+                                                        wire:click="activateOrder({{ $order->id }})"
+                                                        title="Активировать">
+                                                        <i class="fas fa-play"></i>
+                                                    </button>
+                                                @endif
+                                                <button 
+                                                    class="btn btn-outline-primary"
+                                                    wire:click="openEditOrder({{ $order->id }})"
+                                                    title="Редактировать">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button 
+                                                    class="btn btn-outline-danger"
+                                                    wire:click="deleteOrder({{ $order->id }})"
+                                                    wire:confirm="Удалить маршрут?"
+                                                    title="Удалить">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            @endforeach
+
+            @if($ordersGrouped->isEmpty())
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Нет настроенных маршрутов. Создайте маршруты для забоев.
+                </div>
+            @endif
+        </div>
+
         <!-- Назначение маршрута -->
         <div class="tab-pane fade {{ $activeTab === 'assignTab' ? 'show active' : '' }}" id="assignTab">
             <div class="card">
@@ -345,20 +585,17 @@
                             <label class="form-label">Забой</label>
                             <select wire:model.live="selectedMinerId" class="form-select">
                                 <option value="">Выберите</option>
-                                @foreach($miners as $miner)
+                                @foreach($this->active_miners_with_rock as $miner)
                                     <option value="{{ $miner->id }}">
-                                        {{ $miner->name_miner }}
-                                        @if($miner->rocks->first())
-                                            ({{ $miner->rocks->first()->name_rock }})
-                                        @endif
+                                        {{ $miner->name_miner }}{{ $miner->currentRock ? ' (' . $miner->currentRock->name_rock . ')' : '' }}
                                     </option>
                                 @endforeach
                             </select>
                         </div>
 
                         <div class="col-md-3">
-                            <label class="form-label">Перегрузка</label>
-                            <select wire:model.live="selectedOrderId" class="form-select">
+                            <label class="form-label">Маршрут</label>
+                            <select wire:model.live="selectedOrderId" class="form-select" @if(!$selectedMinerId) disabled @endif>
                                 <option value="">Выберите забой сначала</option>
                                 @foreach($availableOrders as $order)
                                     <option value="{{ $order['id'] }}">
@@ -369,18 +606,24 @@
                             @error('selectedOrderId')
                                 <small class="text-danger">{{ $message }}</small>
                             @enderror
+                            @if($availableOrders && count($availableOrders) === 0 && $selectedMinerId)
+                                <small class="text-warning">Нет маршрутов с доступными зонами</small>
+                            @endif
                         </div>
 
                         <div class="col-md-3">
                             <label class="form-label">Зона</label>
-                            <select wire:model.live="selectedZoneId" class="form-select">
-                                <option value="">Автоматически</option>
+                            <select wire:model.live="selectedZoneId" class="form-select" @if(!$selectedOrderId) disabled @endif>
+                                <option value="">Автоматически (наименее заполненная)</option>
                                 @foreach($availableZones as $zone)
                                     <option value="{{ $zone['id'] }}">
-                                        {{ $zone['name'] }} ({{ round($zone['volume']) }}/{{ round($zone['capacity']) }})
+                                        {{ $zone['name'] }} ({{ $zone['fill'] }}%)
                                     </option>
                                 @endforeach
                             </select>
+                            @if($availableZones && count($availableZones) > 0 && $selectedOrderId)
+                                <small class="text-muted">Зоны отсортированы по заполнению</small>
+                            @endif
                         </div>
                     </div>
 
@@ -388,7 +631,8 @@
                         <button
                             wire:click="assignRoute"
                             wire:loading.attr="disabled"
-                            class="btn btn-primary">
+                            class="btn btn-primary"
+                            @if(!$selectedTruckId || !$selectedOrderId) disabled @endif>
                             <span wire:loading.remove><i class="fas fa-check-circle"></i> Назначить маршрут</span>
                             <span wire:loading><i class="fas fa-spinner fa-spin"></i> Назначение...</span>
                         </button>
@@ -407,6 +651,11 @@
 
         <!-- Зоны разгрузки -->
         <div class="tab-pane fade {{ $activeTab === 'zonesTab' ? 'show active' : '' }}" id="zonesTab">
+            <div class="d-flex justify-content-end mb-3">
+                <a href="{{ route('dump.index') }}" class="btn btn-outline-primary btn-sm" target="_blank">
+                    <i class="fas fa-cog"></i> Настроить породы в зонах
+                </a>
+            </div>
             <div class="row">
                 @foreach($zones as $zone)
                     @php
@@ -657,6 +906,91 @@
                             @if(!$forceStatusNew) disabled @endif>
                             <span wire:loading.remove><i class="fas fa-check"></i> Изменить статус</span>
                             <span wire:loading><i class="fas fa-spinner fa-spin"></i> Изменение...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    <!-- Модальное окно редактирования маршрута -->
+    @if($editOrderId)
+        @php
+            $orderToEdit = \App\Models\MiningOrder::with(['miner.rocks', 'dump'])->find($editOrderId);
+            $currentDistance = $editDistances[$editDumpId] ?? $orderToEdit?->distance_km;
+        @endphp
+        <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-route me-2"></i>
+                            Редактирование маршрута #{{ $editOrderId }}
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" wire:click="closeEditOrder"></button>
+                    </div>
+                    <div class="modal-body">
+                        @if($orderToEdit)
+                            <div class="mb-3">
+                                <label class="form-label">Забой</label>
+                                <input type="text" class="form-control" value="{{ $orderToEdit->miner?->name_miner }}" disabled>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Перегрузка</label>
+                                <select wire:model.live="editDumpId" class="form-select">
+                                    @foreach($dumps as $dump)
+                                        @php
+                                            $dumpDistance = $editDistances[$dump->id] ?? null;
+                                        @endphp
+                                        <option value="{{ $dump->id }}">
+                                            {{ $dump->name_dump }}
+                                            @if($dumpDistance)
+                                                ({{ $dumpDistance }} км)
+                                            @else
+                                                (расст. не указано)
+                                            @endif
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <small class="text-muted">В скобках указано расстояние от забоя до перегрузки</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Расстояние</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="{{ $currentDistance ?? '—' }}" disabled>
+                                    <span class="input-group-text">км</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Статус</label>
+                                <div class="form-check form-switch">
+                                    <input 
+                                        type="checkbox" 
+                                        class="form-check-input" 
+                                        id="editActive"
+                                        wire:model.live="editActive"
+                                        {{ $editActive ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="editActive">
+                                        {{ $editActive ? 'Активен' : 'Неактивен' }}
+                                    </label>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" wire:click="closeEditOrder">
+                            Отмена
+                        </button>
+                        <button 
+                            type="button" 
+                            class="btn btn-primary"
+                            wire:click="saveOrder"
+                            wire:loading.attr="disabled">
+                            <span wire:loading.remove><i class="fas fa-save"></i> Сохранить</span>
+                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Сохранение...</span>
                         </button>
                     </div>
                 </div>

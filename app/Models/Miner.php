@@ -31,6 +31,13 @@ class Miner extends Model
     {
         return $this->belongsToMany(Rock::class, 'miner_rock');
     }
+        /**
+     * Текущая добываемая порода (выбирает экскаваторщик)
+     */
+    public function currentRock()
+    {
+        return $this->belongsTo(Rock::class, 'current_rock_id');
+    }
     
         public function dumps()
     {

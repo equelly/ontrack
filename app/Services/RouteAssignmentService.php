@@ -352,7 +352,7 @@ class RouteAssignmentService
 
     /**
      * Обновить породу в заказах при смене породы в забое
-     * НЕ меняет зону - только обновляет rock_id и уведомляет диспетчера
+     * Зона НЕ меняется - будет проверена при завершении погрузки
      */
     public function updateRockForMinerChange(int $minerId, int $newRockId): int
     {
@@ -384,45 +384,18 @@ class RouteAssignmentService
                 continue;
             }
 
-            // Логируем ДО изменений
-            Log::info("BEFORE update", [
-                'truck_id' => $truck->id,
-                'truck_number' => $truck->number,
-                'trip_id' => $trip->id,
-                'trip_miner_id' => $trip->miner_id,
-                'trip_dump_id' => $trip->dump_id,
-                'trip_zone_id' => $trip->zone_id,
-                'order_id' => $trip->miningOrder->id,
-                'order_rock_id_old' => $trip->miningOrder->rock_id,
-                'new_rock_id' => $newRockId,
-            ]);
-
-            // Обновляем только породу в заказе, зону НЕ меняем
+            // Обновляем только породу в заказе, зона НЕ меняется
+            // Проверка зоны будет при завершении погрузки
             $trip->miningOrder->update([
                 'rock_id' => $newRockId,
             ]);
 
-            // Логируем ПОСЛЕ изменений
-            $trip->refresh();
-            Log::info("AFTER update", [
+            Log::info("Rock updated in order", [
                 'truck_id' => $truck->id,
-                'trip_zone_id' => $trip->zone_id,
-                'trip_dump_id' => $trip->dump_id,
-                'order_rock_id_new' => $trip->miningOrder->rock_id,
+                'truck_number' => $truck->number,
+                'order_id' => $trip->miningOrder->id,
+                'new_rock_id' => $newRockId,
             ]);
-
-            // Уведомляем диспетчера о смене породы
-            event(new DispatcherNotification(
-                $truck->id,
-                'rock_changed',
-                [
-                    'miner_id' => $minerId,
-                    'old_rock_id' => $trip->miningOrder->getOriginal('rock_id'),
-                    'new_rock_id' => $newRockId,
-                    'zone_id' => $trip->zone_id,
-                    'message' => "Порода в забое изменилась",
-                ]
-            ));
 
             $updatedCount++;
         }

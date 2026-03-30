@@ -4,6 +4,12 @@ namespace App\Providers;
 
 use Carbon\Carbon;
 use Illuminate\Support\ServiceProvider;
+use App\Models\Miner;
+use App\Models\Dump;
+use App\Models\MinerDumpDistance;
+use App\Observers\MinerObserver;
+use App\Observers\DumpObserver;
+use App\Observers\MinerDumpDistanceObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,7 +26,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
-        Carbon::setlocale('ru_RU');
+        Carbon::setLocale('ru_RU');
+        
+        // Регистрация Observer для автоматического создания mining_orders
+        Miner::observe(MinerObserver::class);
+        Dump::observe(DumpObserver::class);
+        MinerDumpDistance::observe(MinerDumpDistanceObserver::class);
     }
 }
+

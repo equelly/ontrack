@@ -2,46 +2,31 @@
 
 namespace App\Http\Controllers\User\Dump;
 
+use App\Http\Controllers\Controller;
 use App\Models\Dump;
-use Exception;
-use Illuminate\Routing\Controller as BaseController;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 
-class DestroyController extends BaseController
+class DestroyController extends Controller
 {
-    public function __invoke(Dump $dump){
-        //  
-      DB::beginTransaction();  // Начинаем транзакцию
-
-    try {
-        // ✅ ШАГ 1: ОБНУЛЯЕМ loader_zone_id в equipment.dumps
-        DB::table('equipment.dumps')
-            ->where('id', $dump->id)
-            ->update(['loader_zone_id' => null]);
-
-        // ✅ ШАГ 2: Удаляем связанные зоны
-        $zoneIds = $dump->zones()->pluck('id')->toArray();
-        if (!empty($zoneIds)) {
-            // Обнуляем все ссылки на эти зоны в equipment
-            DB::table('equipment.dumps')
-                ->whereIn('loader_zone_id', $zoneIds)
-                ->update(['loader_zone_id' => null]);
-
-            // Теперь удаляем зоны
-            $dump->zones()->delete();
+    /**
+     * Удалить отвал
+     */
+    public function __invoke(Dump $dump)
+    {
+        // Проверяем, есть ли связанные данные
+        if ($dump->zones()->count() > 0) {
+            return redirect()->route('dump.index')
+                ->with('error', 'Нельзя удалить отвал с зонами. Сначала удалите зоны.');
         }
 
-        // ✅ ШАГ 3: Удаляем основной дамп
+        if ($dump->orders()->count() > 0) {
+            return redirect()->route('dump.index')
+                ->with('error', 'Нельзя удалить отвал с привязанными маршрутами.');
+        }
+
         $dump->delete();
 
-        DB::commit();  // Фиксируем изменения
-
         return redirect()->route('dump.index')
-            ->with('success', 'Перегрузка № '. $dump->id. ' удалена со всеми связями!');
-
-    } catch (Exception $e) {
-        DB::rollback();  // Откатываем при ошибке
-        return back()->with('error', 'Ошибка удаления: '. $e->getMessage());
+            ->with('success', 'Отвал удалён');
     }
-  }
 }

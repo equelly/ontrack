@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\User\Dump;
+namespace App\Http\Controllers\User\Dumps;
 
 use App\Http\Controllers\Controller;
 use App\Models\Miner;

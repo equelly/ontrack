@@ -73,7 +73,7 @@
                         Забои 
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('dump.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                    <a href="{{route('dumps.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
                         Перегрузки 
                     </a></li>
                 <li class="nav-item item ml-3">
