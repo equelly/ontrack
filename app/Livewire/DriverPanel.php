@@ -48,7 +48,7 @@ class DriverPanel extends Component
 
         $this->currentTrip = TruckTrip::where('truck_id', $this->truck->id)
             ->whereNull('completed_at')
-            ->with(['miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock', 'pauses'])
+            ->with(['miner.currentRock', 'miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock', 'pauses'])
             ->latest()
             ->first();
 
@@ -68,6 +68,15 @@ class DriverPanel extends Component
         // Считаем общее время пауз (завершённые + текущая)
         $this->totalPauseSeconds = $this->currentTrip?->getTotalPauseSeconds() ?? 0;
 
+        Log::info('DriverPanel TIMER DATA', [
+            'trip_id' => $this->currentTrip?->id,
+            'started_at_raw' => $this->currentTrip?->started_at,
+            'tripStartedAt_iso' => $this->tripStartedAt,
+            'pauseStartedAt' => $this->pauseStartedAt,
+            'pauseType' => $this->pauseType,
+            'totalPauseSeconds' => $this->totalPauseSeconds,
+        ]);
+
         $this->statusColor = TruckStatus::color($this->truck->status);
         $this->statusLabel = TruckStatus::label($this->truck->status);
 
@@ -86,7 +95,7 @@ class DriverPanel extends Component
             'trip_rock_id' => $this->currentTrip?->rock_id,
             'trip_rock_name' => $this->currentTrip?->rock?->name_rock,
             '--- MINER ROCK ---' => '---',
-            'miner_rock_name' => $this->currentTrip?->miner?->rocks?->first()?->name_rock,
+            'miner_rock_name' => $this->currentTrip?->miner?->currentRock?->name_rock ?? $this->currentTrip?->miner?->rocks?->first()?->name_rock,
             '--- ORDER ---' => '---',
             'order_id' => $this->currentTrip?->miningOrder?->id,
             'order_rock_id' => $this->currentTrip?->miningOrder?->rock_id,
@@ -178,6 +187,29 @@ class DriverPanel extends Component
             $this->loadData();
         } catch (\Exception $e) {
             Log::error('Complete trip failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Уйти в отстой
+     */
+    public function goToStandby(): void
+    {
+        try {
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($this->truck, 'free');
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => 'Вы в отстое',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Go to standby failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => $e->getMessage(),
@@ -395,13 +427,19 @@ class DriverPanel extends Component
     }
 
     #[On('echo-private:truck.{truck.id},.loading.completed')]
-    public function onLoadingCompleted(): void
+    public function onLoadingCompleted(array $data): void
     {
-        Log::info('LoadingCompleted event received');
+        Log::info('LoadingCompleted event received', $data);
         $this->loadData();
+        
+        $message = 'Погрузка завершена! Можете отправляться.';
+        if (isset($data['zone_changed']) && $data['zone_changed']) {
+            $message = "Погрузка завершена. Место разгрузки изменено: {$data['new_dump']} - {$data['new_zone']}";
+        }
+        
         $this->dispatch('notify', [
             'type' => 'success',
-            'message' => 'Погрузка завершена! Можете отправляться.',
+            'message' => $message,
         ]);
     }
 

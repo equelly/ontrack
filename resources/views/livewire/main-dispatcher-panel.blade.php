@@ -6,13 +6,13 @@
     <div class="card mb-4">
         <div class="card-body py-2 px-3">
             <div class="d-flex flex-wrap align-items-center gap-4">
-                <!-- Свободные -->
+                <!-- Готовы к назначению -->
                 <div class="d-flex align-items-center gap-2">
                     <div class="bg-success bg-opacity-10 rounded px-2 py-1">
-                        <i class="fas fa-parking text-success"></i>
+                        <i class="fas fa-check-circle text-success"></i>
                     </div>
                     <div>
-                        <small class="text-muted d-block">Свободные</small>
+                        <small class="text-muted d-block">Готовы к назначению</small>
                         <strong class="text-success fs-5">{{ $this->free_trucks_count }}</strong>
                     </div>
                 </div>
@@ -160,7 +160,8 @@
                     <tbody>
                         @php
                             $statusLabels = [
-                                'free' => ['label' => 'Свободен', 'color' => 'success', 'icon' => 'fa-parking'],
+                                'free' => ['label' => 'В отстое', 'color' => 'secondary', 'icon' => 'fa-parking'],
+                                'completed' => ['label' => 'Ожидает назначения', 'color' => 'success', 'icon' => 'fa-check-circle'],
                                 'to_miner' => ['label' => 'К забою', 'color' => 'info', 'icon' => 'fa-arrow-right'],
                                 'loading' => ['label' => 'Погрузка', 'color' => 'warning', 'icon' => 'fa-truck-loading'],
                                 'transporting' => ['label' => 'Перевозка', 'color' => 'primary', 'icon' => 'fa-truck'],
@@ -178,11 +179,13 @@
                                 $truckRock = null;
                                 $truckRockLabel = '';
                                 if ($trip) {
-                                    if (in_array($truck->status, ['transporting', 'unloading']) && $trip->rock) {
+                                    if ($trip->rock) {
+                                        // Порода назначена в trip (из current_rock забоя)
                                         $truckRock = $trip->rock;
-                                        $truckRockLabel = 'Загружена';
+                                        $truckRockLabel = in_array($truck->status, ['transporting', 'unloading']) ? 'Загружена' : 'По маршруту';
                                     } elseif ($trip->miner) {
-                                        $truckRock = $trip->miner->rocks->first();
+                                        // Fallback: текущая порода забоя
+                                        $truckRock = $trip->miner->currentRock ?? $trip->miner->rocks->first();
                                         $truckRockLabel = 'В забое';
                                     }
                                 }
@@ -193,7 +196,7 @@
                                     $activePause = $trip->pauses->first();
                                 }
                             @endphp
-                            <tr class="{{ $truck->status === 'breakdown' ? 'table-danger' : ($truck->status === 'delayed' ? 'table-warning' : ($truck->status === 'free' ? 'table-success' : '')) }}">
+                            <tr class="{{ $truck->status === 'breakdown' ? 'table-danger' : ($truck->status === 'delayed' ? 'table-warning' : ($truck->status === 'completed' ? 'table-success' : ($truck->status === 'free' ? 'table-secondary' : ''))) }}">
                                 <td>
                                     <span class="fw-bold">{{ $truck->number }}</span>
                                 </td>
@@ -282,8 +285,11 @@
                                     <span class="fw-bold">{{ $miner->name_miner }}</span>
                                 </td>
                                 <td>
-                                    @if($miner->currentRock)
-                                        <span class="badge bg-info">{{ $miner->currentRock->name_rock }}</span>
+                                    @php
+                                        $minerRock = $miner->currentRock ?? $miner->rocks->first();
+                                    @endphp
+                                    @if($minerRock)
+                                        <span class="badge bg-info">{{ $minerRock->name_rock }}</span>
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
@@ -387,7 +393,8 @@
                 <strong>Подсказки:</strong>
                 <span class="badge bg-info ms-1">Порода в забое</span> — текущая добываемая порода.
                 <span class="badge bg-success ms-1">Зелёная</span> — порода в зоне совместима с породой забоя.
-                <span class="badge bg-warning text-dark ms-1">Жёлтая строка</span> — порода забоя не принимается.
+                <span class="badge bg-warning text-dark ms-1">Жёлтая строка</span> — порода забоя не принимается на отвал.
+                <span class="badge bg-danger ms-1">Красная строка</span> — все зоны отвала закрыты.
             </div>
 
             @php
@@ -435,7 +442,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Перегрузка</th>
-                                    <th style="width: 200px;">Породы</th>
+                                    <th style="width: 150px;">Породы в зонах</th>
                                     <th style="width: 80px;">Расст.</th>
                                     <th style="width: 100px;">Вес</th>
                                     <th style="width: 100px;">Доступные зоны</th>
@@ -446,30 +453,32 @@
                             <tbody>
                                 @foreach($orders as $order)
                                     @php
-                                        // Получаем все зоны с породами этого отвала
-                                        $dumpZones = $order->dump?->zones ?? collect();
-                                        // Получаем уникальные породы для проверки совместимости
-                                        $dumpRocks = $dumpZones->flatMap(fn($z) => $z->rocks)->unique('id');
+                                        // Получаем только ОТКРЫТЫЕ зоны этого отвала
+                                        $openZones = $order->dump?->zones?->filter(fn($z) => $z->delivery);
+                                        // Породы только открытых зон
+                                        $dumpRocks = $openZones?->flatMap(fn($z) => $z->rocks)->unique('id');
                                         // Проверяем совместимость с породой забоя
                                         $isCompatible = $currentRock && $dumpRocks?->contains('id', $currentRock->id);
                                     @endphp
-                                    <tr class="{{ $order->active ? '' : 'table-secondary' }} {{ !$isCompatible ? 'table-warning' : '' }}" style="{{ $order->active ? '' : 'opacity: 0.6' }}">
+                                    <tr class="{{ $order->active ? '' : 'table-secondary' }} {{ !$isCompatible ? 'table-warning' : '' }} {{ $openZones?->isEmpty() ? 'table-danger' : '' }}" style="{{ $order->active ? '' : 'opacity: 0.6' }}">
                                         <td>
                                             <strong>{{ $order->dump?->name_dump ?? '—' }}</strong>
+                                            @if($openZones?->isEmpty())
+                                                <br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Все зоны закрыты</small>
+                                            @endif
                                         </td>
                                         <td>
-                                            @if($dumpZones->count() > 0)
-                                                @foreach($dumpZones as $zone)
-                                                    @php
-                                                        $zoneRocks = $zone->rocks->pluck('name_rock')->join(', ');
-                                                        $hasCurrentRock = $currentRock && $zone->rocks->contains('id', $currentRock->id);
-                                                    @endphp
-                                                    <div class="small {{ $hasCurrentRock ? 'text-success fw-bold' : '' }}">
-                                                        {{ $zone->name_zone }}: {{ $zoneRocks ?: '—' }}
-                                                    </div>
+                                            @if($dumpRocks && $dumpRocks->count() > 0)
+                                                @foreach($dumpRocks->take(3) as $rock)
+                                                    <span class="badge {{ $currentRock && $rock->id === $currentRock->id ? 'bg-success' : 'bg-secondary' }} me-1">
+                                                        {{ $rock->name_rock }}
+                                                    </span>
                                                 @endforeach
+                                                @if($dumpRocks->count() > 3)
+                                                    <small class="text-muted">+{{ $dumpRocks->count() - 3 }}</small>
+                                                @endif
                                             @else
-                                                <small class="text-muted">Нет зон</small>
+                                                <small class="text-muted">Не указаны</small>
                                             @endif
                                         </td>
                                         <td>
@@ -500,8 +509,18 @@
                                                 @if($order->available_zones->count() > 2)
                                                     <small class="text-muted">+{{ $order->available_zones->count() - 2 }}</small>
                                                 @endif
+                                            @elseif($openZones->isNotEmpty())
+                                                @if(!$isCompatible)
+                                                    <small class="text-warning" title="Нет зон для породы: {{ $currentRock?->name_rock }}">
+                                                        <i class="fas fa-exclamation-triangle"></i> Порода не принимается
+                                                    </small>
+                                                @else
+                                                    <small class="text-muted" title="Все зоны переполнены">
+                                                        <i class="fas fa-database"></i> Зоны заполнены
+                                                    </small>
+                                                @endif
                                             @else
-                                                <small class="text-muted">—</small>
+                                                <small class="text-danger"><i class="fas fa-times-circle"></i> Нет открытых зон</small>
                                             @endif
                                         </td>
                                         <td>
@@ -587,7 +606,7 @@
                                 <option value="">Выберите</option>
                                 @foreach($this->active_miners_with_rock as $miner)
                                     <option value="{{ $miner->id }}">
-                                        {{ $miner->name_miner }}{{ $miner->currentRock ? ' (' . $miner->currentRock->name_rock . ')' : '' }}
+                                        {{ $miner->name_miner }} ({{ $miner->rocks->first()->name_rock }})
                                     </option>
                                 @endforeach
                             </select>
@@ -1040,6 +1059,10 @@
                 window.Echo.channel('dispatcher')
                     .listen('.truck-updated', (data) => {
                         console.log('Dispatcher notification:', data);
+                        // Явно вызываем обновление данных через Livewire
+                        if (typeof Livewire !== 'undefined') {
+                            Livewire.dispatch('truck-status-changed', data);
+                        }
                     });
             }
         });

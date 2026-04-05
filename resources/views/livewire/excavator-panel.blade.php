@@ -67,10 +67,12 @@
                             @if($rocks->count() > 0)
                                 <div class="row">
                                     <div class="col-md-8">
-                                        <select wire:model="selectedRockId" class="form-control">
+                                        <select wire:model.live="selectedRockId" class="form-control">
                                             <option value="">-- Выберите породу --</option>
                                             @foreach($rocks as $rock)
-                                                <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                                <option value="{{ $rock->id }}" {{ $rock->id == $selectedRockId ? 'selected' : '' }}>
+                                                    {{ $rock->name_rock }}
+                                                </option>
                                             @endforeach
                                         </select>
                                         <small class="text-muted">Выберите добываемую породу</small>

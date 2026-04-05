@@ -70,11 +70,10 @@
                                         <small class="text-muted d-block">Порода</small>
                                         @php
                                             $isLoaded = in_array($truck->status, ['transporting', 'unloading']);
-                                            if ($isLoaded && $currentTrip->rock_id) {
-                                                $rock = $currentTrip->rock;
-                                            } else {
-                                                $rock = $currentTrip->miningOrder?->rock;
-                                            }
+                                            // Приоритет: trip.rock -> miner.currentRock -> miningOrder.rock
+                                            $rock = $currentTrip->rock 
+                                                ?? $currentTrip->miner?->currentRock 
+                                                ?? $currentTrip->miningOrder?->rock;
                                         @endphp
                                         @if($rock)
                                             <strong class="text-info">{{ $rock->name_rock }}</strong>
@@ -83,6 +82,8 @@
                                             @else
                                                 <small class="text-muted d-block">По маршруту</small>
                                             @endif
+                                        @else
+                                            <span class="text-muted">Не назначена</span>
                                         @endif
                                     </div>
                                 </div>
@@ -124,7 +125,7 @@
                                 $status = $truck->status;
                             @endphp
 
-                            {{-- Свободен --}}
+                            {{-- Свободен - может запросить маршрут --}}
                             @if($status === 'free')
                                 @if(!$currentTrip)
                                     <button
@@ -135,6 +136,27 @@
                                         <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
                                     </button>
                                 @endif
+                            @endif
+
+                            {{-- Рейс завершён - ожидает назначения --}}
+                            @if($status === 'completed')
+                                <div class="alert alert-success mb-3">
+                                    <i class="bi bi-check-circle me-2"></i>
+                                    <strong>Рейс завершён!</strong><br>
+                                    <small>Ожидание назначения нового маршрута от диспетчера.</small>
+                                </div>
+                                <button
+                                    wire:click="assignRoute"
+                                    wire:loading.attr="disabled"
+                                    class="btn btn-primary btn-lg w-100 mb-2">
+                                    <span wire:loading.remove><i class="bi bi-arrow-right-circle"></i> Запросить маршрут</span>
+                                    <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
+                                </button>
+                                <button
+                                    wire:click="goToStandby"
+                                    class="btn btn-outline-secondary w-100">
+                                    <i class="bi bi-pause-circle"></i> Уйти в отстой
+                                </button>
                             @endif
 
                             {{-- В пути к забою --}}
@@ -157,6 +179,15 @@
                                     <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
                                     <strong>⏳ Ожидание завершения погрузки...</strong><br>
                                     <small class="text-muted">Экскаваторщик сообщит когда можно отправляться</small>
+                                </div>
+                            @endif
+
+                            {{-- Ожидание назначения зоны разгрузки --}}
+                            @if($status === 'waiting_unloading')
+                                <div class="alert alert-warning mb-0 text-center py-4">
+                                    <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
+                                    <strong>⏳ Ожидание назначения места разгрузки</strong><br>
+                                    <small class="text-muted">Диспетчер назначит зону для выгрузки</small>
                                 </div>
                             @endif
 
@@ -329,12 +360,8 @@
                             <select class="form-select" wire:model="delayReason">
                                 <option value="traffic">🚗 Пробки</option>
                                 <option value="road_works">🚧 Дорожные работы</option>
-                                @if(in_array($truck->status, ['to_miner', 'loading']))
-                                    <option value="waiting_loading">⏳ Ожидание погрузки</option>
-                                @endif
-                                @if(in_array($truck->status, ['transporting', 'unloading']))
-                                    <option value="waiting_unloading">⏳ Ожидание выгрузки</option>
-                                @endif
+                                <option value="waiting_loading">⏳ Ожидание погрузки</option>
+                                <option value="waiting_unloading">⏳ Ожидание выгрузки</option>
                                 <option value="weather">🌧️ Погодные условия</option>
                                 <option value="other">❓ Другое</option>
                             </select>

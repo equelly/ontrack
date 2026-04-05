@@ -85,6 +85,10 @@ class TruckStatusService
             case 'loading':
                 $this->onLoading($truck, $context);
                 break;
+
+            case 'to_miner':
+                $this->onToMiner($truck, $context);
+                break;
         }
     }
 
@@ -92,15 +96,15 @@ class TruckStatusService
     {
         $map = [
             'free'              => ['to_miner', 'maintenance', 'fueling'],
+            'completed'         => ['to_miner', 'free'], // Получить маршрут или в отстой
             'to_miner'          => ['loading', 'delayed', 'breakdown'],
-            'loading'           => ['transporting', 'waiting_loading', 'breakdown'],
+            'loading'           => ['transporting', 'waiting_loading', 'waiting_unloading', 'breakdown'],
             'transporting'      => ['unloading', 'delayed', 'breakdown'],
             'unloading'         => ['completed', 'waiting_unloading', 'breakdown'],
-            'completed'         => [],
             'waiting_loading'   => ['loading', 'breakdown'],
-            'waiting_unloading' => ['unloading', 'breakdown'],
-            'delayed'           => ['transporting', 'to_miner', 'breakdown'], // может вернуться в to_miner
-            'breakdown'         => ['free'], // через resolveBreakdown
+            'waiting_unloading' => ['unloading', 'transporting', 'breakdown'],
+            'delayed'           => ['transporting', 'to_miner', 'breakdown'],
+            'breakdown'         => ['free'],
             'maintenance'       => ['free'],
             'fueling'           => ['free'],
         ];
@@ -312,7 +316,16 @@ class TruckStatusService
         $currentZone = $trip->zone;
         $minerRock = $miner?->rocks->first();
 
-        // Проверяем соответствие породы
+        // Обновляем породу в trip на текущую породу забоя
+        if ($minerRock) {
+            $trip->update(['rock_id' => $minerRock->id]);
+            Log::info("Trip {$trip->id} rock updated", [
+                'rock_id' => $minerRock->id,
+                'rock_name' => $minerRock->name_rock,
+            ]);
+        }
+
+        // Проверяем соответствие породы зоне
         if ($minerRock && $currentZone) {
             $zoneAcceptsRock = $currentZone->rocks->contains($minerRock->id);
 
@@ -322,17 +335,31 @@ class TruckStatusService
                     'zone' => $currentZone->name_zone,
                 ]);
 
+                // Ищем зону на текущей перегрузке
                 $newZone = $this->findAvailableZone($trip->dump_id, $minerRock->id);
+
+                // Если не нашли на текущей перегрузке - ищем на всех
+                if (!$newZone) {
+                    $newZone = $this->findAvailableZoneOnAnyDump($minerRock->id);
+                    
+                    if ($newZone) {
+                        // Меняем перегрузку в trip
+                        $trip->update(['dump_id' => $newZone->dump_id, 'zone_id' => $newZone->id]);
+                        $trip->miningOrder?->update(['zone_id' => $newZone->id]);
+                    }
+                } else {
+                    $trip->update(['zone_id' => $newZone->id]);
+                    $trip->miningOrder?->update(['zone_id' => $newZone->id]);
+                }
 
                 if ($newZone) {
                     $oldZoneName = $currentZone->name_zone;
-
-                    $trip->update(['zone_id' => $newZone->id]);
-                    $trip->miningOrder?->update(['zone_id' => $newZone->id]);
+                    $oldDumpName = $trip->dump->name_dump;
 
                     Log::info("Zone reassigned for truck {$truck->id}", [
                         'old_zone' => $oldZoneName,
                         'new_zone' => $newZone->name_zone,
+                        'new_dump' => $newZone->dump->name_dump,
                     ]);
 
                     event(new ZoneChanged(
@@ -356,6 +383,18 @@ class TruckStatusService
         if ($miner) {
             event(new TruckStartedLoading($truck, $miner->id));
         }
+    }
+
+    /**
+     * Найти доступную зону на любой перегрузке
+     */
+    public function findAvailableZoneOnAnyDump(int $rockId): ?Zone
+    {
+        return Zone::where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->orderBy('volume', 'asc')
+            ->first();
     }
 
     public function findAvailableZone(int $dumpId, int $rockId): ?Zone
@@ -485,14 +524,32 @@ class TruckStatusService
             ]);
         }
 
-        $truck->update(['status' => 'free']);
-        $truck->refresh();
-        $this->assignmentService->assignForTruck($truck);
+        // НЕ назначаем маршрут автоматически - ждём решения диспетчера
+        // Грузовик остаётся в статусе 'completed' (Ожидает назначения)
+        Log::info("Truck {$truck->id} completed trip, waiting for dispatcher decision");
     }
 
     protected function onFree(Truck $truck): void
     {
+        // Грузовик в отстое - не назначаем маршрут автоматически
+        Log::info("Truck {$truck->id} is now in standby (free)");
+    }
+
+    /**
+     * Обработчик перехода в статус to_miner - назначение маршрута
+     */
+    protected function onToMiner(Truck $truck, array $context = []): void
+    {
+        Log::info("Truck {$truck->id} getting route assignment", $context);
+
+        // Назначаем маршрут
         $this->assignmentService->assignForTruck($truck);
+
+        if ($truck->driver_id) {
+            $this->notifyDriver($truck, [
+                'action' => 'route_assigned',
+            ]);
+        }
     }
 
     protected function onPlannedStop(Truck $truck, string $type): void
@@ -523,6 +580,23 @@ class TruckStatusService
 
     protected function onWaitingUnloading(Truck $truck, array $context = []): void
     {
+        $trip = $this->getActiveTrip($truck);
+
+        // Если причина - нет зоны, начинаем паузу ожидания
+        if (isset($context['reason']) && $context['reason'] === 'no_zone_available') {
+            if ($trip) {
+                $this->startPause($trip, TripPause::TYPE_WAITING_UNLOADING, 'no_zone_available');
+            }
+
+            // Уведомляем водителя
+            if ($truck->driver_id) {
+                $this->notifyDriver($truck, [
+                    'action' => 'waiting_for_zone',
+                    'message' => 'Ожидание назначения зоны разгрузки. Диспетчер принял уведомление.',
+                ]);
+            }
+        }
+
         Log::info("Truck {$truck->id} waiting for unloading", $context);
     }
 

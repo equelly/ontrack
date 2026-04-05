@@ -77,7 +77,7 @@ Route::get('/main', function () {
     return view('main');
 });
 
-Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middleware'=>'user'], function (){
+Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middleware'=>'auth'], function (){
     Route::group(['namespace'=>'Order'], function(){
         Route::get('/orders', 'IndexController')->name('order.index');
         Route::get('/orders/create', 'CreateController')->name('order.create');

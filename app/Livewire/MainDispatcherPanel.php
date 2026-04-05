@@ -51,6 +51,9 @@ class MainDispatcherPanel extends Component
     public ?int $forceStatusTruckId = null;
     public ?string $forceStatusNew = null;
 
+    // Выбор зоны для ожидающих грузовиков
+    public array $waitingZoneSelection = [];
+
     // Фильтры простоев
     public string $pausePeriod = 'shift';
     public array $pauseTypes = [];
@@ -78,6 +81,7 @@ class MainDispatcherPanel extends Component
                 ->with([
                     'rock',
                     'zone.rocks',
+                    'miner.currentRock',
                     'miner.rocks',
                     'dump',
                     'pauses' => function ($q) {
@@ -106,7 +110,8 @@ class MainDispatcherPanel extends Component
                     'trip_rock_id' => $trip->rock_id,
                     'trip_rock_name' => $trip->rock?->name_rock,
                     '--- MINER ROCK ---' => '---',
-                    'miner_rock_name' => $trip->miner?->rocks?->first()?->name_rock,
+                    'miner_current_rock' => $trip->miner?->currentRock?->name_rock,
+                    'miner_first_rock' => $trip->miner?->rocks?->first()?->name_rock,
                     '--- ZONE ROCK ---' => '---',
                     'zone_rock_name' => $trip->zone?->rocks?->first()?->name_rock,
                 ]);
@@ -121,7 +126,7 @@ class MainDispatcherPanel extends Component
 
         $this->rocks = Rock::all();
 
-        $this->orders = MiningOrder::with(['miner.rocks', 'dump', 'zone.rocks', 'rock'])
+        $this->orders = MiningOrder::with(['miner.rocks', 'miner.currentRock', 'dump', 'zone.rocks', 'rock'])
             ->where('active', true)
             ->get();
         
@@ -209,21 +214,31 @@ class MainDispatcherPanel extends Component
             return;
         }
 
-        if ($truck->status !== 'free') {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал не свободен']);
+        if (!in_array($truck->status, ['free', 'completed'])) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал занят']);
             return;
         }
 
         if (!$zone) {
-            // Выбираем зону автоматически по породе из заказа
-            if ($order->rock_id) {
-                $zone = $this->routeService->selectZoneForRock($order->dump_id, $order->rock_id);
+            // Выбираем зону автоматически по породе из заказа или текущей породе забоя
+            $rockId = $order->rock_id;
+            if (!$rockId) {
+                $rockId = $order->miner?->current_rock_id ?? $order->miner?->rocks->first()?->id;
+            }
+            if ($rockId) {
+                $zone = $this->routeService->selectZoneForRock($order->dump_id, $rockId);
             }
         }
 
         if (!$zone) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Нет доступной зоны для данного маршрута']);
             return;
+        }
+
+        // Определяем породу для trip
+        $rockId = $order->rock_id;
+        if (!$rockId) {
+            $rockId = $order->miner?->current_rock_id ?? $order->miner?->rocks->first()?->id;
         }
 
         try {
@@ -233,6 +248,7 @@ class MainDispatcherPanel extends Component
                 'miner_id' => $order->miner_id,
                 'dump_id' => $order->dump_id,
                 'zone_id' => $zone->id,
+                'rock_id' => $rockId,
                 'mining_order_id' => $order->id,
                 'started_at' => now()
             ]);
@@ -630,12 +646,14 @@ class MainDispatcherPanel extends Component
 
     public function getFreeTrucksCountProperty(): int
     {
-        return $this->trucks->where('status', 'free')->count();
+        // Свободные = в отстое + ожидающие назначения
+        return $this->trucks->whereIn('status', ['free', 'completed'])->count();
     }
 
     public function getWorkingTrucksCountProperty(): int
     {
-        return $this->trucks->whereNotIn('status', ['free', 'breakdown'])->count();
+        // В работе = все кроме free, completed, breakdown
+        return $this->trucks->whereNotIn('status', ['free', 'completed', 'breakdown'])->count();
     }
 
     public function getActiveMinersCountProperty(): int
@@ -650,7 +668,8 @@ class MainDispatcherPanel extends Component
 
     public function getFreeTrucksProperty()
     {
-        return $this->trucks->where('status', 'free');
+        // Грузовики, которым можно назначить маршрут: free или completed
+        return $this->trucks->whereIn('status', ['free', 'completed']);
     }
 
     /**
@@ -659,12 +678,12 @@ class MainDispatcherPanel extends Component
     public function getActiveMinersWithRockProperty()
     {
         return $this->miners
-            ->filter(fn($m) => $m->active && $m->currentRock)
+            ->filter(fn($m) => $m->active && $m->rocks->isNotEmpty())
             ->values();
     }
 
     #[On('truck-status-changed')]
-    public function onTruckStatusChanged(array $data): void
+    public function onTruckStatusChanged(array $data = []): void
     {
         $this->loadData();
     }
@@ -749,7 +768,8 @@ class MainDispatcherPanel extends Component
     public function getAvailableStatusesProperty(): array
     {
         return [
-            'free' => 'Свободен',
+            'free' => 'В отстое',
+            'completed' => 'Ожидает назначения',
             'to_miner' => 'К забою',
             'loading' => 'Погрузка',
             'transporting' => 'Перевозка',
@@ -866,6 +886,217 @@ class MainDispatcherPanel extends Component
             return "{$hours}ч {$minutes}м";
         }
         return "{$minutes}м";
+    }
+
+    /**
+     * Получить грузовики, ожидающие решения по зоне
+     */
+    public function getTrucksWaitingForZoneProperty()
+    {
+        return $this->trucks->filter(function ($truck) {
+            $trip = $truck->trips->first();
+            // Грузовик в статусе waiting_unloading без зоны - ждёт решения диспетчера
+            return $truck->status === 'waiting_unloading'
+                && $trip
+                && $trip->load_volume
+                && !$trip->zone_id;
+        })->map(function ($truck) {
+            $trip = $truck->trips->first();
+            return (object)[
+                'truck' => $truck,
+                'trip' => $trip,
+                'rock' => $trip->rock,
+                'volume' => $trip->load_volume,
+                'miner' => $trip->miner,
+            ];
+        })->values();
+    }
+
+    /**
+     * Назначить зону для грузовика, ожидающего решения
+     */
+    public function assignZoneToWaitingTruck(int $truckId): void
+    {
+        $zoneId = $this->waitingZoneSelection[$truckId] ?? null;
+        
+        if (!$zoneId) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Выберите зону']);
+            return;
+        }
+
+        $truck = Truck::find($truckId);
+        $zone = Zone::with('dump')->find($zoneId);
+
+        if (!$truck || !$zone) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Данные не найдены']);
+            return;
+        }
+
+        $trip = TruckTrip::where('truck_id', $truckId)
+            ->whereNull('completed_at')
+            ->latest()
+            ->first();
+
+        if (!$trip) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Нет активного рейса']);
+            return;
+        }
+
+        // Проверяем что зона подходит для породы
+        $rockId = $trip->rock_id;
+        if ($rockId && !$zone->rocks->contains('id', $rockId)) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => "Зона {$zone->name_zone} не принимает эту породу"
+            ]);
+            return;
+        }
+
+        // Проверяем вместимость зоны
+        if ($zone->volume >= $zone->capacity) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => "Зона {$zone->name_zone} заполнена"
+            ]);
+            return;
+        }
+
+        try {
+            // Обновляем trip и mining_order
+            $trip->update([
+                'zone_id' => $zone->id,
+                'dump_id' => $zone->dump_id,
+            ]);
+
+            if ($trip->miningOrder) {
+                $trip->miningOrder->update([
+                    'zone_id' => $zone->id,
+                ]);
+            }
+
+            // Отправляем грузовик в transporting
+            $truck->update(['status' => 'transporting']);
+
+            // Уведомляем водителя о назначении зоны
+            event(new \App\Events\LoadingCompleted(
+                $truck,
+                $zone->name_zone,
+                $zone->dump->name_dump
+            ));
+
+            // Уведомляем диспетчера (для обновления UI)
+            event(new \App\Events\DispatcherNotification(
+                $truck->id,
+                'zone_assigned',
+                [
+                    'trip_id' => $trip->id,
+                    'zone_name' => $zone->name_zone,
+                    'dump_name' => $zone->dump->name_dump,
+                    'message' => "Зона назначена: {$truck->number} → {$zone->dump->name_dump} - {$zone->name_zone}",
+                ]
+            ));
+
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => "Зона назначена: {$truck->number} → {$zone->dump->name_dump} - {$zone->name_zone}",
+            ]);
+
+            Log::info("Dispatcher assigned zone for waiting truck", [
+                'truck_id' => $truckId,
+                'zone_id' => $zoneId,
+                'trip_id' => $trip->id,
+            ]);
+
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
+            Log::error('assignZoneToWaitingTruck error', ['message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Отменить погрузку для ожидающего грузовика
+     */
+    public function cancelWaitingLoad(int $truckId): void
+    {
+        $truck = Truck::find($truckId);
+
+        if (!$truck) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал не найден']);
+            return;
+        }
+
+        $trip = TruckTrip::where('truck_id', $truckId)
+            ->whereNull('completed_at')
+            ->latest()
+            ->first();
+
+        try {
+            if ($trip) {
+                // Завершаем рейс с нулевым объёмом (разгрузка отменена)
+                $trip->update([
+                    'completed_at' => now(),
+                    'load_volume' => 0,
+                ]);
+            }
+
+            // Переводим в свободный статус
+            $truck->update([
+                'status' => 'free',
+                'current_load' => null,
+            ]);
+
+            // Уведомляем водителя об отмене
+            if ($truck->driver_id) {
+                event(new \App\Events\DriverRouteUpdated(
+                    $truck->driver_id,
+                    [
+                        'truck_id' => $truck->id,
+                        'action' => 'load_cancelled',
+                        'message' => "Погрузка отменена диспетчером. Вернитесь в отстой.",
+                    ]
+                ));
+            }
+
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => "Погрузка отменена: {$truck->number}",
+            ]);
+
+            Log::info("Dispatcher cancelled waiting load", [
+                'truck_id' => $truckId,
+                'trip_id' => $trip?->id,
+            ]);
+
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
+            Log::error('cancelWaitingLoad error', ['message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Получить доступные зоны для породы
+     */
+    public function getAvailableZonesForRock(int $rockId): array
+    {
+        return Zone::where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->with(['dump', 'rocks'])
+            ->orderBy('volume', 'asc')
+            ->get()
+            ->map(fn($z) => [
+                'id' => $z->id,
+                'name' => $z->name_zone,
+                'dump_name' => $z->dump->name_dump,
+                'volume' => $z->volume,
+                'capacity' => $z->capacity,
+                'fill' => $z->capacity > 0 ? round($z->volume / $z->capacity * 100) : 0,
+            ])
+            ->toArray();
     }
 
     public function render()

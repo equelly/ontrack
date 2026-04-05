@@ -162,6 +162,12 @@ class ExcavatorPanel extends Component
 
     public function setRock(): void
     {
+        Log::info('setRock START', [
+            'selectedRockId' => $this->selectedRockId,
+            'miner_id' => $this->miner?->id,
+            'old_current_rock_id' => $this->miner?->current_rock_id,
+        ]);
+
         if (!$this->selectedRockId) {
             $this->dispatch('notify', [
                 'type' => 'warning',
@@ -188,12 +194,19 @@ class ExcavatorPanel extends Component
             'last_updated_by' => Auth::id(),
         ]);
 
+        // ВАЖНО: обновляем модель в памяти
+        $this->miner->refresh();
+
+        Log::info('setRock AFTER UPDATE', [
+            'miner_current_rock_id' => $this->miner->current_rock_id,
+            'selectedRockId' => $this->selectedRockId,
+        ]);
+
         // Добавляем породу в список добытых пород забоя (для статистики)
         $this->miner->rocks()->syncWithoutDetaching([$this->selectedRockId]);
 
-        $this->loadMinerData();
-
         $rock = Rock::find($this->selectedRockId);
+
         $this->dispatch('notify', [
             'type' => 'success',
             'message' => 'Текущая порода: ' . ($rock?->name_rock ?? ''),
@@ -305,6 +318,10 @@ class ExcavatorPanel extends Component
                     'zone_rock_ids' => $zoneRockIds,
                     'actual_rock_id' => $actualRock->id,
                     'zone_has_rock' => in_array($actualRock->id, $zoneRockIds),
+                    'zone_delivery' => $zone->delivery,
+                    'zone_volume' => $zone->volume,
+                    'zone_capacity' => $zone->capacity,
+                    'zone_is_available' => $zone->isAvailable(),
                 ]);
 
                 // Проверяем, есть ли эта порода в текущей зоне
@@ -315,14 +332,37 @@ class ExcavatorPanel extends Component
                     
                     // Ищем новую зону на текущей перегрузке
                     $newZone = $routeService->selectZoneForRock($trip->dump_id, $actualRock->id);
+                    
+                    Log::info('selectZoneForRock result (same dump)', [
+                        'dump_id' => $trip->dump_id,
+                        'rock_id' => $actualRock->id,
+                        'found' => $newZone ? $newZone->id : null,
+                        'zone_name' => $newZone?->name_zone,
+                    ]);
 
                     // Если не нашли на текущей перегрузке - ищем на всех
                     if (!$newZone) {
-                        $newZone = \App\Models\Zone::where('delivery', true)
+                        Log::info('No zone on current dump, searching all dumps');
+                        
+                        $allZonesForRock = \App\Models\Zone::where('delivery', true)
                             ->whereHas('rocks', fn($q) => $q->where('rocks.id', $actualRock->id))
                             ->whereRaw('volume < capacity')
-                            ->orderBy('volume', 'asc')
-                            ->first();
+                            ->get(['id', 'name_zone', 'dump_id', 'delivery', 'volume', 'capacity']);
+                        
+                        Log::info('All available zones for this rock', [
+                            'rock_id' => $actualRock->id,
+                            'count' => $allZonesForRock->count(),
+                            'zones' => $allZonesForRock->map(fn($z) => [
+                                'id' => $z->id,
+                                'name' => $z->name_zone,
+                                'dump_id' => $z->dump_id,
+                                'delivery' => $z->delivery,
+                                'volume' => $z->volume,
+                                'capacity' => $z->capacity,
+                            ])->toArray(),
+                        ]);
+                        
+                        $newZone = $allZonesForRock->first();
                         
                         if ($newZone) {
                             // Меняем перегрузку в trip и mining_order
@@ -333,6 +373,7 @@ class ExcavatorPanel extends Component
                             ]);
                             if ($trip->miningOrder) {
                                 $trip->miningOrder->update([
+                                    'dump_id' => $newZone->dump_id,
                                     'zone_id' => $newZone->id,
                                     'rock_id' => $actualRock->id,
                                 ]);
@@ -370,33 +411,69 @@ class ExcavatorPanel extends Component
                             'rock' => $actualRock->name_rock,
                         ]);
                     } else {
-                        // Нет зоны для этой породы - уведомляем диспетчера
+                        // Нет зоны для этой породы - БЛОКИРУЕМ отправку!
+                        Log::warning("No zone for rock {$actualRock->id} - BLOCKING truck departure");
+
+                        // Сбрасываем зону в trip
+                        $trip->update([
+                            'load_volume' => $volume,
+                            'loaded_at' => now(),
+                            'rock_id' => $actualRock->id,
+                            'zone_id' => null,
+                        ]);
+
+                        if ($trip->miningOrder) {
+                            $trip->miningOrder->update(['zone_id' => null]);
+                        }
+
+                        $truck->update(['current_load' => $volume]);
+
+                        // Переводим в статус ожидания
+                        $statusService = app(TruckStatusService::class);
+                        $statusService->changeStatus($truck, 'waiting_unloading', [
+                            'reason' => 'no_zone_available',
+                            'rock_id' => $actualRock->id,
+                        ]);
+
+                        // Уведомляем диспетчера
                         event(new \App\Events\DispatcherNotification(
                             $truck->id,
-                            'no_zone_for_rock',
+                            'waiting_for_zone_decision',
                             [
                                 'trip_id' => $trip->id,
                                 'rock_id' => $actualRock->id,
                                 'rock_name' => $actualRock->name_rock,
                                 'dump_id' => $trip->dump_id,
-                                'current_zone_id' => $zone->id,
-                                'message' => "Нет зоны для породы {$actualRock->name_rock}",
+                                'miner_id' => $this->miner?->id,
+                                'miner_name' => $this->miner?->name_miner,
+                                'volume' => $volume,
+                                'message' => "Требуется решение: нет зоны для породы {$actualRock->name_rock} (самосвал {$truck->number})",
+                                'requires_action' => true,
                             ]
                         ));
 
-                        Log::warning("No zone for rock {$actualRock->id} anywhere");
+                        $this->loadMinerData();
+
+                        $this->dispatch('notify', [
+                            'type' => 'warning',
+                            'message' => "Погрузка завершена. Нет зоны для породы {$actualRock->name_rock}. Водитель ожидает решения диспетчера.",
+                        ]);
+
+                        Log::info("Truck {$truck->id} BLOCKED - waiting for dispatcher decision");
+                        return; // ВАЖНО: выходим, не отправляем грузовик!
                     }
                 }
             }
 
-            // Меняем статус грузовика
-            $statusService = app(TruckStatusService::class);
-            $truck->current_load = $volume;
-            $truck->save();
-            $statusService->changeStatus($truck, 'transporting');
+            // Меняем статус грузовика (только если зона найдена)
+            $truck->update([
+                'status' => 'transporting',
+                'current_load' => $volume,
+            ]);
 
             // Получаем актуальную информацию
             $trip->refresh();
+            $trip->miningOrder?->refresh();
             $finalZone = $trip->zone;
             $finalDump = $trip->miningOrder?->dump ?? $trip->dump;
 
