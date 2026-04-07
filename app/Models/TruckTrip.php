@@ -120,7 +120,7 @@ class TruckTrip extends Model
     }
 
     /**
-     * Форматированное время рейса
+     * Форматированное время рейса (без секунд)
      */
     public function getFormattedTripDuration(): string
     {
@@ -128,12 +128,11 @@ class TruckTrip extends Model
 
         $hours = floor($seconds / 3600);
         $minutes = floor(($seconds % 3600) / 60);
-        $secs = $seconds % 60;
 
         if ($hours > 0) {
-            return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
+            return sprintf('%d:%02d ч', $hours, $minutes);
         }
 
-        return sprintf('%02d:%02d', $minutes, $secs);
+        return sprintf('%d мин', $minutes);
     }
 }

@@ -259,7 +259,10 @@
                                 </td>
                                 <td>
                                     @if($trip && $trip->started_at)
-                                        <small class="font-monospace {{ $activePause ? 'text-warning' : '' }}">
+                                        <small class="font-monospace {{ $activePause ? 'text-warning' : '' }} trip-duration"
+                                            data-started-at="{{ $trip->started_at->timestamp }}"
+                                            data-pause-seconds="{{ $trip->getTotalPauseSeconds() }}"
+                                            data-has-active-pause="{{ $activePause ? '1' : '0' }}">
                                             {{ $trip->getFormattedTripDuration() }}
                                         </small>
                                     @else
@@ -1447,5 +1450,42 @@
                 });
             });
         }
+
+        // Обновление времени рейса каждую минуту
+        function updateTripDurations() {
+            document.querySelectorAll('.trip-duration').forEach(el => {
+                const startedAt = parseInt(el.dataset.startedAt);
+                const pauseSeconds = parseInt(el.dataset.pauseSeconds) || 0;
+                const hasActivePause = el.dataset.hasActivePause === '1';
+
+                if (!startedAt) return;
+
+                const now = Math.floor(Date.now() / 1000);
+                let totalSeconds = now - startedAt - pauseSeconds;
+                if (totalSeconds < 0) totalSeconds = 0;
+
+                const hours = Math.floor(totalSeconds / 3600);
+                const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+                let formatted;
+                if (hours > 0) {
+                    formatted = `${hours}:${minutes.toString().padStart(2, '0')} `;
+                } else {
+                    formatted = `${minutes} мин`;
+                }
+
+                el.textContent = formatted;
+
+                // Мигание если есть активная пауза
+                if (hasActivePause) {
+                    el.classList.add('text-warning');
+                }
+            });
+        }
+
+        // Запускаем обновление каждую минуту
+        setInterval(updateTripDurations, 60000);
+        // И сразу при загрузке
+        document.addEventListener('DOMContentLoaded', updateTripDurations);
     </script>
 </div>
