@@ -21,7 +21,7 @@ class TripPause extends Model
             self::TYPE_BREAKDOWN => 'Поломка',
             self::TYPE_ROAD_WORKS => 'Дорожные работы',
             self::TYPE_WAITING_LOADING => 'Ожидание погрузки',
-            self::TYPE_WAITING_UNLOADING => 'Ожидание выгрузки',
+            self::TYPE_WAITING_UNLOADING => 'Ожидание назначения',
             self::TYPE_WEATHER => 'Погодные условия',
             self::TYPE_TRAFFIC => 'Пробки',
             self::TYPE_OTHER => 'Другое',
@@ -94,10 +94,18 @@ class TripPause extends Model
     public function getCurrentDuration(): int
     {
         if ($this->ended_at) {
-            return $this->duration_seconds;
+            return $this->duration_seconds ?? 0;
         }
 
         return (int) now()->diffInSeconds($this->started_at);
+    }
+
+    /**
+     * Алиас для getCurrentDuration
+     */
+    public function getDurationSeconds(): int
+    {
+        return $this->getCurrentDuration();
     }
 
     /**
@@ -111,8 +119,8 @@ class TripPause extends Model
         $secs = $seconds % 60;
 
         if ($hours > 0) {
-            return sprintf('%d ч %d м %d с', $hours, $minutes, $secs);
+            return sprintf('%d ч %d мин %d сек', $hours, $minutes, $secs);
         }
-        return sprintf('%d м %d с', $minutes, $secs);
+        return sprintf('%d мин %d сек', $minutes, $secs);
     }
 }

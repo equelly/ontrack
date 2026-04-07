@@ -49,9 +49,12 @@ class RouteOptimizerService
         MiningOrder::query()->update(['active' => false]);
         Log::info('Все маршруты деактивированы');
         
-        // 2. Получить все активные забои
-        $activeMiners = Miner::where('active', true)->with('currentRock')->get();
-        Log::info("Активных забоев: {$activeMiners->count()}");
+        // 2. Получить все работающие забои
+        $activeMiners = Miner::where('active', true)
+            ->where('status', Miner::STATUS_ACTIVE)
+            ->with('currentRock')
+            ->get();
+        Log::info("Работающих забоев: {$activeMiners->count()}");
         
         if ($activeMiners->isEmpty()) {
             return $result;

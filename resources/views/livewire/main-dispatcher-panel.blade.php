@@ -12,7 +12,7 @@
                         <i class="fas fa-check-circle text-success"></i>
                     </div>
                     <div>
-                        <small class="text-muted d-block">Готовы к назначению</small>
+                        <small class="text-muted d-block">Доступны для назначения</small>
                         <strong class="text-success fs-5">{{ $this->free_trucks_count }}</strong>
                     </div>
                 </div>
@@ -37,7 +37,7 @@
                     </div>
                     <div>
                         <small class="text-muted d-block">Задержки</small>
-                        <strong class="text-warning fs-5">{{ $trucks->where('status', 'delayed')->count() }}</strong>
+                        <strong class="text-warning fs-5">{{ $trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count() }}</strong>
                     </div>
                 </div>
                 <!-- Разделитель -->
@@ -48,8 +48,20 @@
                         <i class="fas fa-wrench text-danger"></i>
                     </div>
                     <div>
-                        <small class="text-muted d-block">Поломки</small>
+                        <small class="text-muted d-block">Поломки ТС</small>
                         <strong class="text-danger fs-5">{{ $this->breakdown_count }}</strong>
+                    </div>
+                </div>
+                <!-- Разделитель -->
+                <div class="vr"></div>
+                <!-- Поломки забоев -->
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-danger bg-opacity-10 rounded px-2 py-1">
+                        <i class="fas fa-mountain text-danger"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block">Поломки забоев</small>
+                        <strong class="text-danger fs-5">{{ $this->miner_breakdown_count }}</strong>
                     </div>
                 </div>
                 <!-- Разделитель -->
@@ -57,11 +69,11 @@
                 <!-- Активные забои -->
                 <div class="d-flex align-items-center gap-2">
                     <div class="bg-secondary bg-opacity-10 rounded px-2 py-1">
-                        <i class="fas fa-mountain text-secondary"></i>
+                        <i class="fas fa-mountain text-success"></i>
                     </div>
                     <div>
-                        <small class="text-muted d-block">Забои</small>
-                        <strong class="text-secondary fs-5">{{ $this->active_miners_count }}</strong>
+                        <small class="text-muted d-block">Забои в работе</small>
+                        <strong class="text-success fs-5">{{ $this->active_miners_count }}</strong>
                     </div>
                 </div>
                 <!-- Разделитель -->
@@ -123,8 +135,12 @@
                     data-bs-toggle="tab" data-bs-target="#pausesTab" type="button"
                     wire:click="setActiveTab('pausesTab')">
                 Простои
-                @if($this->pause_stats['active_count'] > 0)
-                    <span class="badge bg-danger ms-1">{{ $this->pause_stats['active_count'] }}</span>
+                @php
+                    $waitingUnloadingCount = $trucks->where('status', 'waiting_unloading')->count();
+                    $totalDelays = $this->pause_stats['active_count'] + $this->miner_delays['total_count'] + $waitingUnloadingCount;
+                @endphp
+                @if($totalDelays > 0)
+                    <span class="badge bg-danger ms-1">{{ $totalDelays }}</span>
                 @endif
             </button>
         </li>
@@ -153,6 +169,7 @@
                             <th style="width: 120px;">Статус</th>
                             <th style="width: 100px;">Порода</th>
                             <th>Маршрут</th>
+                            <th style="width: 80px;">Время</th>
                             <th style="width: 150px;">Задержка</th>
                             <th style="width: 50px;"></th>
                         </tr>
@@ -168,6 +185,8 @@
                                 'unloading' => ['label' => 'Разгрузка', 'color' => 'secondary', 'icon' => 'fa-truck-unload'],
                                 'breakdown' => ['label' => 'Поломка', 'color' => 'danger', 'icon' => 'fa-wrench'],
                                 'delayed' => ['label' => 'Задержка', 'color' => 'warning', 'icon' => 'fa-clock'],
+                                'waiting_loading' => ['label' => 'Ожидание погрузки', 'color' => 'warning', 'icon' => 'fa-hourglass-half'],
+                                'waiting_unloading' => ['label' => 'Ожидание назначения для разгрузки', 'color' => 'danger', 'icon' => 'fa-exclamation-triangle'],
                             ];
                         @endphp
                         @foreach($trucks as $truck)
@@ -179,13 +198,21 @@
                                 $truckRock = null;
                                 $truckRockLabel = '';
                                 if ($trip) {
-                                    if ($trip->rock) {
-                                        // Порода назначена в trip (из current_rock забоя)
+                                    // Если грузовик загружен - берём породу из рейса
+                                    if (in_array($truck->status, ['transporting', 'unloading', 'waiting_unloading']) && $trip->rock) {
                                         $truckRock = $trip->rock;
-                                        $truckRockLabel = in_array($truck->status, ['transporting', 'unloading']) ? 'Загружена' : 'По маршруту';
-                                    } elseif ($trip->miner) {
-                                        // Fallback: текущая порода забоя
-                                        $truckRock = $trip->miner->currentRock ?? $trip->miner->rocks->first();
+                                        $truckRockLabel = 'Загружена';
+                                    } elseif ($trip->rock_id) {
+                                        // Порода указана в рейсе
+                                        $truckRock = $trip->rock;
+                                        $truckRockLabel = 'В рейсе';
+                                    } elseif ($trip->miningOrder && $trip->miningOrder->rock) {
+                                        // Порода из заказа (плановая)
+                                        $truckRock = $trip->miningOrder->rock;
+                                        $truckRockLabel = 'По маршруту';
+                                    } elseif ($trip->miner && $trip->miner->currentRock) {
+                                        // Текущая порода в забое
+                                        $truckRock = $trip->miner->currentRock;
                                         $truckRockLabel = 'В забое';
                                     }
                                 }
@@ -196,7 +223,7 @@
                                     $activePause = $trip->pauses->first();
                                 }
                             @endphp
-                            <tr class="{{ $truck->status === 'breakdown' ? 'table-danger' : ($truck->status === 'delayed' ? 'table-warning' : ($truck->status === 'completed' ? 'table-success' : ($truck->status === 'free' ? 'table-secondary' : ''))) }}">
+                            <tr class="{{ $truck->status === 'breakdown' ? 'table-danger' : ($truck->status === 'delayed' ? 'table-warning' : ($truck->status === 'completed' ? 'table-success' : ($truck->status === 'free' ? 'table-secondary' : ($truck->status === 'waiting_unloading' ? 'table-danger' : '')))) }}">
                                 <td>
                                     <span class="fw-bold">{{ $truck->number }}</span>
                                 </td>
@@ -225,6 +252,15 @@
                                             @if($trip->zone)
                                                 <span class="badge bg-secondary ms-1">{{ $trip->zone->name_zone }}</span>
                                             @endif
+                                        </small>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($trip && $trip->started_at)
+                                        <small class="font-monospace {{ $activePause ? 'text-warning' : '' }}">
+                                            {{ $trip->getFormattedTripDuration() }}
                                         </small>
                                     @else
                                         <span class="text-muted">—</span>
@@ -266,8 +302,8 @@
                             <th style="width: 100px;">Порода</th>
                             <th style="width: 120px;">Производительность</th>
                             <th style="width: 100px;">В работе</th>
-                            <th style="width: 120px;">Статус</th>
-                            <th style="width: 50px;"></th>
+                            <th style="width: 140px;">Статус</th>
+                            <th style="width: 80px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -279,17 +315,39 @@
                                     return $trip && $trip->miner_id === $miner->id && 
                                            in_array($truck->status, ['to_miner', 'loading']);
                                 });
+                                
+                                // Грузовики в ожидании назначения для разгрузки (нет зоны для породы)
+                                $trucksWaitingUnloading = $trucks->filter(function($truck) use ($miner) {
+                                    $trip = $truck->trips->first();
+                                    return $trip && $trip->miner_id === $miner->id && 
+                                           $truck->status === 'waiting_unloading';
+                                });
+                                
+                                // CSS класс для строки в зависимости от статуса
+                                $rowClass = match($miner->status) {
+                                    'active' => '',
+                                    'breakdown' => 'table-danger',
+                                    'maintenance' => 'table-warning',
+                                    'dismantling' => 'table-info',
+                                    'access_setup' => 'table-secondary',
+                                    default => ''
+                                };
                             @endphp
-                            <tr class="{{ $miner->active ? '' : 'table-secondary' }}">
+                            <tr class="{{ $rowClass }}">
                                 <td>
                                     <span class="fw-bold">{{ $miner->name_miner }}</span>
+                                    @if($miner->status !== 'active' && $miner->status_changed_at)
+                                        <br><small class="text-muted">
+                                            {{ $miner->status_changed_at->diffForHumans() }}
+                                        </small>
+                                    @endif
                                 </td>
                                 <td>
-                                    @php
-                                        $minerRock = $miner->currentRock ?? $miner->rocks->first();
-                                    @endphp
-                                    @if($minerRock)
-                                        <span class="badge bg-info">{{ $minerRock->name_rock }}</span>
+                                    @if($miner->currentRock)
+                                        <span class="badge bg-info">{{ $miner->currentRock->name_rock }}</span>
+                                    @elseif($miner->rocks->first())
+                                        <span class="badge bg-secondary">{{ $miner->rocks->first()->name_rock }}</span>
+                                        <small class="text-muted">(истор.)</small>
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
@@ -306,25 +364,34 @@
                                     @else
                                         <span class="text-muted">—</span>
                                     @endif
+                                    @if($trucksWaitingUnloading->count() > 0)
+                                        <br>
+                                        <span class="badge bg-danger">
+                                            <i class="fas fa-exclamation-triangle me-1"></i>
+                                            {{ $trucksWaitingUnloading->count() }} ожидает назначения!
+                                        </span>
+                                        <small class="text-muted ms-1">
+                                            {{ $trucksWaitingUnloading->map(fn($t) => $t->number)->join(', ') }}
+                                        </small>
+                                    @endif
                                 </td>
                                 <td>
-                                    @if($miner->active)
-                                        <span class="badge bg-success">
-                                            <i class="fas fa-check me-1"></i>Активен
-                                        </span>
-                                    @else
-                                        <span class="badge bg-secondary">
-                                            <i class="fas fa-times me-1"></i>Неактивен
-                                        </span>
+                                    <span class="badge bg-{{ $miner->getStatusClass() }}">
+                                        {{ $miner->getStatusLabel() }}
+                                    </span>
+                                    @if($miner->isDelayed())
+                                        <small class="text-muted d-block">
+                                            {{ $miner->getStatusDurationMinutes() }} мин
+                                        </small>
                                     @endif
                                 </td>
                                 <td>
                                     <button 
-                                        class="btn btn-sm {{ $miner->active ? 'btn-outline-danger' : 'btn-outline-success' }}" 
-                                        wire:click="toggleMinerStatus({{ $miner->id }})"
+                                        class="btn btn-sm btn-outline-primary" 
+                                        wire:click="openMinerStatusModal({{ $miner->id }})"
                                         wire:loading.attr="disabled"
-                                        title="{{ $miner->active ? 'Деактивировать' : 'Активировать' }}">
-                                        <i class="fas {{ $miner->active ? 'fa-stop' : 'fa-play' }}" wire:loading.class="fa-spinner fa-spin"></i>
+                                        title="Изменить статус">
+                                        <i class="fas fa-edit"></i>
                                     </button>
                                 </td>
                             </tr>
@@ -584,6 +651,29 @@
         <div class="tab-pane fade {{ $activeTab === 'assignTab' ? 'show active' : '' }}" id="assignTab">
             <div class="card">
                 <div class="card-body">
+                    @php
+                        $isSelectedTruckLoaded = $this->isSelectedTruckLoaded();
+                        $loadedTruckInfo = $this->loaded_truck_info;
+                    @endphp
+
+                    @if($isSelectedTruckLoaded && $loadedTruckInfo)
+                        <!-- Информация о загруженном грузовике -->
+                        <div class="alert alert-warning py-2 mb-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Грузовик уже загружен</strong> — выберите только зону разгрузки.
+                            При необходимости можно изменить породу.
+                            <br>
+                            <span class="me-3">
+                                <i class="fas fa-mountain text-muted me-1"></i>
+                                Забой: <strong>{{ $loadedTruckInfo['miner_name'] }}</strong>
+                            </span>
+                            <span class="me-3">
+                                <i class="fas fa-gem text-info me-1"></i>
+                                Загрузка: <strong>{{ $loadedTruckInfo['load_volume'] ?? '?' }} т</strong>
+                            </span>
+                        </div>
+                    @endif
+                    
                     <div class="row">
                         <div class="col-md-3">
                             <label class="form-label">Самосвал</label>
@@ -591,70 +681,117 @@
                                 <option value="">Выберите</option>
                                 @foreach($this->free_trucks as $truck)
                                     <option value="{{ $truck->id }}">
-                                        {{ $truck->number }} ({{ $truck->load_capacity }}т)
+                                        {{ $truck->number }} ({{ $truck->load_capacity }}т) — {{ $truck->getStatusLabel() }}
                                     </option>
                                 @endforeach
                             </select>
                             @error('selectedTruckId')
                                 <small class="text-danger">{{ $message }}</small>
                             @enderror
-                        </div>
-
-                        <div class="col-md-3">
-                            <label class="form-label">Забой</label>
-                            <select wire:model.live="selectedMinerId" class="form-select">
-                                <option value="">Выберите</option>
-                                @foreach($this->active_miners_with_rock as $miner)
-                                    <option value="{{ $miner->id }}">
-                                        {{ $miner->name_miner }} ({{ $miner->rocks->first()->name_rock }})
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="col-md-3">
-                            <label class="form-label">Маршрут</label>
-                            <select wire:model.live="selectedOrderId" class="form-select" @if(!$selectedMinerId) disabled @endif>
-                                <option value="">Выберите забой сначала</option>
-                                @foreach($availableOrders as $order)
-                                    <option value="{{ $order['id'] }}">
-                                        {{ $order['dump_name'] }} ({{ $order['distance'] }} км)
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('selectedOrderId')
-                                <small class="text-danger">{{ $message }}</small>
-                            @enderror
-                            @if($availableOrders && count($availableOrders) === 0 && $selectedMinerId)
-                                <small class="text-warning">Нет маршрутов с доступными зонами</small>
+                            @if($selectedTruckId && !$isSelectedTruckLoaded)
+                                @php
+                                    $selectedTruck = $this->free_trucks->firstWhere('id', $selectedTruckId);
+                                @endphp
+                                @if($selectedTruck && !in_array($selectedTruck->status, ['free', 'completed']))
+                                    <small class="text-warning">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>
+                                        Переназначение маршрута (текущий будет отменён)
+                                    </small>
+                                @endif
                             @endif
                         </div>
 
+                        @if(!$isSelectedTruckLoaded)
+                            <!-- Выбор забоя - только для незагруженных грузовиков -->
+                            <div class="col-md-3">
+                                <label class="form-label">Забой</label>
+                                <select wire:model.live="selectedMinerId" class="form-select">
+                                    <option value="">Выберите</option>
+                                    @foreach($this->active_miners_with_rock as $miner)
+                                        <option value="{{ $miner->id }}">
+                                            {{ $miner->name_miner }} (@if($miner->currentRock){{ $miner->currentRock->name_rock }}@elseif($miner->rocks->first()){{ $miner->rocks->first()->name_rock }}@else—@endif)
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">Маршрут</label>
+                                <select wire:model.live="selectedOrderId" class="form-select" @if(!$selectedMinerId) disabled @endif>
+                                    <option value="">Выберите забой сначала</option>
+                                    @foreach($availableOrders as $order)
+                                        <option value="{{ $order['id'] }}">
+                                            {{ $order['dump_name'] }} ({{ $order['distance'] }} км)
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('selectedOrderId')
+                                    <small class="text-danger">{{ $message }}</small>
+                                @enderror
+                                @if($availableOrders && count($availableOrders) === 0 && $selectedMinerId)
+                                    <small class="text-warning">Нет маршрутов с доступными зонами</small>
+                                @endif
+                            </div>
+                        @else
+                            <!-- Для загруженного грузовика - информационные поля -->
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Забой (авто)</label>
+                                <input type="text" class="form-control"
+                                    value="{{ $loadedTruckInfo['miner_name'] ?? '—' }}"
+                                    disabled>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Порода <small class="text-muted">(можно изменить)</small></label>
+                                <select wire:model.live="loadedTruckRockId" class="form-select">
+                                    <option value="">Выберите породу</option>
+                                    @foreach($rocks as $rock)
+                                        <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        @endif
+
                         <div class="col-md-3">
-                            <label class="form-label">Зона</label>
-                            <select wire:model.live="selectedZoneId" class="form-select" @if(!$selectedOrderId) disabled @endif>
+                            <label class="form-label">Зона разгрузки</label>
+                            <select wire:model.live="selectedZoneId" class="form-select" @if(!$isSelectedTruckLoaded && !$selectedOrderId) disabled @endif>
                                 <option value="">Автоматически (наименее заполненная)</option>
                                 @foreach($availableZones as $zone)
                                     <option value="{{ $zone['id'] }}">
-                                        {{ $zone['name'] }} ({{ $zone['fill'] }}%)
+                                        {{ $zone['dump_name'] ?? '' }} - {{ $zone['name'] }} ({{ $zone['fill'] }}%)
                                     </option>
                                 @endforeach
                             </select>
-                            @if($availableZones && count($availableZones) > 0 && $selectedOrderId)
+                            @if($availableZones && count($availableZones) > 0)
                                 <small class="text-muted">Зоны отсортированы по заполнению</small>
+                            @elseif($isSelectedTruckLoaded && count($availableZones) === 0)
+                                <small class="text-danger">
+                                    <i class="fas fa-exclamation-triangle"></i> 
+                                    Нет доступных зон для данной породы!
+                                </small>
                             @endif
                         </div>
                     </div>
 
                     <div class="mt-3">
-                        <button
-                            wire:click="assignRoute"
-                            wire:loading.attr="disabled"
-                            class="btn btn-primary"
-                            @if(!$selectedTruckId || !$selectedOrderId) disabled @endif>
-                            <span wire:loading.remove><i class="fas fa-check-circle"></i> Назначить маршрут</span>
-                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Назначение...</span>
-                        </button>
+                        @if($isSelectedTruckLoaded)
+                            <button
+                                wire:click="assignRoute"
+                                wire:loading.attr="disabled"
+                                class="btn btn-warning"
+                                @if(!$selectedTruckId) disabled @endif>
+                                <span wire:loading.remove><i class="fas fa-check-circle"></i> Назначить зону разгрузки</span>
+                                <span wire:loading><i class="fas fa-spinner fa-spin"></i> Назначение...</span>
+                            </button>
+                        @else
+                            <button
+                                wire:click="assignRoute"
+                                wire:loading.attr="disabled"
+                                class="btn btn-primary"
+                                @if(!$selectedTruckId || !$selectedOrderId) disabled @endif>
+                                <span wire:loading.remove><i class="fas fa-check-circle"></i> Назначить маршрут</span>
+                                <span wire:loading><i class="fas fa-spinner fa-spin"></i> Назначение...</span>
+                            </button>
+                        @endif
 
                         <button
                             wire:click="assignAllFree"
@@ -723,11 +860,12 @@
         <div class="tab-pane fade {{ $activeTab === 'pausesTab' ? 'show active' : '' }}" id="pausesTab">
             @php
                 $pauseStats = $this->pause_stats;
+                $minerDelays = $this->miner_delays;
             @endphp
 
             <!-- Фильтры -->
             <div class="row mb-4">
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label small">Период:</label>
                     <select wire:model.live="pausePeriod" class="form-select form-select-sm">
                         <option value="shift">За смену</option>
@@ -737,7 +875,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Тип (можно несколько):</label>
+                    <label class="form-label small"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
                     <select wire:model.live="pauseTypes" class="form-select form-select-sm" multiple size="5">
                         @foreach(\App\Models\TripPause::types() as $typeKey => $typeLabel)
                             <option value="{{ $typeKey }}">{{ $typeLabel }}</option>
@@ -745,20 +883,44 @@
                     </select>
                     <small class="text-muted">Ctrl+клик для выбора нескольких</small>
                 </div>
-                <div class="col-md-6 d-flex align-items-end justify-content-end">
+                <div class="col-md-3">
+                    <label class="form-label small"><i class="fas fa-mountain me-1"></i>Статус забоев:</label>
+                    <select wire:model.live="minerPauseTypes" class="form-select form-select-sm" multiple size="4">
+                        @foreach($this->miner_delay_statuses as $statusKey => $statusLabel)
+                            <option value="{{ $statusKey }}">{{ $statusLabel }}</option>
+                        @endforeach
+                    </select>
+                    <small class="text-muted">Ctrl+клик для выбора нескольких</small>
+                </div>
+                <div class="col-md-4 d-flex align-items-end justify-content-end">
                     <div class="text-muted small">
                         {{ $pauseStats['period_label'] }}: 
-                        <strong class="text-dark">{{ $pauseStats['total_count'] }}</strong> инцидентов,
+                        <strong class="text-dark">{{ $pauseStats['total_count'] }}</strong> инцидентов ТС,
                         <strong class="text-{{ $pauseStats['total_seconds'] > 0 ? 'danger' : 'muted' }}">
                             {{ $pauseStats['total_formatted'] }}
-                        </strong> общего простоя
+                        </strong> простоя ТС
+                        <br>
+                        <strong class="text-dark">{{ $minerDelays['total_count'] }}</strong> задержек забоев,
+                        <strong class="text-{{ $minerDelays['total_minutes'] > 0 ? 'danger' : 'muted' }}">
+                            {{ $minerDelays['total_formatted'] }}
+                        </strong> простоя забоев
+                        @php
+                            $waitingUnloadingCount = $trucks->where('status', 'waiting_unloading')->count();
+                        @endphp
+                        @if($waitingUnloadingCount > 0)
+                            <br>
+                            <strong class="text-danger">{{ $waitingUnloadingCount }}</strong> ожидают назначения!
+                        @endif
                     </div>
                 </div>
             </div>
 
-            <!-- Сводка по типам -->
+            <!-- Сводка по типам простоев ТС -->
             @if($pauseStats['by_type']->count() > 0)
-            <div class="row mb-4">
+            <div class="row mb-3">
+                <div class="col-12">
+                    <h6 class="text-muted mb-2"><i class="fas fa-truck me-1"></i>Простои самосвалов</h6>
+                </div>
                 @foreach($pauseStats['by_type'] as $typeData)
                     <div class="col-md-3 col-lg-2 mb-2">
                         <div class="card {{ $typeData['type'] === 'breakdown' ? 'border-danger' : 'border-warning' }}">
@@ -773,75 +935,199 @@
             </div>
             @endif
 
-            <!-- Таблица простоев -->
-            <div class="card">
-                <div class="card-header py-2">
-                    <strong>
-                        Детализация простоев
-                        @if(!empty($pauseTypes))
-                            <span class="text-muted fw-normal">по причинам:</span>
-                            @foreach($pauseTypes as $i => $pt)
-                                <span class="badge bg-warning text-dark">{{ \App\Models\TripPause::typeLabel($pt) }}</span>
-                            @endforeach
-                        @endif
-                    </strong>
+            <!-- Сводка по простоям забоев -->
+            @if($minerDelays['total_count'] > 0)
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h6 class="text-muted mb-2"><i class="fas fa-mountain me-1"></i>Простои забоев</h6>
                 </div>
-                <div class="card-body p-0">
-                    @if($pauseStats['pauses']->count() > 0)
-                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                        <table class="table table-hover table-sm mb-0">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Время</th>
-                                    <th>Самосвал</th>
-                                    <th>Тип</th>
-                                    <th>Длительность</th>
-                                    <th>Статус</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($pauseStats['pauses'] as $pause)
-                                    <tr class="{{ $pause->ended_at ? '' : 'table-warning' }}">
-                                        <td>
-                                            <small>{{ $pause->started_at->format('d.m H:i') }}</small>
-                                        </td>
-                                        <td>
-                                            <strong>{{ $pause->truck?->number ?? '—' }}</strong>
-                                        </td>
-                                        <td>
-                                            <span class="badge {{ $pause->type === 'breakdown' ? 'bg-danger' : 'bg-warning text-dark' }}">
-                                                {{ \App\Models\TripPause::typeLabel($pause->type) }}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            @if($pause->ended_at)
-                                                <span class="text-muted">{{ $pause->getFormattedDuration() }}</span>
-                                            @else
-                                                <span class="text-danger fw-bold">
-                                                    {{ $pause->getFormattedDuration() }}
-                                                    <i class="fas fa-spinner fa-spin ms-1"></i>
-                                                </span>
-                                            @endif
-                                        </td>
-                                        <td>
-                                            @if($pause->ended_at)
-                                                <span class="badge bg-success">Завершён</span>
-                                            @else
-                                                <span class="badge bg-warning text-dark">Активен</span>
-                                            @endif
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                @foreach($minerDelays['by_status'] as $statusData)
+                    <div class="col-md-3 col-lg-2 mb-2">
+                        <div class="card {{ $statusData['status'] === 'breakdown' ? 'border-danger' : 'border-warning' }}">
+                            <div class="card-body py-2 px-3">
+                                <small class="text-muted d-block">{{ $statusData['label'] }}</small>
+                                <strong class="text-danger">{{ $statusData['total_formatted'] }}</strong>
+                                <small class="text-muted">({{ $statusData['count'] }})</small>
+                            </div>
+                        </div>
                     </div>
-                    @else
-                    <div class="p-4 text-center">
-                        <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
-                        <h5 class="text-muted mb-1">Нет простоев за выбранный период</h5>
-                        <p class="text-muted small mb-0">{{ $pauseStats['period_label'] }}</p>
+                @endforeach
+            </div>
+            @endif
+
+            <!-- Грузовики, ожидающие назначения зоны -->
+            @php
+                $trucksWaitingUnloading = $trucks->where('status', 'waiting_unloading');
+            @endphp
+            @if($trucksWaitingUnloading->count() > 0)
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h6 class="text-danger mb-2">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        Ожидают назначения зоны разгрузки
+                    </h6>
+                </div>
+                @foreach($trucksWaitingUnloading as $truck)
+                    @php
+                        $trip = $truck->trips->first();
+                    @endphp
+                    <div class="col-md-3 col-lg-2 mb-2">
+                        <div class="card border-danger">
+                            <div class="card-body py-2 px-3">
+                                <strong class="text-dark">{{ $truck->number }}</strong>
+                                <small class="text-muted d-block">
+                                    {{ $trip?->rock?->name_rock ?? '—' }}
+                                    <br>
+                                    из {{ $trip?->miner?->name_miner ?? '—' }}
+                                </small>
+                            </div>
+                        </div>
                     </div>
-                    @endif
+                @endforeach
+            </div>
+            @endif
+
+            <div class="row">
+                <!-- Таблица простоев ТС -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                            <strong>
+                                <i class="fas fa-truck me-1"></i>
+                                Самосвалы
+                                @if($pauseStats['active_count'] > 0)
+                                    <span class="badge bg-danger ms-1">{{ $pauseStats['active_count'] }}</span>
+                                @endif
+                            </strong>
+                            @if(!empty($pauseTypes))
+                                <small class="text-muted">
+                                    @foreach($pauseTypes as $pt)
+                                        <span class="badge bg-warning text-dark me-1">{{ \App\Models\TripPause::typeLabel($pt) }}</span>
+                                    @endforeach
+                                </small>
+                            @endif
+                        </div>
+                        <div class="card-body p-0">
+                            @if($pauseStats['pauses']->count() > 0)
+                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-hover table-sm mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>Время</th>
+                                            <th>ТС</th>
+                                            <th>Тип</th>
+                                            <th>Длит.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($pauseStats['pauses']->take(20) as $pause)
+                                            <tr class="{{ $pause->ended_at ? '' : 'table-warning' }}">
+                                                <td><small>{{ $pause->started_at->format('H:i') }}</small></td>
+                                                <td><strong>{{ $pause->truck?->number ?? '—' }}</strong></td>
+                                                <td>
+                                                    <span class="badge {{ $pause->type === 'breakdown' ? 'bg-danger' : 'bg-warning text-dark' }}">
+                                                        {{ \App\Models\TripPause::typeLabel($pause->type) }}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    @if($pause->ended_at)
+                                                        <span class="text-muted">{{ $pause->getFormattedDuration() }}</span>
+                                                    @else
+                                                        <span class="text-danger fw-bold">
+                                                            {{ $pause->getFormattedDuration() }}
+                                                            <i class="fas fa-spinner fa-spin ms-1"></i>
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            @else
+                            <div class="p-4 text-center">
+                                <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
+                                <h6 class="text-muted mb-1">Нет простоев ТС</h6>
+                                <p class="text-muted small mb-0">{{ $pauseStats['period_label'] }}</p>
+                            </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Таблица простоев забоев -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                            <strong>
+                                <i class="fas fa-mountain me-1"></i>
+                                Забои
+                                @if($minerDelays['total_count'] > 0)
+                                    <span class="badge bg-danger ms-1">{{ $minerDelays['total_count'] }}</span>
+                                @endif
+                            </strong>
+                            <div class="d-flex align-items-center gap-2">
+                                @if(!empty($minerPauseTypes))
+                                    @foreach($minerPauseTypes as $mpType)
+                                        <span class="badge bg-warning text-dark">
+                                            {{ \App\Models\Miner::getAllStatuses()[$mpType] ?? $mpType }}
+                                        </span>
+                                    @endforeach
+                                @endif
+                                @if($minerDelays['total_count'] > 0)
+                                    <small class="text-muted">
+                                        Всего: {{ $minerDelays['total_formatted'] }}
+                                    </small>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            @if($minerDelays['total_count'] > 0)
+                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-hover table-sm mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>Забой</th>
+                                            <th>Статус</th>
+                                            <th>С</</th>
+                                            <th>Длит.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($minerDelays['miners'] as $miner)
+                                            <tr class="{{ $miner->status === 'breakdown' ? 'table-danger' : 'table-warning' }}">
+                                                <td>
+                                                    <strong>{{ $miner->name_miner }}</strong>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-{{ $miner->getStatusClass() }}">
+                                                        {{ $miner->getStatusLabel() }}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    @if($miner->status_changed_at)
+                                                        <small>{{ $miner->status_changed_at->format('d.m H:i') }}</small>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    <strong class="text-danger">
+                                                        {{ $miner->getStatusDurationMinutes() }} мин
+                                                    </strong>
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            @else
+                            <div class="p-4 text-center">
+                                <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
+                                <h6 class="text-muted mb-1">Все забои в работе</h6>
+                                <p class="text-muted small mb-0">Нет задержек</p>
+                            </div>
+                            @endif
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1017,6 +1303,82 @@
         </div>
     @endif
 
+    <!-- Модальное окно смены статуса забоя -->
+    @if($editMinerStatusId)
+        @php
+            $currentMiner = \App\Models\Miner::find($editMinerStatusId);
+        @endphp
+        <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-mountain me-2"></i>
+                            Статус забоя: {{ $currentMiner?->name_miner }}
+                        </h5>
+                        <button type="button" class="btn-close" wire:click="closeMinerStatusModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Текущий статус:</label>
+                            <span class="badge bg-{{ $currentMiner?->getStatusClass() }} fs-6">
+                                {{ $currentMiner?->getStatusLabel() }}
+                            </span>
+                            @if($currentMiner?->isDelayed())
+                                <small class="text-muted ms-2">
+                                    ({{ $currentMiner->getStatusDurationMinutes() }} мин)
+                                </small>
+                            @endif
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Новый статус:</label>
+                            <select class="form-select" wire:model.live="editMinerStatusNew">
+                                @foreach($this->miner_statuses as $status => $label)
+                                    <option value="{{ $status }}" {{ $editMinerStatusNew === $status ? 'selected' : '' }}>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        @if($editMinerStatusNew === 'breakdown')
+                            <div class="alert alert-danger py-2 small">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <strong>Поломка:</strong> Грузовики будут перенаправлены на другие забои.
+                                Маршруты деактивируются.
+                            </div>
+                        @elseif(in_array($editMinerStatusNew, ['maintenance', 'dismantling', 'access_setup']))
+                            <div class="alert alert-warning py-2 small">
+                                <i class="fas fa-clock me-1"></i>
+                                <strong>Плановая остановка:</strong> Грузовики в пути доедут до забоя.
+                                Новые назначения приостанавливаются.
+                            </div>
+                        @elseif($editMinerStatusNew === 'active')
+                            <div class="alert alert-success py-2 small">
+                                <i class="fas fa-check me-1"></i>
+                                <strong>В работе:</strong> Забой готов к работе, маршруты активируются.
+                            </div>
+                        @endif
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" wire:click="closeMinerStatusModal">
+                            Отмена
+                        </button>
+                        <button 
+                            type="button" 
+                            class="btn btn-{{ $editMinerStatusNew === 'active' ? 'success' : ($editMinerStatusNew === 'breakdown' ? 'danger' : 'warning') }}"
+                            wire:click="setMinerStatus"
+                            wire:loading.attr="disabled">
+                            <span wire:loading.remove><i class="fas fa-check"></i> Подтвердить</span>
+                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Сохранение...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <style>
         .truck-card { transition: all 0.2s; }
         .truck-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -1059,10 +1421,6 @@
                 window.Echo.channel('dispatcher')
                     .listen('.truck-updated', (data) => {
                         console.log('Dispatcher notification:', data);
-                        // Явно вызываем обновление данных через Livewire
-                        if (typeof Livewire !== 'undefined') {
-                            Livewire.dispatch('truck-status-changed', data);
-                        }
                     });
             }
         });

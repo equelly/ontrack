@@ -4,83 +4,222 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\Attribute;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Auth;
 
+/**
+ * Miner - забой (экскаватор)
+ *
+ * Статусы:
+ * - active: В работе (маршруты активны)
+ * - breakdown: Поломка (грузовики перенаправляются, маршруты деактивируются)
+ * - maintenance: Обслуживание (грузовики доезжают, новые не назначаются)
+ * - dismantling: Разбор забоя (грузовики доезжают, новые не назначаются)
+ * - access_setup: Устройство подъезда (грузовики доезжают, новые не назначаются)
+ */
 class Miner extends Model
 {
     use HasFactory;
 
-    //модель при создании связана с таблицей 'miners' установим защиту дополнительно в модели
-    protected $table = 'miners';
-    //снимем защиту для возможности записи атрубутов модели в БД
-    protected $guarded = []; // ... или false
+    // Статусы
+    const STATUS_ACTIVE = 'active';
+    const STATUS_BREAKDOWN = 'breakdown';
+    const STATUS_MAINTENANCE = 'maintenance';
+    const STATUS_DISMANTLING = 'dismantling';
+    const STATUS_ACCESS_SETUP = 'access_setup';
 
-        protected $fillable = [
-        'name_miner', 
+    // Группы статусов
+    const STATUSES_WORKING = [self::STATUS_ACTIVE];
+    const STATUSES_DELAYED = [
+        self::STATUS_BREAKDOWN,
+        self::STATUS_MAINTENANCE,
+        self::STATUS_DISMANTLING,
+        self::STATUS_ACCESS_SETUP,
+    ];
+    const STATUSES_PLANNED_DELAY = [
+        self::STATUS_MAINTENANCE,
+        self::STATUS_DISMANTLING,
+        self::STATUS_ACCESS_SETUP,
+    ];
+
+    protected $fillable = [
+        'name_miner',
+        'capacity_per_trip',
         'active',
-        'last_updated_at',  //  Добавляем в fillable audit
-        'last_updated_by',  // 
+        'description',
+        'current_rock_id',
+        'status',
+        'status_changed_at',
+        'status_changed_by',
+        'last_updated_at',
+        'last_updated_by'
     ];
-        protected $casts = [
+
+    protected $casts = [
         'active' => 'boolean',
-        'last_updated_at' => 'datetime',  //  Кастим как дату
+        'capacity_per_trip' => 'decimal:2',
+        'last_updated_at' => 'datetime',
+        'status_changed_at' => 'datetime',
     ];
-        public function rocks()
+
+    protected $attributes = [
+        'status' => self::STATUS_ACTIVE,
+        'active' => true,
+    ];
+
+    // ==========================================
+    // СВЯЗИ
+    // ==========================================
+
+    public function rocks()
     {
-        return $this->belongsToMany(Rock::class, 'miner_rock');
+        return $this->belongsToMany(Rock::class, 'miner_rock', 'miner_id', 'rock_id');
     }
-        /**
+
+    /**
      * Текущая добываемая порода (выбирает экскаваторщик)
      */
     public function currentRock()
     {
         return $this->belongsTo(Rock::class, 'current_rock_id');
     }
-    
-        public function dumps()
+
+    public function orders()
     {
-        return $this->belongsToMany(Dump::class, 'miner_dump_distances')
-                    ->withPivot(['distance_km']) // поля из промежуточной таблицы
-                    ->withTimestamps();
+        return $this->hasMany(MiningOrder::class, 'miner_id');
     }
 
-        public function distances(): HasMany
+    public function activeOrders()
     {
-        return $this->hasMany(MinerDumpDistance::class, 'miner_id');
+        return $this->orders()->where('active', true);
     }
 
-        // Связь с пользователем, кто обновил
-    public function lastUpdater()
+    public function updater()
     {
         return $this->belongsTo(User::class, 'last_updated_by');
     }
 
-        // 🆕 Аксессор для удобного отображения
-    protected function lastUpdated(): Attribute
+    public function distances()
     {
-        return Attribute::make(
-            get: fn() => $this->last_updated_at? [
-                'time' => $this->last_updated_at->format('d.m.Y H:i'),
-                'user' => $this->lastUpdater?->name?? 'Система',
-                'ago' => $this->last_updated_at->diffForHumans(),
-            ]: null
-        );
+        return $this->hasMany(MinerDumpDistance::class, 'miner_id');
     }
 
-        // 🆕 Автоматическое обновление при сохранении
-    protected static function boot()
+    public function truckTrips()
     {
-        parent::boot();
-
-        static::saving(function ($miner) {
-            // Если авторизован — записываем кто и когда
-            if (Auth::check()) {
-                $miner->last_updated_by = Auth::id();
-                $miner->last_updated_at = now();
-            }
-        });
+        return $this->hasMany(TruckTrip::class, 'miner_id');
     }
 
+    public function statusChanger()
+    {
+        return $this->belongsTo(User::class, 'status_changed_by');
+    }
+
+    // ==========================================
+    // СТАТУСЫ
+    // ==========================================
+
+    /**
+     * Работает ли забой
+     */
+    public function isWorking(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE;
+    }
+
+    /**
+     * Находится ли в задержке
+     */
+    public function isDelayed(): bool
+    {
+        return in_array($this->status, self::STATUSES_DELAYED);
+    }
+
+    /**
+     * Поломка (требуется перенаправление грузовиков)
+     */
+    public function isBreakdown(): bool
+    {
+        return $this->status === self::STATUS_BREAKDOWN;
+    }
+
+    /**
+     * Плановая остановка (грузовики доезжают)
+     */
+    public function isPlannedDelay(): bool
+    {
+        return in_array($this->status, self::STATUSES_PLANNED_DELAY);
+    }
+
+    /**
+     * Сколько времени в текущем статусе (в минутах)
+     */
+    public function getStatusDurationMinutes(): int
+    {
+        if (!$this->status_changed_at) {
+            return 0;
+        }
+
+        return (int) $this->status_changed_at->diffInMinutes(now());
+    }
+
+    /**
+     * Получить название статуса на русском
+     */
+    public function getStatusLabel(): string
+    {
+        return match($this->status) {
+            self::STATUS_ACTIVE => 'В работе',
+            self::STATUS_BREAKDOWN => 'Поломка',
+            self::STATUS_MAINTENANCE => 'Обслуживание',
+            self::STATUS_DISMANTLING => 'Разбор забоя',
+            self::STATUS_ACCESS_SETUP => 'Устройство подъезда',
+            default => $this->status,
+        };
+    }
+
+    /**
+     * Получить CSS класс для статуса
+     */
+    public function getStatusClass(): string
+    {
+        return match($this->status) {
+            self::STATUS_ACTIVE => 'success',
+            self::STATUS_BREAKDOWN => 'danger',
+            self::STATUS_MAINTENANCE => 'warning',
+            self::STATUS_DISMANTLING => 'info',
+            self::STATUS_ACCESS_SETUP => 'secondary',
+            default => 'secondary',
+        };
+    }
+
+    /**
+     * Все возможные статусы
+     */
+    public static function getAllStatuses(): array
+    {
+        return [
+            self::STATUS_ACTIVE => 'В работе',
+            self::STATUS_BREAKDOWN => 'Поломка',
+            self::STATUS_MAINTENANCE => 'Обслуживание',
+            self::STATUS_DISMANTLING => 'Разбор забоя',
+            self::STATUS_ACCESS_SETUP => 'Устройство подъезда',
+        ];
+    }
+
+    // ==========================================
+    // СКОПЫ
+    // ==========================================
+
+    public function scopeWorking($query)
+    {
+        return $query->where('status', self::STATUS_ACTIVE);
+    }
+
+    public function scopeDelayed($query)
+    {
+        return $query->whereIn('status', self::STATUSES_DELAYED);
+    }
+
+    public function scopeBreakdown($query)
+    {
+        return $query->where('status', self::STATUS_BREAKDOWN);
+    }
 }

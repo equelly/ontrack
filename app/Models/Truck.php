@@ -136,4 +136,69 @@ class Truck extends Model
         $this->save();
         return $this;
     }
+
+    /**
+     * Получить название статуса на русском
+     */
+    public function getStatusLabel(): string
+    {
+        return match($this->status) {
+            'free' => 'В отстое',
+            'completed' => 'Ожидает назначения',
+            'to_miner' => 'К забою',
+            'loading' => 'Погрузка',
+            'transporting' => 'Перевозка',
+            'unloading' => 'Разгрузка',
+            'breakdown' => 'Поломка',
+            'maintenance' => 'Обслуживание',
+            'fueling' => 'Заправка',
+            'waiting_loading' => 'Ожидание погрузки',
+            'waiting_unloading' => 'Ожидание назначения для разгрузки',
+            'delayed' => 'Задержка',
+            default => $this->status,
+        };
+    }
+
+    /**
+     * Получить CSS класс для статуса
+     */
+    public function getStatusClass(): string
+    {
+        return match($this->status) {
+            'free' => 'secondary',
+            'completed' => 'success',
+            'to_miner' => 'info',
+            'loading' => 'warning',
+            'transporting' => 'primary',
+            'unloading' => 'secondary',
+            'breakdown' => 'danger',
+            'maintenance' => 'warning',
+            'fueling' => 'info',
+            'waiting_loading' => 'warning',
+            'waiting_unloading' => 'danger',
+            'delayed' => 'warning',
+            default => 'secondary',
+        };
+    }
+
+    /**
+     * Все статусы с названиями
+     */
+    public static function getAllStatuses(): array
+    {
+        return [
+            'free' => 'В отстое',
+            'completed' => 'Ожидает назначения',
+            'to_miner' => 'К забою',
+            'loading' => 'Погрузка',
+            'transporting' => 'Перевозка',
+            'unloading' => 'Разгрузка',
+            'breakdown' => 'Поломка',
+            'maintenance' => 'Обслуживание',
+            'fueling' => 'Заправка',
+            'waiting_loading' => 'Ожидание погрузки',
+            'waiting_unloading' => 'Ожидание назначения для разгрузки',
+            'delayed' => 'Задержка',
+        ];
+    }
 }

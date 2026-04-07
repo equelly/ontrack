@@ -10,7 +10,6 @@ use App\Models\Miner;
 use App\Models\MinerDumpDistance;
 use App\Events\DriverRouteUpdated;
 use App\Events\DispatcherNotification;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -37,6 +36,8 @@ class RouteAssignmentService
      * 
      * Вызывается из TruckStatusService::onToMiner() после смены статуса на 'to_miner'
      * Также может вызываться для грузовиков в статусе 'free' или 'completed'
+     * 
+     * @throws \RuntimeException если нет доступных маршрутов
      */
     public function assignForTruck(Truck $truck): void
     {
@@ -44,21 +45,19 @@ class RouteAssignmentService
 
         // Разрешаем назначение для статусов: free, completed, to_miner
         if (!in_array($truck->status, ['free', 'completed', 'to_miner'])) {
-            Log::info("Грузовик {$truck->id} занят, нельзя назначить маршрут", ['status' => $truck->status]);
-            return;
+            throw new \RuntimeException("Грузовик занят (статус: {$truck->status})");
         }
 
         DB::transaction(function () use ($truck) {
             // Получаем только АКТИВНЫЕ маршруты
             $activeOrders = MiningOrder::where('active', true)
-                ->with(['miner.currentRock', 'miner.rocks', 'dump.zones.rocks'])
+                ->with(['miner.currentRock', 'dump.zones.rocks', 'zone'])
                 ->get();
 
             Log::info('Активных маршрутов', ['count' => $activeOrders->count()]);
 
             if ($activeOrders->isEmpty()) {
-                Log::info("Нет активных маршрутов для грузовика {$truck->id}");
-                return;
+                throw new \RuntimeException("Нет активных маршрутов");
             }
 
             // Фильтруем маршруты с доступными зонами
@@ -67,17 +66,11 @@ class RouteAssignmentService
             Log::info('Доступных маршрутов', ['count' => count($availableRoutes)]);
 
             if (empty($availableRoutes)) {
-                Log::info("Нет маршрутов с доступными зонами для грузовика {$truck->id}");
-                return;
+                throw new \RuntimeException("Нет маршрутов с доступными зонами");
             }
 
             // Выбираем маршрут по WRR с учётом весов
             $selectedRoute = $this->selectByWeightedWRR($availableRoutes);
-
-            if (!$selectedRoute) {
-                Log::info("Не удалось выбрать маршрут для грузовика {$truck->id}");
-                return;
-            }
 
             Log::info('Выбран маршрут', [
                 'order_id' => $selectedRoute['order']->id,
@@ -103,69 +96,41 @@ class RouteAssignmentService
 
     /**
      * Фильтруем маршруты с доступными зонами
-     * 
-     * @param Collection<int, MiningOrder> $orders
-     * @return array<int, array{order: MiningOrder, zone: Zone, rock_id: int, weight: int}>
      */
-    protected function filterRoutesWithAvailableZones(Collection $orders): array
+    protected function filterRoutesWithAvailableZones($orders): array
     {
         $available = [];
 
         foreach ($orders as $order) {
             $miner = $order->miner;
-            
-            if (!$miner) {
-                Log::debug("Маршрут {$order->id}: нет забоя");
-                continue;
-            }
-            
-            if (!$miner->active) {
-                Log::debug("Маршрут {$order->id}: забой {$miner->id} не активен");
+
+            // Проверяем активность и статус забоя
+            if (!$miner || !$miner->active || !$miner->isWorking()) {
                 continue;
             }
 
-            // Получаем текущую породу забоя (или первую доступную как fallback)
             $currentRock = $miner->currentRock;
             
             if (!$currentRock) {
-                // Fallback: берём первую породу из доступных в забое
-                $currentRock = $miner->rocks->first();
-                if ($currentRock) {
-                    Log::debug("Маршрут {$order->id}: используем fallback породу {$currentRock->name_rock} для забоя {$miner->id}");
-                }
-            }
-            
-            if (!$currentRock) {
-                Log::debug("Маршрут {$order->id}: нет пород в забое {$miner->id}");
                 continue;
             }
 
             // Проверяем, можно ли назначить на этот забой
             if (!$this->canAssignToMiner($order)) {
-                Log::debug("Маршрут {$order->id}: нельзя назначить на забой {$miner->id} (лимит грузовиков)");
                 continue;
             }
 
             // Ищем доступную зону для текущей породы
             $zone = $this->selectZoneForRock($order->dump_id, $currentRock->id);
 
-            if (!$zone) {
-                Log::debug("Маршрут {$order->id}: нет доступной зоны для породы {$currentRock->name_rock} на перегрузке {$order->dump_id}");
-                continue;
+            if ($zone) {
+                $available[] = [
+                    'order' => $order,
+                    'zone' => $zone,
+                    'rock_id' => $currentRock->id,
+                    'weight' => $order->weight ?? 100,
+                ];
             }
-
-            Log::debug("Маршрут {$order->id}: ПОДХОДИТ", [
-                'miner' => $miner->name_miner,
-                'rock' => $currentRock->name_rock,
-                'zone' => $zone->name_zone,
-            ]);
-
-            $available[] = [
-                'order' => $order,
-                'zone' => $zone,
-                'rock_id' => $currentRock->id,
-                'weight' => $order->weight ?? 100,
-            ];
         }
 
         return $available;
@@ -175,7 +140,7 @@ class RouteAssignmentService
      * Выбор маршрута по Weighted WRR
      * Учитывает weight, wrr_cursor и last_assigned_at (чтобы не отправлять один за другим)
      */
-    protected function selectByWeightedWRR(array $routes): ?array
+    protected function selectByWeightedWRR(array $routes): array
     {
         if (count($routes) === 0) {
             return null;

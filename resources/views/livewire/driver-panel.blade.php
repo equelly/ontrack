@@ -70,10 +70,11 @@
                                         <small class="text-muted d-block">Порода</small>
                                         @php
                                             $isLoaded = in_array($truck->status, ['transporting', 'unloading']);
-                                            // Приоритет: trip.rock -> miner.currentRock -> miningOrder.rock
-                                            $rock = $currentTrip->rock 
-                                                ?? $currentTrip->miner?->currentRock 
-                                                ?? $currentTrip->miningOrder?->rock;
+                                            if ($isLoaded && $currentTrip->rock_id) {
+                                                $rock = $currentTrip->rock;
+                                            } else {
+                                                $rock = $currentTrip->miningOrder?->rock;
+                                            }
                                         @endphp
                                         @if($rock)
                                             <strong class="text-info">{{ $rock->name_rock }}</strong>
@@ -82,8 +83,6 @@
                                             @else
                                                 <small class="text-muted d-block">По маршруту</small>
                                             @endif
-                                        @else
-                                            <span class="text-muted">Не назначена</span>
                                         @endif
                                     </div>
                                 </div>
@@ -184,11 +183,31 @@
 
                             {{-- Ожидание назначения зоны разгрузки --}}
                             @if($status === 'waiting_unloading')
-                                <div class="alert alert-warning mb-0 text-center py-4">
-                                    <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
-                                    <strong>⏳ Ожидание назначения места разгрузки</strong><br>
-                                    <small class="text-muted">Диспетчер назначит зону для выгрузки</small>
+                                <div class="alert alert-danger mb-3 text-center py-4">
+                                    <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
+                                    <strong>⚠️ Ожидание назначения зоны разгрузки</strong><br>
+                                    <small class="text-muted">Диспетчер назначит зону для выгрузки. Ожидайте.</small>
                                 </div>
+                                @if($currentTrip && $currentTrip->rock)
+                                    <div class="alert alert-info mb-3">
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <small class="text-muted">Загруженная порода:</small><br>
+                                                <strong class="text-info">{{ $currentTrip->rock->name_rock }}</strong>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted">Объём:</small><br>
+                                                <strong>{{ $currentTrip->load_volume ?? $truck->load_capacity }} т</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+                                <button
+                                    wire:click="reportBreakdown"
+                                    wire:confirm="Сообщить о поломке?"
+                                    class="btn btn-outline-danger w-100">
+                                    <i class="bi bi-exclamation-triangle"></i> Поломка
+                                </button>
                             @endif
 
                             {{-- Везём груз --}}
@@ -271,7 +290,7 @@
                             @endif
 
                             {{-- Кнопка поломки для рабочих статусов --}}
-                            @if(in_array($status, ['to_miner', 'loading', 'transporting', 'unloading']))
+                            @if(in_array($status, ['to_miner', 'loading', 'transporting', 'unloading', 'waiting_unloading']))
                                 <hr>
                                 <button
                                     wire:click="reportBreakdown"

@@ -48,7 +48,7 @@ class DriverPanel extends Component
 
         $this->currentTrip = TruckTrip::where('truck_id', $this->truck->id)
             ->whereNull('completed_at')
-            ->with(['miner.currentRock', 'miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock', 'pauses'])
+            ->with(['miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock', 'pauses'])
             ->latest()
             ->first();
 
@@ -95,7 +95,7 @@ class DriverPanel extends Component
             'trip_rock_id' => $this->currentTrip?->rock_id,
             'trip_rock_name' => $this->currentTrip?->rock?->name_rock,
             '--- MINER ROCK ---' => '---',
-            'miner_rock_name' => $this->currentTrip?->miner?->currentRock?->name_rock ?? $this->currentTrip?->miner?->rocks?->first()?->name_rock,
+            'miner_rock_name' => $this->currentTrip?->miner?->rocks?->first()?->name_rock,
             '--- ORDER ---' => '---',
             'order_id' => $this->currentTrip?->miningOrder?->id,
             'order_rock_id' => $this->currentTrip?->miningOrder?->rock_id,
@@ -195,7 +195,7 @@ class DriverPanel extends Component
     }
 
     /**
-     * Уйти в отстой
+     * Уйти в отстой (из статуса completed)
      */
     public function goToStandby(): void
     {
@@ -206,7 +206,7 @@ class DriverPanel extends Component
 
             $this->dispatch('notify', [
                 'type' => 'info',
-                'message' => 'Вы в отстое',
+                'message' => 'Вы ушли в отстой.',
             ]);
         } catch (\Exception $e) {
             Log::error('Go to standby failed', ['error' => $e->getMessage()]);
@@ -415,7 +415,7 @@ class DriverPanel extends Component
         $this->loadData();
     }
 
-    #[On('echo:driver.{truck.id},.route.updated')]
+    #[On('echo-private:driver.{truck.id},.route.updated')]
     public function onDriverRouteUpdated(): void
     {
         Log::info('DriverRouteUpdated event received');

@@ -105,6 +105,97 @@
         </div>
 
         @if($miner)
+        <!-- Управление статусом забоя -->
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-cogs"></i> Статус забоя</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center">
+                                    <span class="text-muted me-2">Текущий статус:</span>
+                                    <span class="badge bg-{{ $miner->getStatusClass() }}" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                                        {{ $miner->getStatusLabel() }}
+                                    </span>
+                                </div>
+                                @if($miner->isDelayed() && $miner->status_changed_at)
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>
+                                        Время в статусе: {{ $miner->getStatusDurationMinutes() }} мин.
+                                    </small>
+                                @endif
+                            </div>
+                            <div class="col-md-8">
+                                <div class="d-flex flex-wrap gap-2 justify-content-md-end">
+                                    @if($miner->status !== 'active')
+                                        <button
+                                            wire:click="setStatus('active')"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-success">
+                                            <i class="fas fa-play me-1"></i> В работе
+                                        </button>
+                                    @endif
+
+                                    @if($miner->status !== 'breakdown')
+                                        <button
+                                            wire:click="setStatus('breakdown')"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-danger">
+                                            <i class="fas fa-exclamation-triangle me-1"></i> Поломка
+                                        </button>
+                                    @endif
+
+                                    @if($miner->status !== 'maintenance')
+                                        <button
+                                            wire:click="setStatus('maintenance')"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-warning">
+                                            <i class="fas fa-wrench me-1"></i> Обслуживание
+                                        </button>
+                                    @endif
+
+                                    @if($miner->status !== 'dismantling')
+                                        <button
+                                            wire:click="setStatus('dismantling')"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-info">
+                                            <i class="fas fa-hammer me-1"></i> Разбор забоя
+                                        </button>
+                                    @endif
+
+                                    @if($miner->status !== 'access_setup')
+                                        <button
+                                            wire:click="setStatus('access_setup')"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-secondary">
+                                            <i class="fas fa-road me-1"></i> Устр. подъезда
+                                        </button>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+
+                        @if($miner->isBreakdown())
+                            <div class="alert alert-danger mt-3 mb-0">
+                                <i class="fas fa-exclamation-circle me-2"></i>
+                                <strong>Внимание!</strong> Грузовики будут перенаправлены на другие забои.
+                            </div>
+                        @elseif($miner->isPlannedDelay())
+                            <div class="alert alert-warning mt-3 mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Грузовики в пути доедут до забоя, новые назначаться не будут.
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
+
+        @if($miner)
         <div class="row">
             <!-- Статистика за смену -->
             <div class="col-12 mb-4">

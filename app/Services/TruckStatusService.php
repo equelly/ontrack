@@ -102,7 +102,7 @@ class TruckStatusService
             'transporting'      => ['unloading', 'delayed', 'breakdown'],
             'unloading'         => ['completed', 'waiting_unloading', 'breakdown'],
             'waiting_loading'   => ['loading', 'breakdown'],
-            'waiting_unloading' => ['unloading', 'transporting', 'breakdown'],
+            'waiting_unloading' => ['unloading', 'breakdown'],
             'delayed'           => ['transporting', 'to_miner', 'breakdown'],
             'breakdown'         => ['free'],
             'maintenance'       => ['free'],
@@ -314,7 +314,7 @@ class TruckStatusService
 
         $miner = $trip->miner;
         $currentZone = $trip->zone;
-        $minerRock = $miner?->rocks->first();
+        $minerRock = $miner?->currentRock; // Используем ТЕКУЩУЮ породу забоя
 
         // Обновляем породу в trip на текущую породу забоя
         if ($minerRock) {
@@ -325,25 +325,57 @@ class TruckStatusService
             ]);
         }
 
-        // Проверяем соответствие породы зоне
-        if ($minerRock && $currentZone) {
-            $zoneAcceptsRock = $currentZone->rocks->contains($minerRock->id);
+        // Назначаем/проверяем зону для породы
+        if ($minerRock) {
+            if ($currentZone) {
+                // Зона уже есть - проверяем соответствие породе
+                $zoneAcceptsRock = $currentZone->rocks->contains($minerRock->id);
 
-            if (!$zoneAcceptsRock) {
-                Log::info("Zone mismatch for truck {$truck->id}", [
-                    'rock' => $minerRock->name_rock,
-                    'zone' => $currentZone->name_zone,
-                ]);
+                if (!$zoneAcceptsRock) {
+                    Log::info("Zone mismatch for truck {$truck->id}", [
+                        'rock' => $minerRock->name_rock,
+                        'zone' => $currentZone->name_zone,
+                    ]);
 
-                // Ищем зону на текущей перегрузке
+                    // Ищем новую зону
+                    $newZone = $this->findAvailableZone($trip->dump_id, $minerRock->id);
+
+                    if (!$newZone) {
+                        $newZone = $this->findAvailableZoneOnAnyDump($minerRock->id);
+                        
+                        if ($newZone) {
+                            $trip->update(['dump_id' => $newZone->dump_id, 'zone_id' => $newZone->id]);
+                            $trip->miningOrder?->update(['zone_id' => $newZone->id]);
+                        }
+                    } else {
+                        $trip->update(['zone_id' => $newZone->id]);
+                        $trip->miningOrder?->update(['zone_id' => $newZone->id]);
+                    }
+
+                    if ($newZone) {
+                        Log::info("Zone reassigned for truck {$truck->id}", [
+                            'old_zone' => $currentZone->name_zone,
+                            'new_zone' => $newZone->name_zone,
+                            'new_dump' => $newZone->dump->name_dump,
+                        ]);
+
+                        event(new ZoneChanged($truck, $currentZone, $newZone));
+                    } else {
+                        Log::warning("No available zone for truck {$truck->id}", [
+                            'rock' => $minerRock->name_rock,
+                        ]);
+
+                        event(new NoZoneAvailable($truck, $minerRock->name_rock));
+                    }
+                }
+            } else {
+                // Зоны нет - назначаем по породе
                 $newZone = $this->findAvailableZone($trip->dump_id, $minerRock->id);
 
-                // Если не нашли на текущей перегрузке - ищем на всех
                 if (!$newZone) {
                     $newZone = $this->findAvailableZoneOnAnyDump($minerRock->id);
                     
                     if ($newZone) {
-                        // Меняем перегрузку в trip
                         $trip->update(['dump_id' => $newZone->dump_id, 'zone_id' => $newZone->id]);
                         $trip->miningOrder?->update(['zone_id' => $newZone->id]);
                     }
@@ -353,21 +385,11 @@ class TruckStatusService
                 }
 
                 if ($newZone) {
-                    $oldZoneName = $currentZone->name_zone;
-                    $oldDumpName = $trip->dump->name_dump;
-
-                    Log::info("Zone reassigned for truck {$truck->id}", [
-                        'old_zone' => $oldZoneName,
-                        'new_zone' => $newZone->name_zone,
-                        'new_dump' => $newZone->dump->name_dump,
+                    Log::info("Zone assigned for truck {$truck->id} on loading", [
+                        'zone' => $newZone->name_zone,
+                        'dump' => $newZone->dump->name_dump,
+                        'rock' => $minerRock->name_rock,
                     ]);
-
-                    event(new ZoneChanged(
-                        $truck,
-                        $oldZoneName,
-                        $newZone->name_zone,
-                        $trip->dump->name_dump
-                    ));
                 } else {
                     Log::warning("No available zone for truck {$truck->id}", [
                         'rock' => $minerRock->name_rock,
@@ -379,6 +401,9 @@ class TruckStatusService
         }
 
         $trip->update(['load_time' => now()]);
+
+        // Уведомляем диспетчера об изменениях при загрузке
+        $this->notifyDispatcher($truck, 'loading', 'loading');
 
         if ($miner) {
             event(new TruckStartedLoading($truck, $miner->id));
@@ -456,7 +481,11 @@ class TruckStatusService
                 $pause->end();
             }
 
-            $loadVolume = $trip->miningOrder->planned_volume ?? $truck->load_capacity ?? 0;
+            // Безопасное получение planned_volume
+            $loadVolume = $trip->load_volume
+                ?? $trip->miningOrder?->planned_volume
+                ?? $truck->load_capacity
+                ?? 0;
 
             $trip->update([
                 'completed_at' => now(),
@@ -506,6 +535,8 @@ class TruckStatusService
                         'capacity' => $zone->capacity,
                     ]);
                 }
+            } else {
+                Log::warning("Trip {$trip->id} completed without zone - volume not added to any zone");
             }
         }
 
@@ -580,23 +611,6 @@ class TruckStatusService
 
     protected function onWaitingUnloading(Truck $truck, array $context = []): void
     {
-        $trip = $this->getActiveTrip($truck);
-
-        // Если причина - нет зоны, начинаем паузу ожидания
-        if (isset($context['reason']) && $context['reason'] === 'no_zone_available') {
-            if ($trip) {
-                $this->startPause($trip, TripPause::TYPE_WAITING_UNLOADING, 'no_zone_available');
-            }
-
-            // Уведомляем водителя
-            if ($truck->driver_id) {
-                $this->notifyDriver($truck, [
-                    'action' => 'waiting_for_zone',
-                    'message' => 'Ожидание назначения зоны разгрузки. Диспетчер принял уведомление.',
-                ]);
-            }
-        }
-
         Log::info("Truck {$truck->id} waiting for unloading", $context);
     }
 

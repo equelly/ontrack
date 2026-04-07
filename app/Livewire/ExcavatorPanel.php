@@ -8,6 +8,7 @@ use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Events\LoadingCompleted;
 use App\Services\TruckStatusService;
+use App\Services\MinerStatusService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
@@ -211,6 +212,51 @@ class ExcavatorPanel extends Component
             'type' => 'success',
             'message' => 'Текущая порода: ' . ($rock?->name_rock ?? ''),
         ]);
+    }
+
+    /**
+     * Установить статус забоя (задержка/в работе)
+     */
+    public function setStatus(string $status): void
+    {
+        Log::info('setStatus START', [
+            'miner_id' => $this->miner?->id,
+            'new_status' => $status,
+        ]);
+
+        if (!$this->miner) {
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => 'Сначала выберите экскаватор',
+            ]);
+            return;
+        }
+
+        try {
+            $statusService = app(MinerStatusService::class);
+            $result = $statusService->changeStatus($this->miner, $status, Auth::id());
+
+            if ($result['success']) {
+                $this->miner->refresh();
+                $this->loadMinerData();
+
+                $this->dispatch('notify', [
+                    'type' => in_array($status, Miner::STATUSES_DELAYED) ? 'warning' : 'success',
+                    'message' => $result['message'],
+                ]);
+            } else {
+                $this->dispatch('notify', [
+                    'type' => 'error',
+                    'message' => $result['message'],
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('setStatus failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка: ' . $e->getMessage(),
+            ]);
+        }
     }
 
     public function confirmArrival(int $truckId): void

@@ -79,9 +79,9 @@ class RouteSyncService
             return ['created' => 0, 'zone_id' => $zone->id];
         }
 
-        // Находим забои с текущей породой из зоны
-        // В будущем добавим: ->where('status', 'active')
+        // Находим забои с текущей породой из зоны (только работающие)
         $miners = Miner::where('active', true)
+            ->where('status', Miner::STATUS_ACTIVE)
             ->whereIn('current_rock_id', $zoneRockIds)
             ->get();
 
@@ -122,9 +122,9 @@ class RouteSyncService
             'rock_id' => $rockId,
         ]);
 
-        // Находим забои с текущей породой = rockId
-        // В будущем добавим: ->where('status', 'active')
+        // Находим забои с текущей породой = rockId (только работающие)
         $miners = Miner::where('active', true)
+            ->where('status', Miner::STATUS_ACTIVE)
             ->where('current_rock_id', $rockId)
             ->get();
 

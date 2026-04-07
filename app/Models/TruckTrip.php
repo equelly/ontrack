@@ -102,4 +102,38 @@ class TruckTrip extends Model
 
         return (int) $total;
     }
+
+    /**
+     * Чистое время рейса (без пауз) в секундах
+     */
+    public function getNetTripSeconds(): int
+    {
+        if (!$this->started_at) {
+            return 0;
+        }
+
+        $endTime = $this->completed_at ?? now();
+        $totalSeconds = $this->started_at->diffInSeconds($endTime);
+        $pauseSeconds = $this->getTotalPauseSeconds();
+
+        return max(0, $totalSeconds - $pauseSeconds);
+    }
+
+    /**
+     * Форматированное время рейса
+     */
+    public function getFormattedTripDuration(): string
+    {
+        $seconds = $this->getNetTripSeconds();
+
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        $secs = $seconds % 60;
+
+        if ($hours > 0) {
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
+        }
+
+        return sprintf('%02d:%02d', $minutes, $secs);
+    }
 }

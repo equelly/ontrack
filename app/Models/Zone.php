@@ -26,11 +26,11 @@ class Zone extends Model
         'delivery' => 'boolean'
     ];
 
-        protected static function boot()
+    protected static function boot()
     {
         parent::boot();
 
-        // ← НОВОЕ: обновляем Dump при изменении Zone
+        // Обновляем Dump при изменении Zone
         static::saved(function ($zone) {
             if ($zone->dump && Auth::check()) {
                 $zone->dump->update([
@@ -41,13 +41,46 @@ class Zone extends Model
         });
     }
 
-    public function dump() {
+    public function dump()
+    {
         return $this->belongsTo(Dump::class);
     }
-    public function routes() {
+
+    public function routes()
+    {
         return $this->hasMany(Route::class);
     }
-    public function rocks() {
+
+    public function rocks()
+    {
         return $this->belongsToMany(Rock::class, 'rock_zone');
+    }
+
+    public function orders()
+    {
+        return $this->hasMany(MiningOrder::class, 'zone_id');
+    }
+
+    public function truckTrips()
+    {
+        return $this->hasMany(TruckTrip::class, 'zone_id');
+    }
+
+    public function getFillPercentageAttribute()
+    {
+        return $this->capacity > 0 ? ($this->volume / $this->capacity) * 100 : 0;
+    }
+
+    /**
+     * Проверка доступности зоны для разгрузки
+     */
+    public function isAvailable(): bool
+    {
+        return $this->delivery && $this->volume < $this->capacity;
+    }
+
+    public function incrementVolume($volume)
+    {
+        $this->increment('volume', $volume);
     }
 }
