@@ -10,6 +10,7 @@ use App\Models\Rock;
 use App\Models\TruckTrip;
 use App\Models\MiningOrder;
 use App\Models\TripPause;
+use App\Models\MinerPause;
 use App\Models\SystemSetting;
 use App\Events\DriverRouteUpdated;
 use App\Services\RouteAssignmentService;
@@ -1376,37 +1377,59 @@ class MainDispatcherPanel extends Component
      */
     public function getMinerDelaysProperty(): array
     {
-        // Получаем забои в задержке
-        $delayedMiners = $this->miners->filter(fn($m) => $m->status !== 'active');
+        // Запрос к истории простоев забоев
+        $query = MinerPause::with(['miner', 'starter', 'ender'])
+            ->orderBy('started_at', 'desc');
 
-        // Фильтр по типу статуса
-        if (!empty($this->minerPauseTypes)) {
-            $delayedMiners = $delayedMiners->filter(fn($m) => in_array($m->status, $this->minerPauseTypes));
+        // Период
+        switch ($this->pausePeriod) {
+            case 'today':
+                $query->whereDate('started_at', today());
+                break;
+            case 'week':
+                $query->where('started_at', '>=', now()->subWeek());
+                break;
+            case 'month':
+                $query->where('started_at', '>=', now()->subMonth());
+                break;
+            default: // shift
+                $query->where('started_at', '>=', now()->startOfDay());
         }
 
-        // Группируем по типу статуса
-        $byStatus = $delayedMiners->groupBy('status')->map(function ($group, $status) {
-            $totalMinutes = $group->sum(function ($m) {
-                return $m->getStatusDurationMinutes();
+        // Фильтр по типам
+        if (!empty($this->minerPauseTypes)) {
+            $query->whereIn('type', $this->minerPauseTypes);
+        }
+
+        $pauses = $query->get();
+
+        // Группировка по типам
+        $byType = $pauses->groupBy('type')->map(function ($group, $type) {
+            $totalMinutes = $group->sum(function ($p) {
+                return round($p->getCurrentDuration() / 60);
             });
             return [
-                'status' => $status,
-                'label' => \App\Models\Miner::getAllStatuses()[$status] ?? $status,
+                'type' => $type,
+                'label' => MinerPause::typeLabel($type),
                 'count' => $group->count(),
                 'total_minutes' => $totalMinutes,
                 'total_formatted' => $this->formatMinutes($totalMinutes),
             ];
         })->values();
 
-        $totalMinutes = $delayedMiners->sum(fn($m) => $m->getStatusDurationMinutes());
+        $totalMinutes = $pauses->sum(fn($p) => round($p->getCurrentDuration() / 60));
+
+        // Текущие задержки (активные паузы)
+        $activePauses = $pauses->filter(fn($p) => $p->ended_at === null);
 
         return [
-            'miners' => $delayedMiners->sortByDesc('status_changed_at'),
-            'total_count' => $delayedMiners->count(),
+            'pauses' => $pauses,
+            'active_pauses' => $activePauses,
+            'total_count' => $pauses->count(),
+            'active_count' => $activePauses->count(),
             'total_minutes' => $totalMinutes,
             'total_formatted' => $this->formatMinutes($totalMinutes),
-            'active_count' => $delayedMiners->count(), // Все в задержке считаем активными
-            'by_status' => $byStatus,
+            'by_type' => $byType,
         ];
     }
 

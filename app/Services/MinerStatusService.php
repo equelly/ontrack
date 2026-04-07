@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Miner;
+use App\Models\MinerPause;
 use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Models\MiningOrder;
@@ -58,6 +59,16 @@ class MinerStatusService
                 'status_changed_by' => $changedBy ?? Auth::id(),
             ]);
 
+            // Логируем паузу при переходе в задержку
+            if (in_array($newStatus, Miner::STATUSES_DELAYED)) {
+                $this->startPause($miner, $newStatus, $changedBy);
+            }
+
+            // Завершаем паузу при возврате в работу
+            if ($newStatus === Miner::STATUS_ACTIVE && in_array($oldStatus, Miner::STATUSES_DELAYED)) {
+                $this->endPause($miner, $changedBy);
+            }
+
             // Обрабатываем грузовики в зависимости от статуса
             if ($newStatus === Miner::STATUS_BREAKDOWN) {
                 // Поломка - перенаправляем грузовики
@@ -101,6 +112,62 @@ class MinerStatusService
         $validStatuses = array_keys(Miner::getAllStatuses());
 
         return in_array($to, $validStatuses);
+    }
+
+    /**
+     * Начать паузу забоя
+     */
+    protected function startPause(Miner $miner, string $type, ?int $changedBy = null): MinerPause
+    {
+        // Проверяем, нет ли уже активной паузы (прямой запрос к БД)
+        $existingPause = MinerPause::where('miner_id', $miner->id)
+            ->whereNull('ended_at')
+            ->first();
+
+        if ($existingPause) {
+            Log::info("Miner {$miner->id} already has active pause", ['pause_id' => $existingPause->id]);
+            return $existingPause;
+        }
+
+        $pause = MinerPause::create([
+            'miner_id' => $miner->id,
+            'type' => $type,
+            'started_at' => now(),
+            'started_by' => $changedBy ?? Auth::id(),
+        ]);
+
+        Log::info("Pause started for miner {$miner->id}", [
+            'pause_id' => $pause->id,
+            'type' => $type,
+        ]);
+
+        return $pause;
+    }
+
+    /**
+     * Завершить активную паузу
+     */
+    protected function endPause(Miner $miner, ?int $changedBy = null): ?MinerPause
+    {
+        // Получаем активную паузу напрямую из БД (не через связь модели)
+        $activePause = MinerPause::where('miner_id', $miner->id)
+            ->whereNull('ended_at')
+            ->first();
+
+        if (!$activePause) {
+            Log::info("No active pause found for miner {$miner->id}");
+            return null;
+        }
+
+        $activePause->end($changedBy ?? Auth::id());
+
+        Log::info("Pause ended for miner {$miner->id}", [
+            'pause_id' => $activePause->id,
+            'type' => $activePause->type,
+            'duration_seconds' => $activePause->duration_seconds,
+        ]);
+
+        return $activePause;
     }
 
     /**

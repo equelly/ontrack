@@ -937,17 +937,17 @@
 
             <!-- Сводка по простоям забоев -->
             @if($minerDelays['total_count'] > 0)
-            <div class="row mb-4">
+            <div class="row mb-3">
                 <div class="col-12">
                     <h6 class="text-muted mb-2"><i class="fas fa-mountain me-1"></i>Простои забоев</h6>
                 </div>
-                @foreach($minerDelays['by_status'] as $statusData)
+                @foreach($minerDelays['by_type'] as $typeData)
                     <div class="col-md-3 col-lg-2 mb-2">
-                        <div class="card {{ $statusData['status'] === 'breakdown' ? 'border-danger' : 'border-warning' }}">
+                        <div class="card {{ $typeData['type'] === 'breakdown' ? 'border-danger' : 'border-warning' }}">
                             <div class="card-body py-2 px-3">
-                                <small class="text-muted d-block">{{ $statusData['label'] }}</small>
-                                <strong class="text-danger">{{ $statusData['total_formatted'] }}</strong>
-                                <small class="text-muted">({{ $statusData['count'] }})</small>
+                                <small class="text-muted d-block">{{ $typeData['label'] }}</small>
+                                <strong class="text-danger">{{ $typeData['total_formatted'] }}</strong>
+                                <small class="text-muted">({{ $typeData['count'] }})</small>
                             </div>
                         </div>
                     </div>
@@ -1062,15 +1062,15 @@
                             <strong>
                                 <i class="fas fa-mountain me-1"></i>
                                 Забои
-                                @if($minerDelays['total_count'] > 0)
-                                    <span class="badge bg-danger ms-1">{{ $minerDelays['total_count'] }}</span>
+                                @if($minerDelays['active_count'] > 0)
+                                    <span class="badge bg-danger ms-1">{{ $minerDelays['active_count'] }}</span>
                                 @endif
                             </strong>
                             <div class="d-flex align-items-center gap-2">
                                 @if(!empty($minerPauseTypes))
                                     @foreach($minerPauseTypes as $mpType)
                                         <span class="badge bg-warning text-dark">
-                                            {{ \App\Models\Miner::getAllStatuses()[$mpType] ?? $mpType }}
+                                            {{ \App\Models\MinerPause::typeLabel($mpType) }}
                                         </span>
                                     @endforeach
                                 @endif
@@ -1087,32 +1087,31 @@
                                 <table class="table table-hover table-sm mb-0">
                                     <thead class="table-light sticky-top">
                                         <tr>
+                                            <th>Время</th>
                                             <th>Забой</th>
-                                            <th>Статус</th>
-                                            <th>С</</th>
+                                            <th>Тип</th>
                                             <th>Длит.</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach($minerDelays['miners'] as $miner)
-                                            <tr class="{{ $miner->status === 'breakdown' ? 'table-danger' : 'table-warning' }}">
+                                        @foreach($minerDelays['pauses']->take(20) as $pause)
+                                            <tr class="{{ $pause->ended_at ? '' : 'table-warning' }}">
+                                                <td><small>{{ $pause->started_at->format('H:i') }}</small></td>
+                                                <td><strong>{{ $pause->miner?->name_miner ?? '—' }}</strong></td>
                                                 <td>
-                                                    <strong>{{ $miner->name_miner }}</strong>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-{{ $miner->getStatusClass() }}">
-                                                        {{ $miner->getStatusLabel() }}
+                                                    <span class="badge {{ $pause->type === 'breakdown' ? 'bg-danger' : 'bg-warning text-dark' }}">
+                                                        {{ \App\Models\MinerPause::typeLabel($pause->type) }}
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    @if($miner->status_changed_at)
-                                                        <small>{{ $miner->status_changed_at->format('d.m H:i') }}</small>
+                                                    @if($pause->ended_at)
+                                                        <span class="text-muted">{{ $pause->getFormattedDuration() }}</span>
+                                                    @else
+                                                        <span class="text-danger fw-bold">
+                                                            {{ $pause->getFormattedDuration() }}
+                                                            <i class="fas fa-spinner fa-spin ms-1"></i>
+                                                        </span>
                                                     @endif
-                                                </td>
-                                                <td>
-                                                    <strong class="text-danger">
-                                                        {{ $miner->getStatusDurationMinutes() }} мин
-                                                    </strong>
                                                 </td>
                                             </tr>
                                         @endforeach
@@ -1122,8 +1121,8 @@
                             @else
                             <div class="p-4 text-center">
                                 <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
-                                <h6 class="text-muted mb-1">Все забои в работе</h6>
-                                <p class="text-muted small mb-0">Нет задержек</p>
+                                <h6 class="text-muted mb-1">Нет простоев забоев</h6>
+                                <p class="text-muted small mb-0">{{ $pauseStats['period_label'] }}</p>
                             </div>
                             @endif
                         </div>
