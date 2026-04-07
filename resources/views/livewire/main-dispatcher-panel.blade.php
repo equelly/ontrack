@@ -878,7 +878,12 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label small mb-0"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
+                        <button wire:click="$set('pauseTypes', [])" class="btn btn-link btn-sm p-0 text-muted small">
+                            Все типы
+                        </button>
+                    </div>
                     <select wire:model.live="pauseTypes" class="form-select form-select-sm" multiple size="5">
                         @foreach(\App\Models\TripPause::types() as $typeKey => $typeLabel)
                             <option value="{{ $typeKey }}">{{ $typeLabel }}</option>
@@ -887,7 +892,12 @@
                     <small class="text-muted">Ctrl+клик для выбора нескольких</small>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small"><i class="fas fa-mountain me-1"></i>Статус забоев:</label>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label small mb-0"><i class="fas fa-mountain me-1"></i>Статус забоев:</label>
+                        <button wire:click="$set('minerPauseTypes', [])" class="btn bg-gray-500 btn-link btn-sm p-0 text-muted small">
+                            Все статусы
+                        </button>
+                    </div>
                     <select wire:model.live="minerPauseTypes" class="form-select form-select-sm" multiple size="4">
                         @foreach($this->miner_delay_statuses as $statusKey => $statusLabel)
                             <option value="{{ $statusKey }}">{{ $statusLabel }}</option>
