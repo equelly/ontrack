@@ -259,10 +259,7 @@
                                 </td>
                                 <td>
                                     @if($trip && $trip->started_at)
-                                        <small class="font-monospace {{ $activePause ? 'text-warning' : '' }} trip-duration"
-                                            data-started-at="{{ $trip->started_at->timestamp }}"
-                                            data-pause-seconds="{{ $trip->getTotalPauseSeconds() }}"
-                                            data-has-active-pause="{{ $activePause ? '1' : '0' }}">
+                                        <small class="font-monospace {{ $activePause ? 'text-warning' : '' }}">
                                             {{ $trip->getFormattedTripDuration() }}
                                         </small>
                                     @else
@@ -303,8 +300,11 @@
                         <tr>
                             <th style="width: 150px;">Забой</th>
                             <th style="width: 100px;">Порода</th>
-                            <th style="width: 120px;">Производительность</th>
+                            <th style="width: 100px;">Цель (мин)</th>
+                            <th style="width: 100px;">Факт (мин)</th>
+                            <th style="width: 100px;">Ожидание</th>
                             <th style="width: 100px;">В работе</th>
+                            <th style="width: 120px;">Рекомендация</th>
                             <th style="width: 140px;">Статус</th>
                             <th style="width: 80px;"></th>
                         </tr>
@@ -316,7 +316,7 @@
                                 $trucksAtMiner = $trucks->filter(function($truck) use ($miner) {
                                     $trip = $truck->trips->first();
                                     return $trip && $trip->miner_id === $miner->id && 
-                                           in_array($truck->status, ['to_miner', 'loading']);
+                                           in_array($truck->status, ['to_miner', 'loading', 'waiting_loading']);
                                 });
                                 
                                 // Грузовики в ожидании назначения для разгрузки (нет зоны для породы)
@@ -325,6 +325,9 @@
                                     return $trip && $trip->miner_id === $miner->id && 
                                            $truck->status === 'waiting_unloading';
                                 });
+                                
+                                // Рекомендации по производительности
+                                $recommendations = $miner->getRecommendedTruckCount();
                                 
                                 // CSS класс для строки в зависимости от статуса
                                 $rowClass = match($miner->status) {
@@ -356,7 +359,43 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <small class="text-muted">{{ $miner->capacity_per_trip ?? '-' }} т/рейс</small>
+                                    @if($miner->target_load_time)
+                                        <span class="badge bg-primary">{{ $miner->target_load_time }} мин</span>
+                                    @else
+                                        <span class="text-muted small">Не задано</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @php $avgLoadTime = $miner->getAvgLoadTime(5); @endphp
+                                    @if($avgLoadTime)
+                                        @if($miner->target_load_time)
+                                            @php 
+                                                $diff = $avgLoadTime - $miner->target_load_time;
+                                                $percent = round(($avgLoadTime / $miner->target_load_time) * 100);
+                                            @endphp
+                                            @if($diff <= 0)
+                                                <span class="badge bg-success">{{ $avgLoadTime }} мин</span>
+                                            @else
+                                                <span class="badge bg-warning text-dark" title="Превышение на {{ $diff }} мин">
+                                                    {{ $avgLoadTime }} мин ({{ $percent }}%)
+                                                </span>
+                                            @endif
+                                        @else
+                                            <span class="badge bg-secondary">{{ $avgLoadTime }} мин</span>
+                                        @endif
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @php $avgWaitTime = $miner->getAvgWaitTime(5); @endphp
+                                    @if($avgWaitTime && $avgWaitTime > 0)
+                                        <span class="badge {{ $avgWaitTime > 3 ? 'bg-warning text-dark' : 'bg-secondary' }}">
+                                            {{ $avgWaitTime }} мин
+                                        </span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
                                 </td>
                                 <td>
                                     @if($trucksAtMiner->count() > 0)
@@ -376,6 +415,31 @@
                                         <small class="text-muted ms-1">
                                             {{ $trucksWaitingUnloading->map(fn($t) => $t->number)->join(', ') }}
                                         </small>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($recommendations)
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="fw-bold">{{ $recommendations['current'] }}</span>
+                                            <span class="text-muted">/</span>
+                                            <span class="text-info">{{ $recommendations['recommended'] }}</span>
+                                            @php
+                                                $balanceLabels = [
+                                                    'underloaded' => ['label' => 'Недогружен', 'class' => 'warning'],
+                                                    'balanced' => ['label' => 'ОК', 'class' => 'success'],
+                                                    'overloaded' => ['label' => 'Перегруз', 'class' => 'danger'],
+                                                ];
+                                                $balanceInfo = $balanceLabels[$recommendations['balance']] ?? $balanceLabels['balanced'];
+                                            @endphp
+                                            <span class="badge bg-{{ $balanceInfo['class'] }}">
+                                                {{ $balanceInfo['label'] }}
+                                            </span>
+                                        </div>
+                                        <small class="text-muted">
+                                            Рекомендуется: {{ $recommendations['recommended'] }} самосвалов
+                                        </small>
+                                    @else
+                                        <span class="text-muted small">Задайте норму</span>
                                     @endif
                                 </td>
                                 <td>
@@ -878,12 +942,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <label class="form-label small mb-0"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
-                        <button wire:click="$set('pauseTypes', [])" class="btn btn-link btn-sm p-0 text-muted small">
-                            Все типы
-                        </button>
-                    </div>
+                    <label class="form-label small"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
                     <select wire:model.live="pauseTypes" class="form-select form-select-sm" multiple size="5">
                         @foreach(\App\Models\TripPause::types() as $typeKey => $typeLabel)
                             <option value="{{ $typeKey }}">{{ $typeLabel }}</option>
@@ -892,12 +951,7 @@
                     <small class="text-muted">Ctrl+клик для выбора нескольких</small>
                 </div>
                 <div class="col-md-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <label class="form-label small mb-0"><i class="fas fa-mountain me-1"></i>Статус забоев:</label>
-                        <button wire:click="$set('minerPauseTypes', [])" class="btn bg-gray-500 btn-link btn-sm p-0 text-muted small">
-                            Все статусы
-                        </button>
-                    </div>
+                    <label class="form-label small"><i class="fas fa-mountain me-1"></i>Статус забоев:</label>
                     <select wire:model.live="minerPauseTypes" class="form-select form-select-sm" multiple size="4">
                         @foreach($this->miner_delay_statuses as $statusKey => $statusLabel)
                             <option value="{{ $statusKey }}">{{ $statusLabel }}</option>
@@ -950,17 +1004,17 @@
 
             <!-- Сводка по простоям забоев -->
             @if($minerDelays['total_count'] > 0)
-            <div class="row mb-3">
+            <div class="row mb-4">
                 <div class="col-12">
                     <h6 class="text-muted mb-2"><i class="fas fa-mountain me-1"></i>Простои забоев</h6>
                 </div>
-                @foreach($minerDelays['by_type'] as $typeData)
+                @foreach($minerDelays['by_status'] as $statusData)
                     <div class="col-md-3 col-lg-2 mb-2">
-                        <div class="card {{ $typeData['type'] === 'breakdown' ? 'border-danger' : 'border-warning' }}">
+                        <div class="card {{ $statusData['status'] === 'breakdown' ? 'border-danger' : 'border-warning' }}">
                             <div class="card-body py-2 px-3">
-                                <small class="text-muted d-block">{{ $typeData['label'] }}</small>
-                                <strong class="text-danger">{{ $typeData['total_formatted'] }}</strong>
-                                <small class="text-muted">({{ $typeData['count'] }})</small>
+                                <small class="text-muted d-block">{{ $statusData['label'] }}</small>
+                                <strong class="text-danger">{{ $statusData['total_formatted'] }}</strong>
+                                <small class="text-muted">({{ $statusData['count'] }})</small>
                             </div>
                         </div>
                     </div>
@@ -1075,15 +1129,15 @@
                             <strong>
                                 <i class="fas fa-mountain me-1"></i>
                                 Забои
-                                @if($minerDelays['active_count'] > 0)
-                                    <span class="badge bg-danger ms-1">{{ $minerDelays['active_count'] }}</span>
+                                @if($minerDelays['total_count'] > 0)
+                                    <span class="badge bg-danger ms-1">{{ $minerDelays['total_count'] }}</span>
                                 @endif
                             </strong>
                             <div class="d-flex align-items-center gap-2">
                                 @if(!empty($minerPauseTypes))
                                     @foreach($minerPauseTypes as $mpType)
                                         <span class="badge bg-warning text-dark">
-                                            {{ \App\Models\MinerPause::typeLabel($mpType) }}
+                                            {{ \App\Models\Miner::getAllStatuses()[$mpType] ?? $mpType }}
                                         </span>
                                     @endforeach
                                 @endif
@@ -1100,31 +1154,32 @@
                                 <table class="table table-hover table-sm mb-0">
                                     <thead class="table-light sticky-top">
                                         <tr>
-                                            <th>Время</th>
                                             <th>Забой</th>
-                                            <th>Тип</th>
+                                            <th>Статус</th>
+                                            <th>С</</th>
                                             <th>Длит.</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach($minerDelays['pauses']->take(20) as $pause)
-                                            <tr class="{{ $pause->ended_at ? '' : 'table-warning' }}">
-                                                <td><small>{{ $pause->started_at->format('H:i') }}</small></td>
-                                                <td><strong>{{ $pause->miner?->name_miner ?? '—' }}</strong></td>
+                                        @foreach($minerDelays['miners'] as $miner)
+                                            <tr class="{{ $miner->status === 'breakdown' ? 'table-danger' : 'table-warning' }}">
                                                 <td>
-                                                    <span class="badge {{ $pause->type === 'breakdown' ? 'bg-danger' : 'bg-warning text-dark' }}">
-                                                        {{ \App\Models\MinerPause::typeLabel($pause->type) }}
+                                                    <strong>{{ $miner->name_miner }}</strong>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-{{ $miner->getStatusClass() }}">
+                                                        {{ $miner->getStatusLabel() }}
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    @if($pause->ended_at)
-                                                        <span class="text-muted">{{ $pause->getFormattedDuration() }}</span>
-                                                    @else
-                                                        <span class="text-danger fw-bold">
-                                                            {{ $pause->getFormattedDuration() }}
-                                                            <i class="fas fa-spinner fa-spin ms-1"></i>
-                                                        </span>
+                                                    @if($miner->status_changed_at)
+                                                        <small>{{ $miner->status_changed_at->format('d.m H:i') }}</small>
                                                     @endif
+                                                </td>
+                                                <td>
+                                                    <strong class="text-danger">
+                                                        {{ $miner->getStatusDurationMinutes() }} мин
+                                                    </strong>
                                                 </td>
                                             </tr>
                                         @endforeach
@@ -1134,8 +1189,8 @@
                             @else
                             <div class="p-4 text-center">
                                 <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
-                                <h6 class="text-muted mb-1">Нет простоев забоев</h6>
-                                <p class="text-muted small mb-0">{{ $pauseStats['period_label'] }}</p>
+                                <h6 class="text-muted mb-1">Все забои в работе</h6>
+                                <p class="text-muted small mb-0">Нет задержек</p>
                             </div>
                             @endif
                         </div>
@@ -1460,42 +1515,5 @@
                 });
             });
         }
-
-        // Обновление времени рейса каждую минуту
-        function updateTripDurations() {
-            document.querySelectorAll('.trip-duration').forEach(el => {
-                const startedAt = parseInt(el.dataset.startedAt);
-                const pauseSeconds = parseInt(el.dataset.pauseSeconds) || 0;
-                const hasActivePause = el.dataset.hasActivePause === '1';
-
-                if (!startedAt) return;
-
-                const now = Math.floor(Date.now() / 1000);
-                let totalSeconds = now - startedAt - pauseSeconds;
-                if (totalSeconds < 0) totalSeconds = 0;
-
-                const hours = Math.floor(totalSeconds / 3600);
-                const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-                let formatted;
-                if (hours > 0) {
-                    formatted = `${hours}:${minutes.toString().padStart(2, '0')} `;
-                } else {
-                    formatted = `${minutes} мин`;
-                }
-
-                el.textContent = formatted;
-
-                // Мигание если есть активная пауза
-                if (hasActivePause) {
-                    el.classList.add('text-warning');
-                }
-            });
-        }
-
-        // Запускаем обновление каждую минуту
-        setInterval(updateTripDurations, 60000);
-        // И сразу при загрузке
-        document.addEventListener('DOMContentLoaded', updateTripDurations);
     </script>
 </div>

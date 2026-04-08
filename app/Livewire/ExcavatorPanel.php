@@ -21,6 +21,7 @@ class ExcavatorPanel extends Component
     public $rocks;
     public $trucks;
     public array $stats = [];
+    public array $productivityStats = [];
 
     // Выбор экскаватора
     public ?int $selectedMinerId = null;
@@ -30,6 +31,9 @@ class ExcavatorPanel extends Component
 
     // Объёмы для грузовиков
     public array $volumes = [];
+
+    // Целевое время погрузки (в минутах)
+    public ?int $targetLoadTime = null;
 
     protected function rules(): array
     {
@@ -44,6 +48,11 @@ class ExcavatorPanel extends Component
         $this->miners = Miner::where('active', true)->orderBy('name_miner')->get();
         // Все породы - экскаваторщик выбирает любую
         $this->rocks = Rock::orderBy('name_rock')->get();
+
+        // Инициализируем значения по умолчанию
+        $this->trucks = collect();
+        $this->stats = [];
+        $this->productivityStats = [];
 
         // Восстанавливаем выбранный экскаватор из cookie или пользователя
         $minerId = request()->cookie('selected_miner') ?? Auth::user()?->miner_id;
@@ -68,10 +77,14 @@ class ExcavatorPanel extends Component
 
     public function loadMinerData(): void
     {
+        // Сбрасываем данные по умолчанию
+        $this->miner = null;
+        $this->trucks = collect();
+        $this->stats = [];
+        $this->productivityStats = [];
+        $this->targetLoadTime = null;
+
         if (!$this->selectedMinerId) {
-            $this->miner = null;
-            $this->trucks = collect();
-            $this->stats = [];
             return;
         }
 
@@ -85,6 +98,9 @@ class ExcavatorPanel extends Component
         if ($this->miner->currentRock) {
             $this->selectedRockId = $this->miner->current_rock_id;
         }
+
+        // Загружаем целевое время погрузки
+        $this->targetLoadTime = $this->miner->target_load_time;
 
         // Грузим грузовики
         $this->trucks = Truck::with(['trips' => function ($q) {
@@ -108,6 +124,9 @@ class ExcavatorPanel extends Component
 
         // Статистика
         $this->stats = $this->getShiftStats();
+
+        // Статистика производительности
+        $this->productivityStats = $this->getProductivityStats();
     }
 
     // =========================================
@@ -367,7 +386,7 @@ class ExcavatorPanel extends Component
                     'zone_delivery' => $zone->delivery,
                     'zone_volume' => $zone->volume,
                     'zone_capacity' => $zone->capacity,
-                    'zone_is_available' => $zone->isAvailable(),
+                    'zone_is_available' => $zone->delivery && $zone->volume < $zone->capacity,
                 ]);
 
                 // Проверяем, есть ли эта порода в текущей зоне
@@ -647,6 +666,72 @@ class ExcavatorPanel extends Component
         } else {
             return '2-я смена';
         }
+    }
+
+    // =========================================
+    // ПРОИЗВОДИТЕЛЬНОСТЬ
+    // =========================================
+
+    /**
+     * Установить целевое время погрузки
+     */
+    public function setTargetLoadTime(): void
+    {
+        if (!$this->miner) {
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => 'Сначала выберите экскаватор',
+            ]);
+            return;
+        }
+
+        if (!$this->targetLoadTime || $this->targetLoadTime < 1) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Укажите время погрузки (минимум 1 минута)',
+            ]);
+            return;
+        }
+
+        $this->miner->update([
+            'target_load_time' => $this->targetLoadTime,
+        ]);
+
+        $this->productivityStats = $this->getProductivityStats();
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Целевое время погрузки: {$this->targetLoadTime} мин",
+        ]);
+    }
+
+    /**
+     * Получить статистику производительности
+     */
+    protected function getProductivityStats(): array
+    {
+        if (!$this->miner) {
+            return [];
+        }
+
+        // Получаем рекомендации из модели
+        $recommendations = $this->miner->getRecommendedTruckCount();
+
+        // Статистика по последним 5 рейсам
+        $recentTrips = $this->miner->getRecentTrips(5);
+
+        return [
+            'target_load_time' => $this->miner->target_load_time,
+            'avg_load_time' => $this->miner->getAvgLoadTime(5),
+            'avg_wait_time' => $this->miner->getAvgWaitTime(5),
+            'current_trucks' => $recommendations['current'] ?? 0,
+            'waiting_trucks' => $recommendations['waiting'] ?? 0,
+            'loading_trucks' => $recommendations['loading'] ?? 0,
+            'recommended_trucks' => $recommendations['recommended'] ?? null,
+            'balance' => $recommendations['balance'] ?? null,
+            'avg_trip_time' => $recommendations['avg_trip_time'] ?? null,
+            'recent_trips_count' => $recentTrips->count(),
+        ];
     }
 
     // =========================================

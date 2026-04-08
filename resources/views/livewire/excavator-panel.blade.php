@@ -229,6 +229,143 @@
                 </div>
             </div>
 
+            <!-- Производительность экскаватора -->
+            <div class="col-lg-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-tachometer-alt"></i> Производительность</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Установка целевого времени погрузки -->
+                        <div class="row align-items-end mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label text-muted">Целевое время погрузки (мин)</label>
+                                <input
+                                    type="number"
+                                    wire:model.live="targetLoadTime"
+                                    class="form-control form-control-lg"
+                                    min="1" max="60"
+                                    placeholder="Например: 5">
+                                <small class="text-muted">Установите норму погрузки самосвала</small>
+                            </div>
+                            <div class="col-md-6">
+                                <button
+                                    wire:click="setTargetLoadTime"
+                                    wire:loading.attr="disabled"
+                                    class="btn btn-primary w-100">
+                                    <span wire:loading.remove><i class="fas fa-save"></i> Сохранить</span>
+                                    <span wire:loading><i class="fas fa-spinner fa-spin"></i>...</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Фактические показатели -->
+                        <hr>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div style="font-size: 1.5rem; font-weight: bold; color: #17a2b8;">
+                                    {{ $productivityStats['avg_load_time'] ?? '-' }}
+                                </div>
+                                <div class="text-muted small">Среднее время погрузки (мин)</div>
+                            </div>
+                            <div class="col-6">
+                                <div style="font-size: 1.5rem; font-weight: bold; color: #fd7e14;">
+                                    {{ $productivityStats['avg_wait_time'] ?? '-' }}
+                                </div>
+                                <div class="text-muted small">Среднее ожидание (мин)</div>
+                            </div>
+                        </div>
+
+                        @if($productivityStats['avg_load_time'] && $productivityStats['target_load_time'])
+                            @php
+                                $diff = $productivityStats['avg_load_time'] - $productivityStats['target_load_time'];
+                                $percent = round(($productivityStats['avg_load_time'] / $productivityStats['target_load_time']) * 100);
+                            @endphp
+                            <div class="mt-3">
+                                @if($diff <= 0)
+                                    <div class="alert alert-success mb-0 py-2">
+                                        <i class="fas fa-check-circle"></i>
+                                        В норме! ({{ $percent }}% от целевого)
+                                    </div>
+                                @else
+                                    <div class="alert alert-warning mb-0 py-2">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        Превышение на {{ $diff }} мин ({{ $percent }}% от целевого)
+                                    </div>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            <!-- Рекомендации по самосвалам -->
+            <div class="col-lg-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-truck"></i> Самосвалы у забоя</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center mb-3">
+                            <div class="col-4">
+                                <div style="font-size: 2rem; font-weight: bold; color: #007bff;">
+                                    {{ $productivityStats['current_trucks'] ?? 0 }}
+                                </div>
+                                <div class="text-muted small">Всего</div>
+                            </div>
+                            <div class="col-4">
+                                <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">
+                                    {{ $productivityStats['waiting_trucks'] ?? 0 }}
+                                </div>
+                                <div class="text-muted small">Ожидают</div>
+                            </div>
+                            <div class="col-4">
+                                <div style="font-size: 2rem; font-weight: bold; color: #28a745;">
+                                    {{ $productivityStats['loading_trucks'] ?? 0 }}
+                                </div>
+                                <div class="text-muted small">На погрузке</div>
+                            </div>
+                        </div>
+
+                        @if($productivityStats['recommended_trucks'])
+                            <hr>
+                            <div class="row align-items-center">
+                                <div class="col-6">
+                                    <span class="text-muted">Рекомендуется:</span>
+                                    <strong style="font-size: 1.5rem;">{{ $productivityStats['recommended_trucks'] }}</strong>
+                                    <span class="text-muted">самосвалов</span>
+                                </div>
+                                <div class="col-6">
+                                    @php
+                                        $balance = $productivityStats['balance'] ?? 'balanced';
+                                        $balanceLabels = [
+                                            'underloaded' => ['label' => 'Недогружен', 'class' => 'warning'],
+                                            'balanced' => ['label' => 'Оптимально', 'class' => 'success'],
+                                            'overloaded' => ['label' => 'Перегружен', 'class' => 'danger'],
+                                        ];
+                                        $balanceInfo = $balanceLabels[$balance] ?? $balanceLabels['balanced'];
+                                    @endphp
+                                    <span class="badge bg-{{ $balanceInfo['class'] }} fs-6 px-3 py-2">
+                                        {{ $balanceInfo['label'] }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            @if($productivityStats['avg_trip_time'])
+                                <small class="text-muted d-block mt-2">
+                                    <i class="fas fa-info-circle"></i>
+                                    Среднее время рейса: {{ $productivityStats['avg_trip_time'] }} мин
+                                </small>
+                            @endif
+                        @else
+                            <div class="text-center text-muted py-2">
+                                <small>Установите целевое время погрузки для расчёта рекомендаций</small>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
             <!-- Самосвалы у забоя -->
             <div class="col-12">
                 <div class="card">
