@@ -12,6 +12,11 @@ use App\Services\RouteAssignmentService;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
+
+
+#[Layout('components.layouts.app')]
+
 
 class DriverPanel extends Component
 {
@@ -118,6 +123,9 @@ class DriverPanel extends Component
                 ->whereNotNull('completed_at')
                 ->sum('load_volume'),
         ];
+
+        // Отправляем событие для перезапуска таймера
+        $this->dispatch('restart-timer');
     }
 
     // =========================================
@@ -409,17 +417,46 @@ class DriverPanel extends Component
     // =========================================
 
     #[On('echo:dispatcher,truck-updated')]
-    public function onTruckUpdated(): void
+    public function onTruckUpdated(array $data = []): void
     {
-        Log::info('DispatcherNotification received in DriverPanel');
+        // Проверяем, что событие касается именно этого грузовика
+        $truckId = $data['truck_id'] ?? null;
+        if ($truckId && $truckId !== $this->truck->id) {
+            return;
+        }
+
+        // Сохраняем текущий статус до обновления
+        $oldStatus = $this->truck->status;
+
+        Log::info('DispatcherNotification received in DriverPanel', [
+            'truck_id' => $truckId,
+            'old_status' => $oldStatus,
+            'new_status' => $data['status'] ?? null,
+        ]);
+
         $this->loadData();
     }
 
     #[On('echo-private:driver.{truck.id},.route.updated')]
-    public function onDriverRouteUpdated(): void
+    public function onDriverRouteUpdated(array $data = []): void
     {
-        Log::info('DriverRouteUpdated event received');
+        Log::info('DriverRouteUpdated event received', $data);
+
+        // Проверяем тип действия
+        $action = $data['action'] ?? null;
+
+        // Действия, которые НЕ требуют показа "Назначен новый маршрут"
+        // и уже обработаны в своих методах DriverPanel
+        $skipActions = ['breakdown', 'route_completed', 'planned_stop'];
+
+        if (in_array($action, $skipActions)) {
+            Log::info("DriverRouteUpdated: skipping for action '{$action}'");
+            return;
+        }
+
         $this->loadData();
+
+        // Показываем сообщение только для реального назначения маршрута
         $this->dispatch('notify', [
             'type' => 'success',
             'message' => 'Назначен новый маршрут!',
@@ -456,6 +493,7 @@ class DriverPanel extends Component
 
     public function render()
     {
-        return view('livewire.driver-panel');
+        return view('livewire.driver-panel')
+            ->title("Водитель: " . $this->truck->number); // Динамический заголовок;
     }
 }

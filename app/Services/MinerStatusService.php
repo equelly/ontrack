@@ -52,22 +52,25 @@ class MinerStatusService
         }
 
         DB::transaction(function () use ($miner, $newStatus, $oldStatus, $changedBy) {
+            // Управляем записями пауз
+            if ($oldStatus === Miner::STATUS_ACTIVE && in_array($newStatus, Miner::STATUSES_DELAYED)) {
+                // Начинаем новую паузу
+                $this->startPause($miner, $newStatus, $changedBy);
+            } elseif (in_array($oldStatus, Miner::STATUSES_DELAYED) && $newStatus === Miner::STATUS_ACTIVE) {
+                // Завершаем активную паузу
+                $this->endPause($miner, $changedBy);
+            } elseif (in_array($oldStatus, Miner::STATUSES_DELAYED) && in_array($newStatus, Miner::STATUSES_DELAYED)) {
+                // Меняем тип задержки - завершаем старую паузу и начинаем новую
+                $this->endPause($miner, $changedBy);
+                $this->startPause($miner, $newStatus, $changedBy);
+            }
+
             // Обновляем статус
             $miner->update([
                 'status' => $newStatus,
                 'status_changed_at' => now(),
                 'status_changed_by' => $changedBy ?? Auth::id(),
             ]);
-
-            // Логируем паузу при переходе в задержку
-            if (in_array($newStatus, Miner::STATUSES_DELAYED)) {
-                $this->startPause($miner, $newStatus, $changedBy);
-            }
-
-            // Завершаем паузу при возврате в работу
-            if ($newStatus === Miner::STATUS_ACTIVE && in_array($oldStatus, Miner::STATUSES_DELAYED)) {
-                $this->endPause($miner, $changedBy);
-            }
 
             // Обрабатываем грузовики в зависимости от статуса
             if ($newStatus === Miner::STATUS_BREAKDOWN) {
@@ -103,6 +106,45 @@ class MinerStatusService
     }
 
     /**
+     * Начать паузу забоя
+     */
+    protected function startPause(Miner $miner, string $type, ?int $startedBy = null): void
+    {
+        MinerPause::create([
+            'miner_id' => $miner->id,
+            'type' => $type,
+            'started_at' => now(),
+            'started_by' => $startedBy ?? Auth::id(),
+        ]);
+
+        Log::info("Started pause for miner {$miner->id}", ['type' => $type]);
+    }
+
+    /**
+     * Завершить активную паузу забоя
+     */
+    protected function endPause(Miner $miner, ?int $endedBy = null): void
+    {
+        $activePause = MinerPause::where('miner_id', $miner->id)
+            ->whereNull('ended_at')
+            ->latest()
+            ->first();
+
+        if ($activePause) {
+            $activePause->update([
+                'ended_at' => now(),
+                'duration_seconds' => $activePause->started_at->diffInSeconds(now()),
+                'ended_by' => $endedBy ?? Auth::id(),
+            ]);
+
+            Log::info("Ended pause for miner {$miner->id}", [
+                'pause_id' => $activePause->id,
+                'duration_seconds' => $activePause->duration_seconds,
+            ]);
+        }
+    }
+
+    /**
      * Проверить допустимость перехода статуса
      */
     protected function isValidTransition(string $from, string $to): bool
@@ -112,62 +154,6 @@ class MinerStatusService
         $validStatuses = array_keys(Miner::getAllStatuses());
 
         return in_array($to, $validStatuses);
-    }
-
-    /**
-     * Начать паузу забоя
-     */
-    protected function startPause(Miner $miner, string $type, ?int $changedBy = null): MinerPause
-    {
-        // Проверяем, нет ли уже активной паузы (прямой запрос к БД)
-        $existingPause = MinerPause::where('miner_id', $miner->id)
-            ->whereNull('ended_at')
-            ->first();
-
-        if ($existingPause) {
-            Log::info("Miner {$miner->id} already has active pause", ['pause_id' => $existingPause->id]);
-            return $existingPause;
-        }
-
-        $pause = MinerPause::create([
-            'miner_id' => $miner->id,
-            'type' => $type,
-            'started_at' => now(),
-            'started_by' => $changedBy ?? Auth::id(),
-        ]);
-
-        Log::info("Pause started for miner {$miner->id}", [
-            'pause_id' => $pause->id,
-            'type' => $type,
-        ]);
-
-        return $pause;
-    }
-
-    /**
-     * Завершить активную паузу
-     */
-    protected function endPause(Miner $miner, ?int $changedBy = null): ?MinerPause
-    {
-        // Получаем активную паузу напрямую из БД (не через связь модели)
-        $activePause = MinerPause::where('miner_id', $miner->id)
-            ->whereNull('ended_at')
-            ->first();
-
-        if (!$activePause) {
-            Log::info("No active pause found for miner {$miner->id}");
-            return null;
-        }
-
-        $activePause->end($changedBy ?? Auth::id());
-
-        Log::info("Pause ended for miner {$miner->id}", [
-            'pause_id' => $activePause->id,
-            'type' => $activePause->type,
-            'duration_seconds' => $activePause->duration_seconds,
-        ]);
-
-        return $activePause;
     }
 
     /**
@@ -317,57 +303,17 @@ class MinerStatusService
      */
     protected function activateRoutes(Miner $miner): int
     {
-        // Активируем маршруты через RouteSyncService
-        // Это пересоздаст маршруты для совместимых зон
-        $created = 0;
+        // Просто активируем существующие маршруты забоя
+        $count = MiningOrder::where('miner_id', $miner->id)
+            ->update(['active' => true]);
 
-        // Получаем все открытые зоны с подходящей породой
-        $rockId = $miner->current_rock_id;
-        if (!$rockId) {
-            Log::info("Miner {$miner->id} has no current_rock_id, skipping route activation");
-            return 0;
-        }
+        Log::info("Activated {$count} routes for miner {$miner->id}");
 
-        // Находим зоны с этой породой
-        $zones = \App\Models\Zone::where('delivery', true)
-            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
-            ->get();
-
-        foreach ($zones as $zone) {
-            // Проверяем существование маршрута
-            $exists = MiningOrder::where('miner_id', $miner->id)
-                ->where('zone_id', $zone->id)
-                ->where('rock_id', $rockId)
-                ->exists();
-
-            if (!$exists) {
-                // Создаём маршрут
-                $distance = \App\Models\MinerDumpDistance::where('miner_id', $miner->id)
-                    ->where('dump_id', $zone->dump_id)
-                    ->value('distance_km');
-
-                MiningOrder::create([
-                    'miner_id' => $miner->id,
-                    'dump_id' => $zone->dump_id,
-                    'zone_id' => $zone->id,
-                    'rock_id' => $rockId,
-                    'distance_km' => $distance,
-                    'active' => false,
-                    'weight' => 100,
-                    'wrr_cursor' => 0,
-                ]);
-
-                $created++;
-            }
-        }
-
-        Log::info("Created {$created} routes for miner {$miner->id}");
-
-        // Запускаем оптимизацию для активации маршрутов
+        // Запускаем оптимизацию для выбора лучших маршрутов
         $optimizer = app(RouteOptimizerService::class);
         $optimizer->optimize();
 
-        return $created;
+        return $count;
     }
 
     /**

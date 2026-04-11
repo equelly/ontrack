@@ -37,9 +37,11 @@ Route::resource('drivers', DriverController::class)->parameters(['drivers' => 't
 | Панель машиниста экскаватора (Livewire)
 |--------------------------------------------------------------------------
 */
-Route::get('/excavator', function () {
-    return view('excavator.index');
-})->name('excavator.index')->middleware(['auth', 'role:excavator_operator,admin']);
+
+Route::get('/excavator', ExcavatorPanel::class)
+    ->name('excavator.index')
+    ->middleware(['auth', 'role:excavator_operator,admin']);
+
 
 // Старые API маршруты (оставляем для совместимости, если нужны)
 Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excavator_operator,admin'])->group(function () {
@@ -177,10 +179,12 @@ Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name
     // =========================================
     // МАРШРУТЫ ДИСПЕТЧЕРА
     // =========================================
-    Route::middleware(['auth', 'role:dispatcher,admin'])->group(function () {
-        Route::get('/dispatcher', function () {
-            return view('dispatcher.index');
-        })->name('dispatcher.index');
+        Route::middleware(['auth', 'role:dispatcher,admin'])->group(function () {
+            // Указываем класс компонента напрямую, без функции и view()
+            Route::get('/dispatcher', \App\Livewire\MainDispatcherPanel::class)
+                ->name('dispatcher.index');
+
+
 
         // API маршруты для AJAX запросов (если нужны)
         Route::post('/dispatcher/assign', [DispatcherController::class, 'assignRoute']);

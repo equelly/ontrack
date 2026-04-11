@@ -10,7 +10,6 @@ use App\Models\Rock;
 use App\Models\TruckTrip;
 use App\Models\MiningOrder;
 use App\Models\TripPause;
-use App\Models\MinerPause;
 use App\Models\SystemSetting;
 use App\Events\DriverRouteUpdated;
 use App\Services\RouteAssignmentService;
@@ -18,8 +17,14 @@ use App\Services\RouteOptimizerService;
 use App\Services\MinerStatusService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Title;
+
+
+#[Layout('components.layouts.app')] 
+#[Title('Панель диспетчера')] 
 
 class MainDispatcherPanel extends Component
 {
@@ -1096,6 +1101,14 @@ class MainDispatcherPanel extends Component
     #[On('truck-status-changed')]
     public function onTruckStatusChanged(array $data): void
     {
+        Log::info('MainDispatcherPanel: truck-status-changed received', $data);
+        $this->loadData();
+    }
+
+    #[On('refresh-dispatcher-data')]
+    public function onRefreshData(): void
+    {
+        Log::info('MainDispatcherPanel: refresh-dispatcher-data event received');
         $this->loadData();
     }
 
@@ -1104,6 +1117,21 @@ class MainDispatcherPanel extends Component
     {
         Log::info('MainDispatcherPanel: truck-updated received via Echo');
         $this->loadData();
+    }
+
+    #[On('echo:dispatcher,.miner-productivity-updated')]
+    public function onMinerProductivityUpdated(array $data): void
+    {
+        Log::info('MainDispatcherPanel: miner-productivity-updated received', $data);
+        
+        // Обновляем данные о забоях
+        $this->miners = Miner::with(['rocks', 'currentRock'])->get();
+        
+        // Отправляем уведомление
+        $this->dispatch('notify', [
+            'type' => 'info',
+            'message' => "Обновлена производительность забоя (цель: {$data['target_load_time']} мин)",
+        ]);
     }
 
     // =========================================
@@ -1271,11 +1299,11 @@ class MainDispatcherPanel extends Component
     }
 
     /**
-     * Список статусов забоя для фильтра (только задержки)
+     * Список типов пауз забоя для фильтра
      */
     public function getMinerDelayStatusesProperty(): array
     {
-        return array_filter(Miner::getAllStatuses(), fn($key) => $key !== 'active', ARRAY_FILTER_USE_KEY);
+        return \App\Models\MinerPause::types();
     }
 
     // =========================================
@@ -1307,6 +1335,7 @@ class MainDispatcherPanel extends Component
             ->orderBy('started_at', 'desc');
 
         // Период
+        $periodLabel = 'За смену';
         switch ($this->pausePeriod) {
             case 'today':
                 $query->whereDate('started_at', today());
@@ -1321,7 +1350,13 @@ class MainDispatcherPanel extends Component
                 $periodLabel = 'За месяц';
                 break;
             default: // shift
-                $query->where('started_at', '>=', now()->startOfDay());
+                // Для смены берём последние 12 часов (покрывает ночную смену)
+                $shiftStart = now()->subHours(12);
+                if ($shiftStart->isYesterday()) {
+                    $query->where('started_at', '>=', $shiftStart);
+                } else {
+                    $query->where('started_at', '>=', now()->startOfDay());
+                }
                 $periodLabel = 'За смену';
         }
 
@@ -1377,59 +1412,70 @@ class MainDispatcherPanel extends Component
      */
     public function getMinerDelaysProperty(): array
     {
-        // Запрос к истории простоев забоев
-        $query = MinerPause::with(['miner', 'starter', 'ender'])
+        $query = \App\Models\MinerPause::with(['miner'])
             ->orderBy('started_at', 'desc');
 
         // Период
+        $periodLabel = 'За смену';
         switch ($this->pausePeriod) {
             case 'today':
                 $query->whereDate('started_at', today());
+                $periodLabel = 'За сегодня';
                 break;
             case 'week':
                 $query->where('started_at', '>=', now()->subWeek());
+                $periodLabel = 'За неделю';
                 break;
             case 'month':
                 $query->where('started_at', '>=', now()->subMonth());
+                $periodLabel = 'За месяц';
                 break;
             default: // shift
-                $query->where('started_at', '>=', now()->startOfDay());
+                // Для смены берём последние 12 часов (покрывает ночную смену)
+                // или от начала дня если сейчас день
+                $shiftStart = now()->subHours(12);
+                if ($shiftStart->isYesterday()) {
+                    // Если смена началась вчера, берём с этого времени
+                    $query->where('started_at', '>=', $shiftStart);
+                } else {
+                    // Иначе берём с начала дня
+                    $query->where('started_at', '>=', now()->startOfDay());
+                }
+                $periodLabel = 'За смену';
         }
 
-        // Фильтр по типам
+        // Фильтр по типу статуса
         if (!empty($this->minerPauseTypes)) {
             $query->whereIn('type', $this->minerPauseTypes);
         }
 
         $pauses = $query->get();
 
-        // Группировка по типам
-        $byType = $pauses->groupBy('type')->map(function ($group, $type) {
-            $totalMinutes = $group->sum(function ($p) {
-                return round($p->getCurrentDuration() / 60);
+        // Группируем по типу
+        $byStatus = $pauses->groupBy('type')->map(function ($group, $type) {
+            $totalSeconds = $group->sum(function ($p) {
+                return $p->getCurrentDuration();
             });
             return [
-                'type' => $type,
-                'label' => MinerPause::typeLabel($type),
+                'status' => $type,
+                'label' => \App\Models\MinerPause::typeLabel($type),
                 'count' => $group->count(),
-                'total_minutes' => $totalMinutes,
-                'total_formatted' => $this->formatMinutes($totalMinutes),
+                'total_minutes' => round($totalSeconds / 60),
+                'total_formatted' => $this->formatMinutes(round($totalSeconds / 60)),
             ];
         })->values();
 
-        $totalMinutes = $pauses->sum(fn($p) => round($p->getCurrentDuration() / 60));
-
-        // Текущие задержки (активные паузы)
-        $activePauses = $pauses->filter(fn($p) => $p->ended_at === null);
+        $totalSeconds = $pauses->sum(fn($p) => $p->getCurrentDuration());
+        $totalMinutes = round($totalSeconds / 60);
 
         return [
             'pauses' => $pauses,
-            'active_pauses' => $activePauses,
             'total_count' => $pauses->count(),
-            'active_count' => $activePauses->count(),
             'total_minutes' => $totalMinutes,
             'total_formatted' => $this->formatMinutes($totalMinutes),
-            'by_type' => $byType,
+            'active_count' => $pauses->whereNull('ended_at')->count(),
+            'by_status' => $byStatus,
+            'period_label' => $periodLabel,
         ];
     }
 

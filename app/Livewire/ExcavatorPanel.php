@@ -7,12 +7,18 @@ use App\Models\Rock;
 use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Events\LoadingCompleted;
+use App\Events\MinerProductivityUpdated;
 use App\Services\TruckStatusService;
 use App\Services\MinerStatusService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Title;
+
+#[Layout('components.layouts.app')] 
+#[Title('Панель экскаватора')] 
 
 class ExcavatorPanel extends Component
 {
@@ -45,7 +51,7 @@ class ExcavatorPanel extends Component
 
     public function mount()
     {
-        $this->miners = Miner::where('active', true)->orderBy('name_miner')->get();
+        $this->miners = Miner::orderBy('name_miner')->get();
         // Все породы - экскаваторщик выбирает любую
         $this->rocks = Rock::orderBy('name_rock')->get();
 
@@ -145,10 +151,10 @@ class ExcavatorPanel extends Component
 
         $miner = Miner::find($this->selectedMinerId);
 
-        if (!$miner || !$miner->active) {
+        if (!$miner) {
             $this->dispatch('notify', [
                 'type' => 'error',
-                'message' => 'Экскаватор не найден или неактивен',
+                'message' => 'Экскаватор не найден',
             ]);
             return;
         }
@@ -529,12 +535,12 @@ class ExcavatorPanel extends Component
                     }
                 }
             }
+            
+            // Меняем статус грузовика через сервис (отправит уведомление диспетчеру)
+            $truck->update(['current_load' => $volume]);
+            $statusService = app(TruckStatusService::class);
+            $statusService->changeStatus($truck, 'transporting');
 
-            // Меняем статус грузовика (только если зона найдена)
-            $truck->update([
-                'status' => 'transporting',
-                'current_load' => $volume,
-            ]);
 
             // Получаем актуальную информацию
             $trip->refresh();
@@ -697,7 +703,19 @@ class ExcavatorPanel extends Component
             'target_load_time' => $this->targetLoadTime,
         ]);
 
+        // Обновляем статистику
         $this->productivityStats = $this->getProductivityStats();
+
+        // Отправляем real-time уведомление диспетчеру
+        event(new MinerProductivityUpdated(
+            $this->miner->id,
+            $this->productivityStats
+        ));
+
+        Log::info('MinerProductivityUpdated event sent', [
+            'miner_id' => $this->miner->id,
+            'target_load_time' => $this->targetLoadTime,
+        ]);
 
         $this->dispatch('notify', [
             'type' => 'success',

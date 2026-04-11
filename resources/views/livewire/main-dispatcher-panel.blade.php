@@ -1,7 +1,4 @@
 <div class="dispatcher-panel-wrapper">
-    <!-- Toast контейнер -->
-    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-
     <!-- Статистика в строку -->
     <div class="card mb-4">
         <div class="card-body py-2 px-3">
@@ -259,7 +256,26 @@
                                 </td>
                                 <td>
                                     @if($trip && $trip->started_at)
-                                        <small class="font-monospace {{ $activePause ? 'text-warning' : '' }}">
+                                        @php
+                                            // Считаем только завершённые паузы (фиксированное время)
+                                            $completedPauseSeconds = 0;
+                                            $activePauseStart = null;
+                                            foreach ($trip->pauses as $pause) {
+                                                if ($pause->ended_at) {
+                                                    $completedPauseSeconds += $pause->duration_seconds ?? 0;
+                                                } else {
+                                                    // Активная пауза - запоминаем время начала
+                                                    $activePauseStart = $pause->started_at;
+                                                }
+                                            }
+                                        @endphp
+                                        <small class="font-monospace trip-timer {{ $activePause ? 'text-warning' : '' }}"
+                                               data-started-at="{{ $trip->started_at->toISOString() }}"
+                                               data-pause-seconds="{{ $completedPauseSeconds }}"
+                                               @if($activePauseStart)
+                                               data-active-pause-start="{{ $activePauseStart->toISOString() }}"
+                                               @endif
+                                               data-truck-id="{{ $truck->id }}">
                                             {{ $trip->getFormattedTripDuration() }}
                                         </small>
                                     @else
@@ -942,22 +958,64 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
-                    <select wire:model.live="pauseTypes" class="form-select form-select-sm" multiple size="5">
+                    <div class="dropdown" wire:key="trip-pause-filters-{{ count($pauseTypes) }}">
                         @foreach(\App\Models\TripPause::types() as $typeKey => $typeLabel)
-                            <option value="{{ $typeKey }}">{{ $typeLabel }}</option>
+                            <div class="form-check" wire:key="pause-type-{{ $typeKey }}">
+                                <input class="form-check-input" 
+                                    type="checkbox" 
+                                    value="{{ $typeKey }}" 
+                                    wire:model.live="pauseTypes" 
+                                    id="type_{{ $typeKey }}">
+                                <label class="form-check-label" style="cursor: pointer;" for="type_{{ $typeKey }}">
+                                    {{ $typeLabel }}
+                                </label>
+                            </div>
                         @endforeach
-                    </select>
-                    <small class="text-muted">Ctrl+клик для выбора нескольких</small>
+
+                        @if(!empty($pauseTypes))
+                            <button 
+                                type="button" 
+                                wire:click="$set('pauseTypes', [])" 
+                                class="btn btn-link btn-sm p-0 text-start text-decoration-none"
+                            >
+                                <small>Сбросить все типы</small>
+                            </button>
+                        @endif
+</div>
+
+
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small"><i class="fas fa-mountain me-1"></i>Статус забоев:</label>
-                    <select wire:model.live="minerPauseTypes" class="form-select form-select-sm" multiple size="4">
-                        @foreach($this->miner_delay_statuses as $statusKey => $statusLabel)
-                            <option value="{{ $statusKey }}">{{ $statusLabel }}</option>
-                        @endforeach
-                    </select>
-                    <small class="text-muted">Ctrl+клик для выбора нескольких</small>
+                    <label class="form-label small"><i class="fas fa-mountain me-1"></i>Тип простоев забоев:</label>
+                    <div class="d-flex flex-column gap-1">
+                    @foreach($this->miner_delay_statuses as $typeKey => $typeLabel)
+                        {{-- Добавляем уникальный ключ для контейнера --}}
+                        <div class="form-check" wire:key="miner-checkbox-{{ $typeKey }}-{{ count($minerPauseTypes) }}">
+                            <input 
+                                class="form-check-input" 
+                                type="checkbox" 
+                                value="{{ $typeKey }}" 
+                                wire:model.live="minerPauseTypes" 
+                                id="miner_type_{{ $typeKey }}"
+                            >
+                            <label class="form-check-label" style="cursor: pointer;" for="miner_type_{{ $typeKey }}">
+                                {{ $typeLabel }}
+                            </label>
+                        </div>
+                    @endforeach
+
+                    @if(!empty($minerPauseTypes))
+                        <button 
+                            type="button" 
+                            wire:click="$set('minerPauseTypes', [])" 
+                            class="btn btn-link btn-sm p-0 text-start text-decoration-none"
+                        >
+                            <small>Сбросить все</small>
+                        </button>
+                    @endif
+                </div>
+
+
                 </div>
                 <div class="col-md-4 d-flex align-items-end justify-content-end">
                     <div class="text-muted small">
@@ -1137,7 +1195,7 @@
                                 @if(!empty($minerPauseTypes))
                                     @foreach($minerPauseTypes as $mpType)
                                         <span class="badge bg-warning text-dark">
-                                            {{ \App\Models\Miner::getAllStatuses()[$mpType] ?? $mpType }}
+                                            {{ \App\Models\MinerPause::typeLabel($mpType) }}
                                         </span>
                                     @endforeach
                                 @endif
@@ -1155,31 +1213,34 @@
                                     <thead class="table-light sticky-top">
                                         <tr>
                                             <th>Забой</th>
-                                            <th>Статус</th>
-                                            <th>С</</th>
+                                            <th>Тип</th>
+                                            <th>Начало</th>
                                             <th>Длит.</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach($minerDelays['miners'] as $miner)
-                                            <tr class="{{ $miner->status === 'breakdown' ? 'table-danger' : 'table-warning' }}">
+                                        @foreach($minerDelays['pauses']->take(20) as $pause)
+                                            <tr class="{{ $pause->type === 'breakdown' ? 'table-danger' : ($pause->ended_at ? '' : 'table-warning') }}">
                                                 <td>
-                                                    <strong>{{ $miner->name_miner }}</strong>
+                                                    <strong>{{ $pause->miner?->name_miner ?? '—' }}</strong>
                                                 </td>
                                                 <td>
-                                                    <span class="badge bg-{{ $miner->getStatusClass() }}">
-                                                        {{ $miner->getStatusLabel() }}
+                                                    <span class="badge {{ $pause->type === 'breakdown' ? 'bg-danger' : 'bg-warning text-dark' }}">
+                                                        {{ $pause->getTypeLabel() }}
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    @if($miner->status_changed_at)
-                                                        <small>{{ $miner->status_changed_at->format('d.m H:i') }}</small>
-                                                    @endif
+                                                    <small>{{ $pause->started_at->format('d.m H:i') }}</small>
                                                 </td>
                                                 <td>
-                                                    <strong class="text-danger">
-                                                        {{ $miner->getStatusDurationMinutes() }} мин
-                                                    </strong>
+                                                    @if($pause->ended_at)
+                                                        <span class="text-muted">{{ $pause->getFormattedDuration() }}</span>
+                                                    @else
+                                                        <span class="text-danger fw-bold">
+                                                            {{ $pause->getFormattedDuration() }}
+                                                            <i class="fas fa-spinner fa-spin ms-1"></i>
+                                                        </span>
+                                                    @endif
                                                 </td>
                                             </tr>
                                         @endforeach
@@ -1190,7 +1251,7 @@
                             <div class="p-4 text-center">
                                 <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
                                 <h6 class="text-muted mb-1">Все забои в работе</h6>
-                                <p class="text-muted small mb-0">Нет задержек</p>
+                                <p class="text-muted small mb-0">Нет задержек за выбранный период</p>
                             </div>
                             @endif
                         </div>
@@ -1454,66 +1515,125 @@
     </style>
 
     <script>
-        // Уведомления
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof Livewire !== 'undefined') {
-                Livewire.on('notify', (data) => {
-                    const event = Array.isArray(data) ? data[0] : data;
-                    if (!event || !event.message) return;
+        // ==========================================
+        // ЛОКАЛЬНЫЙ ТАЙМЕР ВРЕМЕНИ РЕЙСА
+        // ==========================================
+        function updateTripTimers() {
+            document.querySelectorAll('.trip-timer').forEach(el => {
+                const startedAtStr = el.dataset.startedAt;
+                if (!startedAtStr) return;
 
-                    const container = document.getElementById('toast-container');
-                    const toast = document.createElement('div');
+                const startedAt = new Date(startedAtStr);
+                const now = new Date();
 
-                    const bgClass = event.type === 'success' ? 'alert-success' :
-                                   event.type === 'error' ? 'alert-danger' :
-                                   event.type === 'warning' ? 'alert-warning' :
-                                   'alert-info';
+                // Общее время рейса в секундах
+                const totalSeconds = Math.floor((now - startedAt) / 1000);
+                if (totalSeconds < 0) return;
 
-                    toast.className = `alert ${bgClass} alert-dismissible fade show`;
-                    toast.innerHTML = `
-                        ${event.message}
-                        <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
-                    `;
-                    container.appendChild(toast);
+                // Время завершённых пауз (фиксированное)
+                const completedPauseSeconds = parseInt(el.dataset.pauseSeconds) || 0;
 
-                    setTimeout(() => {
-                        toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 300);
-                    }, 5000);
-                });
-            }
+                // Время активной паузы (вычисляем динамически)
+                let activePauseSeconds = 0;
+                const activePauseStartStr = el.dataset.activePauseStart;
+                if (activePauseStartStr) {
+                    const activePauseStart = new Date(activePauseStartStr);
+                    activePauseSeconds = Math.floor((now - activePauseStart) / 1000);
+                }
 
-            // WebSocket для обновлений
-            if (window.Echo) {
-                window.Echo.channel('dispatcher')
-                    .listen('.truck-updated', (data) => {
-                        console.log('Dispatcher notification:', data);
-                    });
-            }
-        });
+                // Чистое время = общее - паузы
+                const pauseSeconds = completedPauseSeconds + activePauseSeconds;
+                const netSeconds = Math.max(0, totalSeconds - pauseSeconds);
 
-        // Синхронизация табов после обновления Livewire
-        if (typeof Livewire !== 'undefined') {
-            Livewire.hook('commit', ({ succeed }) => {
-                succeed(() => {
-                    setTimeout(() => {
-                        // Находим активный таб по классу от сервера и активируем через Bootstrap
-                        const activeTabButton = document.querySelector('.nav-link.active[data-bs-target]');
-                        if (activeTabButton) {
-                            const targetId = activeTabButton.getAttribute('data-bs-target');
-                            const tabContent = document.querySelector(targetId);
-                            if (tabContent && !tabContent.classList.contains('active')) {
-                                // Убираем active со всех табов
-                                document.querySelectorAll('.tab-pane').forEach(el => {
-                                    el.classList.remove('show', 'active');
-                                });
-                                // Добавляем active нужному
-                                tabContent.classList.add('show', 'active');
-                            }
-                        }
-                    }, 50);
-                });
+                const hours = Math.floor(netSeconds / 3600);
+                const minutes = Math.floor((netSeconds % 3600) / 60);
+                const seconds = netSeconds % 60;
+
+                let timeStr;
+                if (hours > 0) {
+                    timeStr = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                } else {
+                    timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                }
+
+                el.textContent = timeStr;
             });
         }
+
+        // Запускаем таймер каждую секунду
+        setInterval(updateTripTimers, 1000);
+
+        // Обновляем таймеры после обновления Livewire
+        document.addEventListener('livewire:update', updateTripTimers);
+
+        // Синхронизация табов после обновления Livewire
+        document.addEventListener('livewire:init', () => {
+            // Запускаем таймеры сразу
+            updateTripTimers();
+
+            // Уведомления
+            Livewire.on('notify', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (!event || !event.message) return;
+
+                const container = document.getElementById('global-toast-container');
+                const toast = document.createElement('div');
+
+                const bgClass = event.type === 'success' ? 'alert-success' :
+                               event.type === 'error' ? 'alert-danger' :
+                               event.type === 'warning' ? 'alert-warning' :
+                               'alert-info';
+
+                toast.className = `alert ${bgClass} alert-dismissible fade show`;
+                toast.innerHTML = `
+                    ${event.message}
+                    <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+                `;
+                container.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => toast.remove(), 300);
+                }, 5000);
+            });
+
+            // WebSocket для обновлений
+            console.log('🔧 Setting up Echo listeners...', { Echo: !!window.Echo });
+            if (window.Echo) {
+                console.log('📡 Subscribing to dispatcher channel...');
+                window.Echo.channel('dispatcher')
+                    .listen('.truck-updated', (data) => {
+                        console.log('🔔 Dispatcher notification:', data);
+                        // В Livewire v3 используем Livewire.dispatch
+                        Livewire.dispatch('refresh-dispatcher-data');
+                        console.log('✅ Dispatched refresh-dispatcher-data');
+                    })
+                    .listen('.miner-productivity-updated', (data) => {
+                        console.log('📊 Miner productivity updated:', data);
+                    });
+                console.log('✅ Echo listeners set up');
+            } else {
+                console.warn('⚠️ Echo not available');
+            }
+
+            Livewire.on('sync-tabs', () => {
+                setTimeout(() => {
+                    // Находим активный таб по классу от сервера и активируем через Bootstrap
+                    const activeTabButton = document.querySelector('.nav-link.active[data-bs-target]');
+                    if (activeTabButton) {
+                        const targetId = activeTabButton.getAttribute('data-bs-target');
+                        const tabContent = document.querySelector(targetId);
+                        if (tabContent && !tabContent.classList.contains('active')) {
+                            // Убираем active со всех табов
+                            document.querySelectorAll('.tab-pane').forEach(el => {
+                                el.classList.remove('show', 'active');
+                            });
+                            // Добавляем active нужному
+                            tabContent.classList.add('show', 'active');
+                        }
+                    }
+                }, 50);
+            });
+        });
     </script>
 </div>

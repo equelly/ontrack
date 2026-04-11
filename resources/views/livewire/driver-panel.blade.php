@@ -9,9 +9,6 @@
         }
     </style>
 
-    <!-- Toast контейнер -->
-    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-
     <div class="container py-4">
         <!-- Заголовок -->
         <div class="row mb-4">
@@ -543,40 +540,13 @@
 
         document.addEventListener('DOMContentLoaded', startTimer);
 
-        // Перезапуск при обновлении Livewire
-        if (typeof Livewire !== 'undefined') {
-            Livewire.hook('commit', () => {
+        // Слушаем событие перезапуска таймера от Livewire
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('restart-timer', () => {
                 setTimeout(startTimer, 50);
             });
-        }
-
-        // Слушаем события Livewire
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof Livewire !== 'undefined') {
-                Livewire.on('notify', (data) => {
-                    const event = Array.isArray(data) ? data[0] : data;
-                    if (!event || !event.message) return;
-
-                    const container = document.getElementById('toast-container');
-                    const toast = document.createElement('div');
-
-                    const bgClass = event.type === 'success' ? 'alert-success' :
-                                   event.type === 'error' ? 'alert-danger' :
-                                   'alert-warning';
-
-                    toast.className = `alert ${bgClass} alert-dismissible fade show`;
-                    toast.innerHTML = `
-                        ${event.message}
-                        <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
-                    `;
-                    container.appendChild(toast);
-
-                    setTimeout(() => {
-                        toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 300);
-                    }, 5000);
-                });
-            }
         });
+
+        // Уведомления обрабатываются глобально в layout (showNotification)
     </script>
 </div>

@@ -1,7 +1,4 @@
 <div class="excavator-panel-wrapper">
-    <!-- Toast контейнер -->
-    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-
     <div class="container py-4">
         <div class="row">
             <!-- Выбор экскаватора -->
@@ -495,7 +492,7 @@
                     console.log('🚛 Событие loading.started:', e);
 
                     // Показываем уведомление
-                    const container = document.getElementById('toast-container');
+                    const container = document.getElementById('global-toast-container');
                     const toast = document.createElement('div');
                     toast.className = 'alert alert-info alert-dismissible fade show';
                     toast.innerHTML = `
@@ -525,7 +522,7 @@
                     const event = Array.isArray(data) ? data[0] : data;
                     if (!event || !event.message) return;
 
-                    const container = document.getElementById('toast-container');
+                    const container = document.getElementById('global-toast-container');
                     const toast = document.createElement('div');
 
                     const bgClass = event.type === 'success' ? 'alert-success' :

@@ -15,7 +15,7 @@ class IndexController extends Controller
      */
     public function __invoke()
     {
-        $rocks = Rock::withCount(['zones', 'miners'])
+        $rocks = Rock::withCount(['zones'])
             ->orderBy('name_rock')
             ->get();
 

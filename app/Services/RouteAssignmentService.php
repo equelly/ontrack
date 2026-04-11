@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\Log;
  */
 class RouteAssignmentService
 {
-    const LOADING_TIME_MINUTES = 5;
+    const DEFAULT_LOADING_TIME_MINUTES = 5;
     const BUFFER_COEFFICIENT = 1.5;
 
     protected RouteOptimizerService $optimizer;
@@ -29,6 +29,27 @@ class RouteAssignmentService
     public function __construct(RouteOptimizerService $optimizer)
     {
         $this->optimizer = $optimizer;
+    }
+
+    /**
+     * Получить время погрузки для конкретного забоя
+     * Приоритет: фактическое среднее > целевое > дефолт 5 минут
+     */
+    protected function getLoadingTimeForMiner(Miner $miner): float
+    {
+        // Сначала пробуем фактическое среднее время
+        $avgLoadTime = $miner->getAvgLoadTime(5);
+        if ($avgLoadTime && $avgLoadTime > 0) {
+            return $avgLoadTime;
+        }
+
+        // Затем целевое время (установленное оператором)
+        if ($miner->target_load_time && $miner->target_load_time > 0) {
+            return (float) $miner->target_load_time;
+        }
+
+        // Дефолт
+        return self::DEFAULT_LOADING_TIME_MINUTES;
     }
 
     /**
@@ -124,11 +145,15 @@ class RouteAssignmentService
             $zone = $this->selectZoneForRock($order->dump_id, $currentRock->id);
 
             if ($zone) {
+                // Получаем время погрузки для этого забоя
+                $loadingTime = $this->getLoadingTimeForMiner($miner);
+
                 $available[] = [
                     'order' => $order,
                     'zone' => $zone,
                     'rock_id' => $currentRock->id,
                     'weight' => $order->weight ?? 100,
+                    'loading_time' => $loadingTime,
                 ];
             }
         }
@@ -139,6 +164,7 @@ class RouteAssignmentService
     /**
      * Выбор маршрута по Weighted WRR
      * Учитывает weight, wrr_cursor и last_assigned_at (чтобы не отправлять один за другим)
+     * Теперь использует динамическое время погрузки для каждого забоя
      */
     protected function selectByWeightedWRR(array $routes): array
     {
@@ -150,25 +176,28 @@ class RouteAssignmentService
             return $routes[0];
         }
 
-        $loadingTimeSeconds = self::LOADING_TIME_MINUTES * 60;
-
         // Сортируем с учётом:
         // 1. last_assigned_at - если прошло меньше времени погрузки, повышаем score
         // 2. wrr_cursor / weight - базовый WRR
-        usort($routes, function($a, $b) use ($loadingTimeSeconds) {
+        // 3. Динамическое время погрузки для каждого забоя
+        usort($routes, function($a, $b) {
             $baseScoreA = ($a['order']->wrr_cursor ?? 0) / max($a['weight'], 1);
             $baseScoreB = ($b['order']->wrr_cursor ?? 0) / max($b['weight'], 1);
+            
+            // Динамическое время погрузки в секундах для каждого маршрута
+            $loadingTimeSecondsA = $a['loading_time'] * 60;
+            $loadingTimeSecondsB = $b['loading_time'] * 60;
             
             // Штраф за недавнее назначение (чтобы не отправлять один за другим)
             $lastAssignedA = $a['order']->last_assigned_at;
             $lastAssignedB = $b['order']->last_assigned_at;
             
-            $secondsSinceA = $lastAssignedA ? now()->diffInSeconds($lastAssignedA) : $loadingTimeSeconds;
-            $secondsSinceB = $lastAssignedB ? now()->diffInSeconds($lastAssignedB) : $loadingTimeSeconds;
+            $secondsSinceA = $lastAssignedA ? now()->diffInSeconds($lastAssignedA) : $loadingTimeSecondsA;
+            $secondsSinceB = $lastAssignedB ? now()->diffInSeconds($lastAssignedB) : $loadingTimeSecondsB;
             
             // Если прошло меньше времени погрузки - добавляем штраф
-            $penaltyA = ($secondsSinceA < $loadingTimeSeconds) ? ($loadingTimeSeconds - $secondsSinceA) * 10 : 0;
-            $penaltyB = ($secondsSinceB < $loadingTimeSeconds) ? ($loadingTimeSeconds - $secondsSinceB) * 10 : 0;
+            $penaltyA = ($secondsSinceA < $loadingTimeSecondsA) ? ($loadingTimeSecondsA - $secondsSinceA) * 10 : 0;
+            $penaltyB = ($secondsSinceB < $loadingTimeSecondsB) ? ($loadingTimeSecondsB - $secondsSinceB) * 10 : 0;
             
             $scoreA = $baseScoreA + $penaltyA;
             $scoreB = $baseScoreB + $penaltyB;
@@ -309,6 +338,10 @@ class RouteAssignmentService
             ]);
 
             Log::info('TruckTrip created', ['trip_id' => $trip->id]);
+            // Обновляем породу в miningOrder (чтобы водитель видел правильную породу)
+            if ($rockId) {
+                $order->update(['rock_id' => $rockId]);
+            }
 
             // Обновляем wrr_cursor и last_assigned_at
             $newCursor = ($order->wrr_cursor ?? 0) + 1;
@@ -417,25 +450,52 @@ class RouteAssignmentService
 
     /**
      * Проверка: можно ли назначить на miner
+     * Использует динамический расчёт на основе целевого/фактического времени погрузки
      */
     protected function canAssignToMiner(MiningOrder $order): bool
     {
+        $miner = $order->miner;
+        
+        if (!$miner) {
+            return false;
+        }
+
+        // Пробуем использовать рекомендации из модели Miner
+        $recommendations = $miner->getRecommendedTruckCount();
+        
+        if ($recommendations) {
+            // Используем рассчитанное оптимальное количество + буфер
+            $maxCount = ($recommendations['recommended'] ?? 2) + 1; // +1 буфер
+            $currentCount = $recommendations['current'] ?? $this->getCountOnMiner($miner->id);
+            
+            Log::debug('canAssignToMiner using recommendations', [
+                'miner_id' => $miner->id,
+                'recommended' => $recommendations['recommended'] ?? null,
+                'current' => $currentCount,
+                'max' => $maxCount,
+            ]);
+            
+            return $currentCount < $maxCount;
+        }
+
+        // Fallback: старый метод расчёта если нет данных для рекомендаций
         $travelTime = MinerDumpDistance::where('miner_id', $order->miner_id)
             ->where('dump_id', $order->dump_id)
             ->value('travel_time_hours');
 
         if (!$travelTime) {
-            return false;
+            // Если нет данных о расстоянии - разрешаем назначение
+            return true;
         }
 
         $currentCount = $this->getCountOnMiner($order->miner_id);
-        $maxCount = $this->getMaxCountForMiner($travelTime);
+        $maxCount = $this->getMaxCountForMiner($travelTime, $miner);
 
         return $currentCount < $maxCount;
     }
 
     /**
-     * Количество грузовиков на miner
+     * Количество грузовиков на miner (включая ожидающих)
      */
     protected function getCountOnMiner(int $minerId): int
     {
@@ -444,18 +504,22 @@ class RouteAssignmentService
             ->whereIn('truck_id', function ($query) {
                 $query->select('id')
                     ->from('trucks')
-                    ->whereIn('status', ['to_miner', 'loading']);
+                    ->whereIn('status', ['to_miner', 'loading', 'waiting_loading']);
             })
             ->count();
     }
 
     /**
      * Максимальное количество грузовиков на miner
+     * Теперь учитывает динамическое время погрузки
      */
-    protected function getMaxCountForMiner(float $travelTimeHours): int
+    protected function getMaxCountForMiner(float $travelTimeHours, Miner $miner): int
     {
         $travelTimeMinutes = $travelTimeHours * 60;
-        $maxCount = ($travelTimeMinutes / self::LOADING_TIME_MINUTES) * self::BUFFER_COEFFICIENT;
+        $loadingTime = $this->getLoadingTimeForMiner($miner);
+        
+        // Формула: T_рейса / T_погрузки * буфер
+        $maxCount = ($travelTimeMinutes / $loadingTime) * self::BUFFER_COEFFICIENT;
         
         return (int) round($maxCount);
     }

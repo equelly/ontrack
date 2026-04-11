@@ -16,6 +16,8 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="mt-3">
+        <!-- Глобальный контейнер для toast уведомлений (вне Livewire компонентов) -->
+        <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
         <header>
           <!-- Navbar -->
@@ -73,7 +75,11 @@
                         Забои 
                     </a></li>
                 <li class="nav-item item ml-3">
-                    <a href="{{route('dumps.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                    <a href="{{route('rocks.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                        Породы 
+                    </a></li>
+                <li class="nav-item item ml-3">
+                    <a href="{{route('dump.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
                         Перегрузки 
                     </a></li>
                 <li class="nav-item item ml-3">
@@ -394,8 +400,46 @@ function markZoneForDeletion(zoneId) {
 
 }
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+<!-- Глобальный обработчик Livewire уведомлений -->
+<script>
+// Глобальная функция показа toast уведомлений
+window.showNotification = function(message, type = 'success') {
+    const container = document.getElementById('global-toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'alert-success' :
+                   type === 'error' ? 'alert-danger' :
+                   type === 'warning' ? 'alert-warning' :
+                   'alert-info';
+
+    toast.className = `alert ${bgClass} alert-dismissible fade show`;
+    toast.style.minWidth = '250px';
+    toast.innerHTML = `
+        ${message}
+        <button type='button' class='btn-close' data-bs-dismiss='alert' onclick="this.parentElement.remove()"></button>
+    `;
+    container.appendChild(toast);
+
+    // Автоудаление через 5 секунд
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+};
+
+// Обработчик Livewire событий
+document.addEventListener('livewire:init', () => {
+    Livewire.on('notify', (data) => {
+        const event = Array.isArray(data) ? data[0] : data;
+        if (event && event.message) {
+            window.showNotification(event.message, event.type || 'success');
+        }
+    });
+});
+</script>
 @yield('scripts')
 @livewireScripts
 </body>
-</html>                
+</html>
