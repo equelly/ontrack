@@ -767,6 +767,22 @@ class ExcavatorPanel extends Component
             'message' => $data['message'] ?? 'Новый самосвал в пути к забою',
         ]);
     }
+        /**
+     * Слушаем событие начала погрузки от водителя через Echo
+     * TruckStartedLoading отправляется на private-miner.{minerId} с broadcastAs '.loading.started'
+     */
+    #[On('echo-private:miner.{miner.id},.loading.started')]
+    public function onLoadingStarted(array $data): void
+    {
+        Log::info('LoadingStarted event received via Echo', $data);
+        $this->loadMinerData();
+
+        $this->dispatch('notify', [
+            'type' => 'info',
+            'message' => "Самосвал {$data['truck_number']} начал погрузку",
+        ]);
+    }
+
 
     public function render()
     {
