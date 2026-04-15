@@ -330,11 +330,35 @@ class MainDispatcherPanel extends Component
      */
     private function assignZoneToLoadedTruck(Truck $truck): void
     {
-        $trip = $truck->trips->first();
+        // Получаем свежий trip из базы с актуальными данными
+        $trip = TruckTrip::where('truck_id', $truck->id)
+            ->whereNull('completed_at')
+            ->with(['rock', 'miner.currentRock', 'zone', 'dump'])
+            ->latest()
+            ->first();
 
         if (!$trip) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Нет активного рейса у грузовика']);
             return;
+        }
+
+        // Используем выбранную зону из UI
+        $zone = $this->selectedZoneId ? Zone::with('dump')->find($this->selectedZoneId) : null;
+
+        // Определяем породу: сначала из loadedTruckRockId (если диспетчер изменил), потом из trip->rock
+        $rock = null;
+        if ($this->loadedTruckRockId) {
+            $rock = \App\Models\Rock::find($this->loadedTruckRockId);
+            Log::info('Using rock from loadedTruckRockId', [
+                'loadedTruckRockId' => $this->loadedTruckRockId,
+                'rock_name' => $rock?->name_rock,
+            ]);
+        }
+        if (!$rock) {
+            $rock = $trip->rock;
+        }
+        if (!$rock && $trip->miner) {
+            $rock = $trip->miner->currentRock;
         }
 
         Log::info('assignZoneToLoadedTruck START', [
@@ -342,24 +366,13 @@ class MainDispatcherPanel extends Component
             'truck_status' => $truck->status,
             'trip_id' => $trip->id,
             'trip_zone_id' => $trip->zone_id,
-            'trip_dump_id' => $trip->dump_id,
             'trip_rock_id' => $trip->rock_id,
             'selected_zone_id' => $this->selectedZoneId,
-        ]);
-
-        $zone = $this->selectedZoneId ? Zone::with('dump')->find($this->selectedZoneId) : null;
-
-        // Определяем породу: сначала из trip->rock, потом из miner->currentRock
-        $rock = $trip->rock;
-        if (!$rock && $trip->miner) {
-            $rock = $trip->miner->currentRock;
-        }
-
-        Log::info('assignZoneToLoadedTruck rock & zone', [
+            'zone_from_ui' => $zone?->id,
+            'zone_name' => $zone?->name_zone,
             'rock_id' => $rock?->id,
             'rock_name' => $rock?->name_rock,
-            'zone_from_selection' => $zone?->id,
-            'zone_name' => $zone?->name_zone,
+            'loadedTruckRockId' => $this->loadedTruckRockId,
         ]);
 
         // Если зона не выбрана, ищем автоматически на ВСЕХ отвалах
@@ -369,7 +382,7 @@ class MainDispatcherPanel extends Component
 
             // Если не нашли - ищем на всех отвалах
             if (!$zone) {
-                $zone = \App\Models\Zone::with('dump')
+                $zone = Zone::with('dump')
                     ->where('delivery', true)
                     ->whereRaw('volume < capacity')
                     ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
@@ -394,7 +407,7 @@ class MainDispatcherPanel extends Component
             $trip->update([
                 'zone_id' => $zone->id,
                 'dump_id' => $zone->dump_id, // Может измениться если зона на другом отвале
-                'rock_id' => $rock?->id ?? $trip->rock_id,
+                'rock_id' => $rock?->id,
             ]);
 
             Log::info('Trip updated', [
@@ -409,7 +422,7 @@ class MainDispatcherPanel extends Component
                 $trip->miningOrder->update([
                     'zone_id' => $zone->id,
                     'dump_id' => $zone->dump_id,
-                    'rock_id' => $rock?->id ?? $trip->rock_id,
+                    'rock_id' => $rock?->id,
                 ]);
             }
 
