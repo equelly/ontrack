@@ -15,6 +15,7 @@ use App\Events\DriverRouteUpdated;
 use App\Services\RouteAssignmentService;
 use App\Services\RouteOptimizerService;
 use App\Services\MinerStatusService;
+use App\Services\ZoneStatusService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
@@ -23,8 +24,8 @@ use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 
 
-#[Layout('components.layouts.app')] 
-#[Title('Панель диспетчера')] 
+#[Layout('components.layouts.app')]
+#[Title('Панель диспетчера')]
 
 class MainDispatcherPanel extends Component
 {
@@ -73,11 +74,16 @@ class MainDispatcherPanel extends Component
 
     protected RouteAssignmentService $routeService;
     protected RouteOptimizerService $optimizerService;
+    protected ZoneStatusService $zoneStatusService;
 
-    public function boot(RouteAssignmentService $routeService, RouteOptimizerService $optimizerService)
-    {
+    public function boot(
+        RouteAssignmentService $routeService,
+        RouteOptimizerService $optimizerService,
+        ZoneStatusService $zoneStatusService
+    ) {
         $this->routeService = $routeService;
         $this->optimizerService = $optimizerService;
+        $this->zoneStatusService = $zoneStatusService;
     }
 
     public function mount()
@@ -88,7 +94,7 @@ class MainDispatcherPanel extends Component
     public function loadData(): void
     {
         Log::info('=== MainDispatcherPanel loadData START ===');
-        
+
         $this->trucks = Truck::with(['truckModel', 'driver', 'trips' => function ($q) {
             $q->whereNull('completed_at')
                 ->with([
@@ -143,7 +149,7 @@ class MainDispatcherPanel extends Component
         $this->orders = MiningOrder::with(['miner.rocks', 'dump', 'zone.rocks', 'rock'])
             ->where('active', true)
             ->get();
-        
+
         Log::info('=== MainDispatcherPanel loadData END ===');
     }
 
@@ -169,7 +175,7 @@ class MainDispatcherPanel extends Component
             $this->availableOrders = $orders->filter(function ($order) use ($minerRock) {
                 // Проверяем есть ли доступные зоны для породы
                 return $order->dump && $order->dump->zones->contains(function ($zone) use ($minerRock) {
-                    return $zone->delivery 
+                    return $zone->delivery
                         && $zone->volume < $zone->capacity
                         && $zone->rocks->contains('id', $minerRock->id);
                 });
@@ -194,7 +200,7 @@ class MainDispatcherPanel extends Component
             if ($minerRock && $order?->dump) {
                 $this->availableZones = $order->dump->zones
                     ->filter(function ($zone) use ($minerRock) {
-                        return $zone->delivery 
+                        return $zone->delivery
                             && $zone->volume < $zone->capacity
                             && $zone->rocks->contains('id', $minerRock->id);
                     })
@@ -219,7 +225,7 @@ class MainDispatcherPanel extends Component
         ]);
 
         $truck = Truck::find($this->selectedTruckId);
-        
+
         if (!$truck) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Грузовик не найден']);
             return;
@@ -360,7 +366,7 @@ class MainDispatcherPanel extends Component
         if (!$zone && $rock) {
             // Сначала на текущем отвале
             $zone = $this->routeService->selectZoneForRock($trip->dump_id, $rock->id);
-            
+
             // Если не нашли - ищем на всех отвалах
             if (!$zone) {
                 $zone = \App\Models\Zone::with('dump')
@@ -369,7 +375,7 @@ class MainDispatcherPanel extends Component
                     ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
                     ->orderBy('volume', 'asc')
                     ->first();
-                
+
                 Log::info('Zone found on all dumps', [
                     'zone_id' => $zone?->id,
                     'zone_name' => $zone?->name_zone,
@@ -430,10 +436,10 @@ class MainDispatcherPanel extends Component
             // Перезагружаем trip с обновлёнными данными для события
             $trip->refresh();
             $trip->load(['miner', 'dump', 'zone', 'rock']);
-            
+
             // Отправляем событие водителю с актуальными данными рейса
             event(new DriverRouteUpdated($truck, $trip));
-            
+
             // Отправляем уведомление диспетчеру об изменении статуса
             event(new \App\Events\DispatcherNotification(
                 $truck->id,
@@ -584,12 +590,12 @@ class MainDispatcherPanel extends Component
             ->map(function ($order) {
                 // Текущая порода в забое
                 $currentRock = $order->miner?->currentRock;
-                
+
                 // Доступные зоны для текущей породы на перегрузке
                 $availableZones = collect();
                 if ($currentRock && $order->dump) {
                     $availableZones = $order->dump->zones->filter(function ($zone) use ($currentRock) {
-                        return $zone->delivery 
+                        return $zone->delivery
                             && $zone->volume < $zone->capacity
                             && $zone->rocks->contains('id', $currentRock->id);
                     })->map(fn($z) => [
@@ -598,12 +604,12 @@ class MainDispatcherPanel extends Component
                         'fill' => $z->capacity > 0 ? round($z->volume / $z->capacity * 100) : 0,
                     ]);
                 }
-                
+
                 // Расстояние из miner_dump_distances
                 $distance = \App\Models\MinerDumpDistance::where('miner_id', $order->miner_id)
                     ->where('dump_id', $order->dump_id)
                     ->value('distance_km');
-                
+
                 return (object)[
                     'id' => $order->id,
                     'miner' => $order->miner,
@@ -634,17 +640,17 @@ class MainDispatcherPanel extends Component
     {
         try {
             $result = $this->optimizerService->optimize();
-            
+
             $this->loadData();
-            
+
             $message = sprintf(
                 'Оптимизация завершена: %d активных маршрутов в %d раундах',
                 $result['stats']['active_routes'],
                 $result['stats']['rounds_count']
             );
-            
+
             $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
-            
+
             Log::info('Routes optimized from UI', $result['stats']);
         } catch (\Exception $e) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Ошибка оптимизации: ' . $e->getMessage()]);
@@ -658,15 +664,15 @@ class MainDispatcherPanel extends Component
     public function activateOrder(int $orderId): void
     {
         $order = MiningOrder::find($orderId);
-        
+
         if (!$order) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
             return;
         }
-        
+
         $order->update(['active' => true]);
         $this->loadData();
-        
+
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Маршрут активирован']);
     }
 
@@ -676,15 +682,15 @@ class MainDispatcherPanel extends Component
     public function deactivateOrder(int $orderId): void
     {
         $order = MiningOrder::find($orderId);
-        
+
         if (!$order) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Маршрут не найден']);
             return;
         }
-        
+
         $order->update(['active' => false]);
         $this->loadData();
-        
+
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Маршрут деактивирован']);
     }
 
@@ -707,10 +713,10 @@ class MainDispatcherPanel extends Component
     {
         $currentMode = SystemSetting::getRouteActivationMode();
         $newMode = $currentMode === 'auto' ? 'manual' : 'auto';
-        
+
         SystemSetting::setRouteActivationMode($newMode);
         $this->loadData();
-        
+
         $modeLabel = $newMode === 'auto' ? 'автоматический' : 'ручной';
         $this->dispatch('notify', [
             'type' => 'success',
@@ -727,10 +733,10 @@ class MainDispatcherPanel extends Component
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Неверный режим']);
             return;
         }
-        
+
         SystemSetting::setRouteActivationMode($mode);
         $this->loadData();
-        
+
         $modeLabel = $mode === 'auto' ? 'автоматический' : 'ручной';
         $this->dispatch('notify', [
             'type' => 'success',
@@ -771,11 +777,11 @@ class MainDispatcherPanel extends Component
 
         $weight = max(1, min(1000, (int)$this->editWeight));
         $order->update(['weight' => $weight]);
-        
+
         $this->editOrderId = null;
         $this->editWeight = null;
         $this->loadData();
-        
+
         $this->dispatch('notify', ['type' => 'success', 'message' => "Вес маршрута изменён на {$weight}"]);
     }
 
@@ -862,6 +868,102 @@ class MainDispatcherPanel extends Component
     public function getMinerDelayedCountProperty(): int
     {
         return $this->miners->where('status', '!=', 'active')->count();
+    }
+
+    /**
+     * Количество перегруженных зон
+     */
+    public function getOverloadedZonesCountProperty(): int
+    {
+        return count($this->zoneStatusService->getOverloadedZones());
+    }
+
+    /**
+     * Детальная информация о перегруженных зонах
+     */
+    public function getOverloadedZonesProperty(): array
+    {
+        return $this->zoneStatusService->getOverloadedZones();
+    }
+
+    /**
+     * Нагрузка на все зоны
+     */
+    public function getZonesLoadProperty(): array
+    {
+        return $this->zoneStatusService->getAllZonesLoad();
+    }
+
+    /**
+     * Ручная балансировка перегруженных зон
+     */
+    public function balanceZones(): void
+    {
+        try {
+            $results = $this->zoneStatusService->autoBalance();
+
+            $this->loadData();
+
+            if (empty($results)) {
+                $this->dispatch('notify', [
+                    'type' => 'info',
+                    'message' => 'Перегруженных зон не обнаружено',
+                ]);
+            } else {
+                $totalRedirected = array_sum(array_column($results, 'redirected_trucks'));
+                $this->dispatch('notify', [
+                    'type' => 'success',
+                    'message' => "Балансировка выполнена: перенаправлено {$totalRedirected} грузовиков",
+                ]);
+            }
+
+            Log::info('Manual zone balancing executed', ['results' => $results]);
+
+        } catch (\Exception $e) {
+            Log::error('Zone balancing failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка балансировки: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Перенаправить грузовики с конкретной перегруженной зоны
+     */
+    public function redirectFromZone(int $zoneId): void
+    {
+        $zone = Zone::find($zoneId);
+
+        if (!$zone) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Зона не найдена']);
+            return;
+        }
+
+        try {
+            $redirectedCount = $this->zoneStatusService->redirectTrucksFromOverloadedZone($zone);
+
+            $this->loadData();
+
+            if ($redirectedCount > 0) {
+                $this->dispatch('notify', [
+                    'type' => 'success',
+                    'message' => "Перенаправлено {$redirectedCount} грузовиков с зоны {$zone->name_zone}",
+                ]);
+            } else {
+                $this->dispatch('notify', [
+                    'type' => 'info',
+                    'message' => "Нет грузовиков для перенаправления с зоны {$zone->name_zone}",
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Redirect from zone failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка: ' . $e->getMessage(),
+            ]);
+        }
     }
 
     public function getFreeTrucksProperty()
@@ -1123,10 +1225,10 @@ class MainDispatcherPanel extends Component
     public function onMinerProductivityUpdated(array $data): void
     {
         Log::info('MainDispatcherPanel: miner-productivity-updated received', $data);
-        
+
         // Обновляем данные о забоях
         $this->miners = Miner::with(['rocks', 'currentRock'])->get();
-        
+
         // Отправляем уведомление
         $this->dispatch('notify', [
             'type' => 'info',
@@ -1400,7 +1502,7 @@ class MainDispatcherPanel extends Component
     {
         $hours = floor($seconds / 3600);
         $minutes = floor(($seconds % 3600) / 60);
-        
+
         if ($hours > 0) {
             return "{$hours}ч {$minutes}м";
         }
@@ -1483,7 +1585,7 @@ class MainDispatcherPanel extends Component
     {
         $hours = floor($minutes / 60);
         $mins = $minutes % 60;
-        
+
         if ($hours > 0) {
             return "{$hours}ч {$mins}м";
         }

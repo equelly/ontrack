@@ -75,6 +75,19 @@
                 </div>
                 <!-- Разделитель -->
                 <div class="vr"></div>
+                <!-- Перегруженные зоны -->
+                @php $overloadedZonesCount = $this->overloaded_zones_count; @endphp
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-{{ $overloadedZonesCount > 0 ? 'danger' : 'secondary' }} bg-opacity-10 rounded px-2 py-1">
+                        <i class="fas fa-map-marker-alt text-{{ $overloadedZonesCount > 0 ? 'danger' : 'secondary' }}"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block">Перегрузка зон</small>
+                        <strong class="text-{{ $overloadedZonesCount > 0 ? 'danger' : 'secondary' }} fs-5">{{ $overloadedZonesCount }}</strong>
+                    </div>
+                </div>
+                <!-- Разделитель -->
+                <div class="vr"></div>
                 <!-- Среднее расстояние (расчётное) -->
                 @php $distStats = $this->planned_distance_stats; @endphp
                 <div class="d-flex align-items-center gap-2">
@@ -125,6 +138,10 @@
                     data-bs-toggle="tab" data-bs-target="#zonesTab" type="button"
                     wire:click="setActiveTab('zonesTab')">
                 Зоны разгрузки
+                @php $overloadedCount = $this->overloaded_zones_count; @endphp
+                @if($overloadedCount > 0)
+                    <span class="badge bg-danger ms-1">{{ $overloadedCount }}</span>
+                @endif
             </button>
         </li>
         <li class="nav-item">
@@ -890,20 +907,109 @@
 
         <!-- Зоны разгрузки -->
         <div class="tab-pane fade {{ $activeTab === 'zonesTab' ? 'show active' : '' }}" id="zonesTab">
-            <div class="d-flex justify-content-end mb-3">
-                <a href="{{ route('dump.index') }}" class="btn btn-outline-primary btn-sm" target="_blank">
-                    <i class="fas fa-cog"></i> Настроить породы в зонах
-                </a>
+            @php
+                $zonesLoad = $this->zones_load;
+                $overloadedZones = $this->overloaded_zones;
+            @endphp
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <h5 class="mb-0">Мониторинг зон разгрузки</h5>
+                    @if(count($overloadedZones) > 0)
+                        <span class="badge bg-danger">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            {{ count($overloadedZones) }} перегружено
+                        </span>
+                    @endif
+                </div>
+                <div class="d-flex gap-2">
+                    @if(count($overloadedZones) > 0)
+                        <button class="btn btn-warning btn-sm" wire:click="balanceZones" wire:loading.attr="disabled">
+                            <span wire:loading.remove><i class="fas fa-balance-scale"></i> Балансировка</span>
+                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Балансировка...</span>
+                        </button>
+                    @endif
+                    <a href="{{ route('dump.index') }}" class="btn btn-outline-primary btn-sm" target="_blank">
+                        <i class="fas fa-cog"></i> Настроить породы
+                    </a>
+                </div>
             </div>
+
+            <!-- Предупреждение о перегрузке -->
+            @if(count($overloadedZones) > 0)
+                <div class="alert alert-warning py-2 mb-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Внимание!</strong> Обнаружены перегруженные зоны. Рекомендуется запустить балансировку для перенаправления грузовиков на недозагруженные маршруты.
+                </div>
+            @endif
+
+            <!-- Статистика по зонам -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-light">
+                        <div class="card-body py-2 text-center">
+                            <small class="text-muted d-block">Всего зон</small>
+                            <strong class="fs-4">{{ count($zonesLoad) }}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success bg-opacity-10">
+                        <div class="card-body py-2 text-center">
+                            <small class="text-muted d-block">Доступны</small>
+                            <strong class="fs-4 text-success">{{ count(array_filter($zonesLoad, fn($z) => $z['status'] === 'available')) }}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning bg-opacity-10">
+                        <div class="card-body py-2 text-center">
+                            <small class="text-muted d-block">Заняты</small>
+                            <strong class="fs-4 text-warning">{{ count(array_filter($zonesLoad, fn($z) => $z['status'] === 'busy')) }}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger bg-opacity-10">
+                        <div class="card-body py-2 text-center">
+                            <small class="text-muted d-block">Перегружены</small>
+                            <strong class="fs-4 text-danger">{{ count(array_filter($zonesLoad, fn($z) => $z['status'] === 'overloaded')) }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Карточки зон -->
             <div class="row">
                 @foreach($zones as $zone)
                     @php
                         $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0;
+                        $loadStats = $zone->getLoadStats();
+                        $isOverloaded = $loadStats['is_overloaded'];
+                        $statusColors = [
+                            'available' => 'success',
+                            'busy' => 'warning',
+                            'overloaded' => 'danger',
+                            'full' => 'dark',
+                        ];
+                        $statusLabels = [
+                            'available' => 'Доступна',
+                            'busy' => 'Занята',
+                            'overloaded' => 'ПЕРЕГРУЖЕНА',
+                            'full' => 'Заполнена',
+                        ];
+                        $statusColor = $statusColors[$loadStats['status']] ?? 'secondary';
+                        $statusLabel = $statusLabels[$loadStats['status']] ?? $loadStats['status'];
                     @endphp
                     <div class="col-md-4 mb-3">
-                        <div class="card zone-card {{ $zone->delivery ? '' : 'closed' }}">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <span>{{ $zone->dump?->name_dump }} - {{ $zone->name_zone }}</span>
+                        <div class="card zone-card {{ $zone->delivery ? '' : 'closed' }} {{ $isOverloaded ? 'border-danger' : '' }}">
+                            <div class="card-header d-flex justify-content-between align-items-center {{ $isOverloaded ? 'bg-danger text-white' : '' }}">
+                                <div>
+                                    <span class="fw-bold">{{ $zone->dump?->name_dump }} - {{ $zone->name_zone }}</span>
+                                    @if($isOverloaded)
+                                        <i class="fas fa-exclamation-triangle ms-2"></i>
+                                    @endif
+                                </div>
                                 <div class="form-check form-switch">
                                     <input
                                         type="checkbox"
@@ -917,9 +1023,47 @@
                                 </div>
                             </div>
                             <div class="card-body">
-                                <small class="text-muted">
-                                    Породы: {{ $zone->rocks->pluck('name_rock')->join(', ') ?: 'Не указаны' }}
+                                <!-- Статус нагрузки -->
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="badge bg-{{ $statusColor }}">{{ $statusLabel }}</span>
+                                    @if($loadStats['total_trucks'] > 0)
+                                        <span class="badge bg-primary">
+                                            <i class="fas fa-truck me-1"></i>{{ $loadStats['total_trucks'] }} ТС
+                                        </span>
+                                    @endif
+                                </div>
+
+                                <!-- Статистика грузовиков -->
+                                @if($loadStats['total_trucks'] > 0)
+                                    <div class="row g-2 mb-2 text-center small">
+                                        <div class="col-4">
+                                            <div class="bg-light rounded p-1">
+                                                <div class="fw-bold text-info">{{ $loadStats['transporting_count'] }}</div>
+                                                <div class="text-muted">В пути</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="bg-light rounded p-1">
+                                                <div class="fw-bold text-warning">{{ $loadStats['unloading_count'] }}</div>
+                                                <div class="text-muted">Разгрузка</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="{{ $loadStats['waiting_count'] > 0 ? 'bg-danger bg-opacity-10' : 'bg-light' }} rounded p-1">
+                                                <div class="fw-bold {{ $loadStats['waiting_count'] > 0 ? 'text-danger' : 'text-muted' }}">{{ $loadStats['waiting_count'] }}</div>
+                                                <div class="text-muted">Ожидание</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+
+                                <!-- Породы -->
+                                <small class="text-muted d-block mb-2">
+                                    <i class="fas fa-gem me-1"></i>
+                                    {{ $zone->rocks->pluck('name_rock')->join(', ') ?: 'Не указаны' }}
                                 </small>
+
+                                <!-- Заполнение -->
                                 <div class="mt-2">
                                     <div class="d-flex justify-content-between small mb-1">
                                         <span>Заполнение</span>
@@ -932,6 +1076,22 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Кнопка перенаправления для перегруженной зоны -->
+                                @if($isOverloaded && $loadStats['waiting_count'] > 0)
+                                    <div class="mt-3">
+                                        <button
+                                            wire:click="redirectFromZone({{ $zone->id }})"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-sm btn-warning w-100">
+                                            <span wire:loading.remove><i class="fas fa-route me-1"></i> Перенаправить ТС</span>
+                                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Перенаправление...</span>
+                                        </button>
+                                        <small class="text-muted d-block mt-1 text-center">
+                                            Перенаправить ожидающие ТС на другие маршруты
+                                        </small>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -958,64 +1118,42 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <div class="dropdown" wire:key="trip-pause-filters-{{ count($pauseTypes) }}">
+                    <label class="form-label small"><i class="fas fa-truck me-1"></i>Тип простоев ТС:</label>
+                    <div class="border rounded p-2 bg-light" style="max-height: 150px; overflow-y: auto;">
                         @foreach(\App\Models\TripPause::types() as $typeKey => $typeLabel)
-                            <div class="form-check" wire:key="pause-type-{{ $typeKey }}">
-                                <input class="form-check-input" 
-                                    type="checkbox" 
-                                    value="{{ $typeKey }}" 
-                                    wire:model.live="pauseTypes" 
-                                    id="type_{{ $typeKey }}">
-                                <label class="form-check-label" style="cursor: pointer;" for="type_{{ $typeKey }}">
+                            <div class="form-check form-check-sm mb-1">
+                                <input
+                                    type="checkbox"
+                                    id="pauseType_{{ $typeKey }}"
+                                    value="{{ $typeKey }}"
+                                    wire:model.live="pauseTypes"
+                                    class="form-check-input">
+                                <label for="pauseType_{{ $typeKey }}" class="form-check-label small">
                                     {{ $typeLabel }}
                                 </label>
                             </div>
                         @endforeach
-
-                        @if(!empty($pauseTypes))
-                            <button 
-                                type="button" 
-                                wire:click="$set('pauseTypes', [])" 
-                                class="btn btn-link btn-sm p-0 text-start text-decoration-none"
-                            >
-                                <small>Сбросить все типы</small>
-                            </button>
-                        @endif
-</div>
-
-
+                    </div>
+                    <small class="text-muted">Выберите типы для фильтрации</small>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small"><i class="fas fa-mountain me-1"></i>Тип простоев забоев:</label>
-                    <div class="d-flex flex-column gap-1">
-                    @foreach($this->miner_delay_statuses as $typeKey => $typeLabel)
-                        {{-- Добавляем уникальный ключ для контейнера --}}
-                        <div class="form-check" wire:key="miner-checkbox-{{ $typeKey }}-{{ count($minerPauseTypes) }}">
-                            <input 
-                                class="form-check-input" 
-                                type="checkbox" 
-                                value="{{ $typeKey }}" 
-                                wire:model.live="minerPauseTypes" 
-                                id="miner_type_{{ $typeKey }}"
-                            >
-                            <label class="form-check-label" style="cursor: pointer;" for="miner_type_{{ $typeKey }}">
-                                {{ $typeLabel }}
-                            </label>
-                        </div>
-                    @endforeach
-
-                    @if(!empty($minerPauseTypes))
-                        <button 
-                            type="button" 
-                            wire:click="$set('minerPauseTypes', [])" 
-                            class="btn btn-link btn-sm p-0 text-start text-decoration-none"
-                        >
-                            <small>Сбросить все</small>
-                        </button>
-                    @endif
-                </div>
-
-
+                    <div class="border rounded p-2 bg-light" style="max-height: 150px; overflow-y: auto;">
+                        @foreach(\App\Models\MinerPause::types() as $typeKey => $typeLabel)
+                            <div class="form-check form-check-sm mb-1">
+                                <input
+                                    type="checkbox"
+                                    id="minerPauseType_{{ $typeKey }}"
+                                    value="{{ $typeKey }}"
+                                    wire:model.live="minerPauseTypes"
+                                    class="form-check-input">
+                                <label for="minerPauseType_{{ $typeKey }}" class="form-check-label small">
+                                    {{ $typeLabel }}
+                                </label>
+                            </div>
+                        @endforeach
+                    </div>
+                    <small class="text-muted">Выберите типы для фильтрации</small>
                 </div>
                 <div class="col-md-4 d-flex align-items-end justify-content-end">
                     <div class="text-muted small">
@@ -1437,9 +1575,9 @@
             $currentMiner = \App\Models\Miner::find($editMinerStatusId);
         @endphp
         <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
-            <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-dialog modal-dialog-centered {{ $showMinerWarning ? 'modal-lg' : '' }}">
                 <div class="modal-content">
-                    <div class="modal-header">
+                    <div class="modal-header bg-{{ $showMinerWarning ? 'danger' : '' }}">
                         <h5 class="modal-title">
                             <i class="fas fa-mountain me-2"></i>
                             Статус забоя: {{ $currentMiner?->name_miner }}
@@ -1447,61 +1585,161 @@
                         <button type="button" class="btn-close" wire:click="closeMinerStatusModal"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Текущий статус:</label>
-                            <span class="badge bg-{{ $currentMiner?->getStatusClass() }} fs-6">
-                                {{ $currentMiner?->getStatusLabel() }}
-                            </span>
-                            @if($currentMiner?->isDelayed())
-                                <small class="text-muted ms-2">
-                                    ({{ $currentMiner->getStatusDurationMinutes() }} мин)
-                                </small>
+                        @if($showMinerWarning)
+                            <!-- Предупреждение о перегрузке -->
+                            <div class="alert alert-danger mb-3">
+                                <h5 class="alert-heading">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    Внимание! Возможна перегрузка!
+                                </h5>
+                                <p class="mb-0">{{ $minerStatusWarning }}</p>
+                            </div>
+
+                            @if($minerSafetyCheck)
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="text-muted">Грузовиков на забое</h6>
+                                                <h3 class="mb-0">{{ $minerSafetyCheck['trucks_to_redirect'] ?? 0 }}</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="text-muted">Можно принять</h6>
+                                                <h3 class="mb-0 {{ ($minerSafetyCheck['total_capacity'] ?? 0) < ($minerSafetyCheck['trucks_to_redirect'] ?? 0) ? 'text-danger' : 'text-success' }}">
+                                                    {{ $minerSafetyCheck['total_capacity'] ?? 0 }}
+                                                </h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if(!empty($minerSafetyCheck['alternatives']))
+                                    <h6 class="fw-bold">Альтернативные забои:</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Забой</th>
+                                                    <th>Порода</th>
+                                                    <th class="text-center">Оптим.</th>
+                                                    <th class="text-center">Текущ.</th>
+                                                    <th class="text-center">Вместимость</th>
+                                                    <th class="text-center">Статус</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach($minerSafetyCheck['alternatives'] as $alt)
+                                                    <tr>
+                                                        <td>{{ $alt['name'] }}</td>
+                                                        <td>{{ $alt['rock'] ?? '—' }}</td>
+                                                        <td class="text-center">{{ $alt['recommended'] }}</td>
+                                                        <td class="text-center">{{ $alt['current'] }}</td>
+                                                        <td class="text-center">
+                                                            @if($alt['capacity'] > 0)
+                                                                <span class="badge bg-success">+{{ $alt['capacity'] }}</span>
+                                                            @elseif($alt['capacity'] == 0)
+                                                                <span class="badge bg-secondary">0</span>
+                                                            @else
+                                                                <span class="badge bg-danger">{{ $alt['capacity'] }}</span>
+                                                            @endif
+                                                        </td>
+                                                        <td class="text-center">
+                                                            @if($alt['balance'] === 'balanced')
+                                                                <span class="badge bg-success">Норма</span>
+                                                            @elseif($alt['balance'] === 'underloaded')
+                                                                <span class="badge bg-info">Недогружен</span>
+                                                            @else
+                                                                <span class="badge bg-warning text-dark">Перегружен</span>
+                                                            @endif
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                @endif
+
+                                @if(!empty($minerSafetyCheck['suggested_delay_minutes']))
+                                    <div class="alert alert-info py-2 small">
+                                        <i class="fas fa-clock me-1"></i>
+                                        Рекомендация: отложите работы на <strong>{{ $minerSafetyCheck['suggested_delay_minutes'] }} мин</strong>,
+                                        пока часть грузовиков завершит рейсы.
+                                    </div>
+                                @endif
                             @endif
-                        </div>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Новый статус:</label>
-                            <select class="form-select" wire:model.live="editMinerStatusNew">
-                                @foreach($this->miner_statuses as $status => $label)
-                                    <option value="{{ $status }}" {{ $editMinerStatusNew === $status ? 'selected' : '' }}>
-                                        {{ $label }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
+                            <div class="d-flex gap-2 justify-content-end mt-3">
+                                <button type="button" class="btn btn-secondary" wire:click="cancelMinerStatusChange">
+                                    <i class="fas fa-times me-1"></i> Отменить
+                                </button>
+                                <button type="button" class="btn btn-danger" wire:click="forceMinerStatus">
+                                    <i class="fas fa-exclamation-triangle me-1"></i> Всё равно остановить
+                                </button>
+                            </div>
+                        @else
+                            <!-- Обычная форма выбора статуса -->
+                            <div class="mb-3">
+                                <label class="form-label">Текущий статус:</label>
+                                <span class="badge bg-{{ $currentMiner?->getStatusClass() }} fs-6">
+                                    {{ $currentMiner?->getStatusLabel() }}
+                                </span>
+                                @if($currentMiner?->isDelayed())
+                                    <small class="text-muted ms-2">
+                                        ({{ $currentMiner->getStatusDurationMinutes() }} мин)
+                                    </small>
+                                @endif
+                            </div>
 
-                        @if($editMinerStatusNew === 'breakdown')
-                            <div class="alert alert-danger py-2 small">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                <strong>Поломка:</strong> Грузовики будут перенаправлены на другие забои.
-                                Маршруты деактивируются.
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Новый статус:</label>
+                                <select class="form-select" wire:model.live="editMinerStatusNew">
+                                    @foreach($this->miner_statuses as $status => $label)
+                                        <option value="{{ $status }}" {{ $editMinerStatusNew === $status ? 'selected' : '' }}>
+                                            {{ $label }}
+                                        </option>
+                                    @endforeach
+                                </select>
                             </div>
-                        @elseif(in_array($editMinerStatusNew, ['maintenance', 'dismantling', 'access_setup']))
-                            <div class="alert alert-warning py-2 small">
-                                <i class="fas fa-clock me-1"></i>
-                                <strong>Плановая остановка:</strong> Грузовики в пути доедут до забоя.
-                                Новые назначения приостанавливаются.
-                            </div>
-                        @elseif($editMinerStatusNew === 'active')
-                            <div class="alert alert-success py-2 small">
-                                <i class="fas fa-check me-1"></i>
-                                <strong>В работе:</strong> Забой готов к работе, маршруты активируются.
-                            </div>
+
+                            @if($editMinerStatusNew === 'breakdown')
+                                <div class="alert alert-danger py-2 small">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                    <strong>Поломка:</strong> Грузовики будут перенаправлены на другие забои.
+                                    Маршруты деактивируются.
+                                </div>
+                            @elseif(in_array($editMinerStatusNew, ['maintenance', 'dismantling', 'access_setup']))
+                                <div class="alert alert-warning py-2 small">
+                                    <i class="fas fa-clock me-1"></i>
+                                    <strong>Плановая остановка:</strong> Грузовики в пути доедут до забоя.
+                                    Новые назначения будут перенаправлены на другие забои.
+                                </div>
+                            @elseif($editMinerStatusNew === 'active')
+                                <div class="alert alert-success py-2 small">
+                                    <i class="fas fa-check me-1"></i>
+                                    <strong>В работу:</strong> Забой готов к работе, маршруты активируются.
+                                </div>
+                            @endif
                         @endif
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" wire:click="closeMinerStatusModal">
-                            Отмена
-                        </button>
-                        <button 
-                            type="button" 
-                            class="btn btn-{{ $editMinerStatusNew === 'active' ? 'success' : ($editMinerStatusNew === 'breakdown' ? 'danger' : 'warning') }}"
-                            wire:click="setMinerStatus"
-                            wire:loading.attr="disabled">
-                            <span wire:loading.remove><i class="fas fa-check"></i> Подтвердить</span>
-                            <span wire:loading><i class="fas fa-spinner fa-spin"></i> Сохранение...</span>
-                        </button>
-                    </div>
+                    @if(!$showMinerWarning)
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" wire:click="closeMinerStatusModal">
+                                Отмена
+                            </button>
+                            <button 
+                                type="button" 
+                                class="btn btn-{{ $editMinerStatusNew === 'active' ? 'success' : ($editMinerStatusNew === 'breakdown' ? 'danger' : 'warning') }}"
+                                wire:click="setMinerStatus"
+                                wire:loading.attr="disabled">
+                                <span wire:loading.remove><i class="fas fa-check"></i> Подтвердить</span>
+                                <span wire:loading><i class="fas fa-spinner fa-spin"></i> Сохранение...</span>
+                            </button>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>

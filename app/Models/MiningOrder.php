@@ -7,20 +7,26 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * MiningOrder - маршрут забой → отвал
- * 
+ *
  * Основные поля:
  * - miner_id: забой
  * - dump_id: отвал
  * - active: выбран ли маршрут алгоритмом (0=резерв, 1=активен)
  * - weight: пропорция распределения (по умолчанию 100)
+ * - weight_adjustment: временная корректировка веса при перегрузке зоны
  * - wrr_cursor: курсор для WRR алгоритма
  * - last_assigned_at: время последнего назначения (для распределения по времени)
- * 
+ *
+ * Метрики ожидания разгрузки:
+ * - avg_wait_time: среднее время ожидания разгрузки (секунды)
+ * - total_wait_time: суммарное время ожидания за период
+ * - metrics_updated_at: время последнего расчёта метрик
+ *
  * Дополнительные поля (могут быть null):
  * - rock_id: порода (кэшируется из miner.current_rock для истории)
  * - zone_id: конкретная зона (назначается диспетчером вручную)
  * - distance_km: расстояние (кэшируется для быстрого доступа)
- * 
+ *
  * НЕ хранится:
  * - score: рассчитывается на лету
  */
@@ -36,6 +42,10 @@ class MiningOrder extends Model
         'distance_km',
         'active',
         'weight',
+        'weight_adjustment',
+        'avg_wait_time',
+        'total_wait_time',
+        'metrics_updated_at',
         'wrr_cursor',
         'last_assigned_at',
     ];
@@ -44,13 +54,20 @@ class MiningOrder extends Model
         'distance_km' => 'decimal:2',
         'active' => 'boolean',
         'weight' => 'integer',
+        'weight_adjustment' => 'integer',
+        'avg_wait_time' => 'integer',
+        'total_wait_time' => 'integer',
         'wrr_cursor' => 'decimal:2',
         'last_assigned_at' => 'datetime',
+        'metrics_updated_at' => 'datetime',
     ];
 
     protected $attributes = [
         'active' => false,
         'weight' => 100,
+        'weight_adjustment' => 0,
+        'avg_wait_time' => 0,
+        'total_wait_time' => 0,
         'wrr_cursor' => 0,
     ];
 
@@ -191,5 +208,144 @@ class MiningOrder extends Model
             $q->where('delivery', true)
               ->whereRaw('volume < capacity');
         });
+    }
+
+    // ==========================================
+    // УПРАВЛЕНИЕ ВЕСОМ
+    // ==========================================
+
+    /**
+     * Получить эффективный вес (с учётом корректировки)
+     */
+    public function getEffectiveWeight(): int
+    {
+        return max(1, $this->weight + $this->weight_adjustment);
+    }
+
+    /**
+     * Уменьшить вес маршрута при перегрузке зоны
+     * Временная мера для снижения потока грузовиков
+     */
+    public function reduceWeight(int $reduction = 50): void
+    {
+        $this->update([
+            'weight_adjustment' => $this->weight_adjustment - $reduction,
+        ]);
+
+        \Illuminate\Support\Facades\Log::info("MiningOrder {$this->id} weight reduced", [
+            'weight' => $this->weight,
+            'adjustment' => $this->weight_adjustment,
+            'effective_weight' => $this->getEffectiveWeight(),
+        ]);
+    }
+
+    /**
+     * Восстановить вес маршрута при нормализации зоны
+     */
+    public function restoreWeight(): void
+    {
+        if ($this->weight_adjustment !== 0) {
+            $this->update([
+                'weight_adjustment' => 0,
+            ]);
+
+            \Illuminate\Support\Facades\Log::info("MiningOrder {$this->id} weight restored", [
+                'weight' => $this->weight,
+            ]);
+        }
+    }
+
+    /**
+     * Проверить, уменьшен ли вес маршрута
+     */
+    public function isWeightReduced(): bool
+    {
+        return $this->weight_adjustment < 0;
+    }
+
+    // ==========================================
+    // МЕТРИКИ ВРЕМЕНИ ОЖИДАНИЯ
+    // ==========================================
+
+    /**
+     * Обновить метрики времени ожидания разгрузки
+     * Вызывается при завершении рейса или по расписанию
+     */
+    public function updateWaitTimeMetrics(): void
+    {
+        // Берём последние N завершённых рейсов
+        $recentTrips = $this->trips()
+            ->whereNotNull('completed_at')
+            ->orderBy('completed_at', 'desc')
+            ->limit(50)
+            ->with('pauses')
+            ->get();
+
+        if ($recentTrips->isEmpty()) {
+            return;
+        }
+
+        // Суммируем время ожидания разгрузки из пауз
+        $totalWaitSeconds = 0;
+        $tripsWithWait = 0;
+
+        foreach ($recentTrips as $trip) {
+            $tripWaitTime = $trip->pauses
+                ->where('type', \App\Models\TripPause::TYPE_WAITING_UNLOADING)
+                ->sum('duration_seconds');
+
+            if ($tripWaitTime > 0) {
+                $totalWaitSeconds += $tripWaitTime;
+                $tripsWithWait++;
+            }
+        }
+
+        $avgWaitTime = $tripsWithWait > 0 
+            ? (int) ($totalWaitSeconds / $tripsWithWait) 
+            : 0;
+
+        $this->update([
+            'avg_wait_time' => $avgWaitTime,
+            'total_wait_time' => $totalWaitSeconds,
+            'metrics_updated_at' => now(),
+        ]);
+
+        \Illuminate\Support\Facades\Log::info("MiningOrder {$this->id} wait time metrics updated", [
+            'avg_wait_seconds' => $avgWaitTime,
+            'avg_wait_minutes' => round($avgWaitTime / 60, 1),
+            'total_wait_seconds' => $totalWaitSeconds,
+            'trips_count' => $tripsWithWait,
+        ]);
+    }
+
+    /**
+     * Среднее время ожидания в минутах
+     */
+    public function getAvgWaitMinutes(): float
+    {
+        return round($this->avg_wait_time / 60, 1);
+    }
+
+    /**
+     * Суммарное время ожидания в часах
+     */
+    public function getTotalWaitHours(): float
+    {
+        return round($this->total_wait_time / 3600, 1);
+    }
+
+    /**
+     * Форматированное среднее время ожидания
+     */
+    public function getFormattedAvgWaitTime(): string
+    {
+        $minutes = $this->avg_wait_time / 60;
+        $hours = floor($minutes / 60);
+        $mins = floor($minutes % 60);
+
+        if ($hours > 0) {
+            return sprintf('%d ч %d мин', $hours, $mins);
+        }
+        return sprintf('%d мин', $mins);
     }
 }
