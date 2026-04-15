@@ -63,6 +63,9 @@ class MainDispatcherPanel extends Component
     // Смена статуса забоя
     public ?int $editMinerStatusId = null;
     public ?string $editMinerStatusNew = null;
+    public bool $showMinerWarning = false;
+    public ?string $minerStatusWarning = null;
+    public ?array $minerSafetyCheck = null;
 
     // Фильтры простоев
     public string $pausePeriod = 'shift';
@@ -1357,6 +1360,15 @@ class MainDispatcherPanel extends Component
         if ($miner) {
             $this->editMinerStatusId = $minerId;
             $this->editMinerStatusNew = $miner->status;
+
+            // Проверяем перегрузку при остановке забоя
+            $minerStatusService = app(MinerStatusService::class);
+            $safetyCheck = $minerStatusService->canSafelyStop($miner);
+
+            // Показываем предупреждение только если планируем остановить активный забой
+            $this->showMinerWarning = $miner->status === Miner::STATUS_ACTIVE && !$safetyCheck['safe'];
+            $this->minerStatusWarning = $safetyCheck['warning'] ?? $safetyCheck['reason'] ?? null;
+            $this->minerSafetyCheck = $safetyCheck;
         }
     }
 
@@ -1367,6 +1379,9 @@ class MainDispatcherPanel extends Component
     {
         $this->editMinerStatusId = null;
         $this->editMinerStatusNew = null;
+        $this->showMinerWarning = false;
+        $this->minerStatusWarning = null;
+        $this->minerSafetyCheck = null;
     }
 
     /**
