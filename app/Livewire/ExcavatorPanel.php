@@ -17,8 +17,8 @@ use Livewire\Component;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 
-#[Layout('components.layouts.app')] 
-#[Title('Панель экскаватора')] 
+#[Layout('components.layouts.app')]
+#[Title('Панель экскаватора')]
 
 class ExcavatorPanel extends Component
 {
@@ -382,7 +382,7 @@ class ExcavatorPanel extends Component
             if ($actualRock && $zone) {
                 // Получаем породы зоны
                 $zoneRockIds = $zone->rocks()->pluck('rocks.id')->toArray();
-                
+
                 Log::info('Zone rock check', [
                     'zone_id' => $zone->id,
                     'zone_name' => $zone->name_zone,
@@ -400,10 +400,10 @@ class ExcavatorPanel extends Component
                     Log::info("Zone {$zone->id} doesn't have rock {$actualRock->id}, looking for new zone");
 
                     $routeService = app(\App\Services\RouteAssignmentService::class);
-                    
+
                     // Ищем новую зону на текущей перегрузке
                     $newZone = $routeService->selectZoneForRock($trip->dump_id, $actualRock->id);
-                    
+
                     Log::info('selectZoneForRock result (same dump)', [
                         'dump_id' => $trip->dump_id,
                         'rock_id' => $actualRock->id,
@@ -414,12 +414,12 @@ class ExcavatorPanel extends Component
                     // Если не нашли на текущей перегрузке - ищем на всех
                     if (!$newZone) {
                         Log::info('No zone on current dump, searching all dumps');
-                        
+
                         $allZonesForRock = \App\Models\Zone::where('delivery', true)
                             ->whereHas('rocks', fn($q) => $q->where('rocks.id', $actualRock->id))
                             ->whereRaw('volume < capacity')
                             ->get(['id', 'name_zone', 'dump_id', 'delivery', 'volume', 'capacity']);
-                        
+
                         Log::info('All available zones for this rock', [
                             'rock_id' => $actualRock->id,
                             'count' => $allZonesForRock->count(),
@@ -432,9 +432,9 @@ class ExcavatorPanel extends Component
                                 'capacity' => $z->capacity,
                             ])->toArray(),
                         ]);
-                        
+
                         $newZone = $allZonesForRock->first();
-                        
+
                         if ($newZone) {
                             // Меняем перегрузку в trip и mining_order
                             $trip->update([
@@ -535,7 +535,7 @@ class ExcavatorPanel extends Component
                     }
                 }
             }
-            
+
             // Меняем статус грузовика через сервис (отправит уведомление диспетчеру)
             $truck->update(['current_load' => $volume]);
             $statusService = app(TruckStatusService::class);
@@ -767,7 +767,8 @@ class ExcavatorPanel extends Component
             'message' => $data['message'] ?? 'Новый самосвал в пути к забою',
         ]);
     }
-        /**
+
+    /**
      * Слушаем событие начала погрузки от водителя через Echo
      * TruckStartedLoading отправляется на private-miner.{minerId} с broadcastAs '.loading.started'
      */
@@ -783,6 +784,36 @@ class ExcavatorPanel extends Component
         ]);
     }
 
+    /**
+     * Слушаем уведомления для экскаваторщика (новый грузовик назначен и т.д.)
+     */
+    #[On('echo-private:miner.{miner.id},.excavator.notification')]
+    public function onExcavatorNotification(array $data): void
+    {
+        Log::info('ExcavatorNotification received', $data);
+
+        // Обновляем данные
+        $this->loadMinerData();
+
+        // Показываем уведомление
+        $type = $data['type'] ?? 'info';
+        $message = $data['payload']['message'] ?? 'Новое уведомление';
+
+        $this->dispatch('notify', [
+            'type' => $type === 'truck_assigned' ? 'success' : 'info',
+            'message' => $message,
+        ]);
+    }
+
+    /**
+     * Обновление данных по запросу от JS (через Echo)
+     */
+    #[On('refresh-miner-data')]
+    public function refreshMinerData(): void
+    {
+        Log::info('refresh-miner-data triggered');
+        $this->loadMinerData();
+    }
 
     public function render()
     {

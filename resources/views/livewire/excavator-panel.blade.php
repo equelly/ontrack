@@ -1,522 +1,337 @@
 <div class="excavator-panel-wrapper">
-    <div class="container py-4">
-        <div class="row">
-            <!-- Выбор экскаватора -->
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-cog"></i> Выбор экскаватора</h5>
+    <style>
+        .bi-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .stat-value { font-size: 1.5rem; font-weight: bold; }
+        .stat-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+    </style>
+
+    <div class="container-fluid py-3 bg-gray-100">
+        <!-- Строка 1: Выбор экскаватора + Порода -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex flex-column gap-2">
+                    <!-- Экскаватор -->
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted text-nowrap">Экскаватор:</span>
+                        <select wire:model.live="selectedMinerId" class="form-select form-select-sm flex-grow-1" style="min-width: 120px; max-width: 200px;">
+                            <option value="">-- Выберите --</option>
+                            @foreach($miners as $m)
+                                <option value="{{ $m->id }}">{{ $m->name_miner }}</option>
+                            @endforeach
+                        </select>
+                        <button wire:click="selectMiner" wire:loading.attr="disabled" class="btn btn-primary btn-sm">
+                            <span wire:loading.remove>OK</span>
+                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                        </button>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-8">
-                                <select wire:model.live="selectedMinerId" class="form-control form-control-lg">
-                                    <option value="">-- Выберите экскаватор --</option>
-                                    @foreach($miners as $m)
-                                        <option value="{{ $m->id }}">{{ $m->name_miner }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-4 d-flex align-items-end">
-                                <button
-                                    wire:click="selectMiner"
-                                    wire:loading.attr="disabled"
-                                    class="btn btn-primary w-100">
-                                    <span wire:loading.remove>Выбрать</span>
-                                    <span wire:loading><i class="fas fa-spinner fa-spin"></i>...</span>
-                                </button>
-                            </div>
-                        </div>
 
-                        @if($miner)
-                            <div class="mt-3">
-                                <span class="text-muted">Текущий экскаватор:</span>
-                                <span class="badge bg-primary" style="font-size: 1rem;">{{ $miner->name_miner }}</span>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-
-            <!-- Установка породы -->
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-layer-group"></i> Порода в забое</h5>
-                    </div>
-                    <div class="card-body">
-                        @if($miner)
-                            <div class="mb-3">
-                                <span class="text-muted">Текущая порода:</span>
-                                @if($miner->currentRock)
-                                    <span class="badge bg-success" style="font-size: 1rem; padding: 0.5rem 1rem;">
-                                        {{ $miner->currentRock->name_rock }}
-                                    </span>
-                                @else
-                                    <span class="badge bg-warning text-dark" style="font-size: 1rem; padding: 0.5rem 1rem;">
-                                        Не выбрана
-                                    </span>
-                                @endif
-                            </div>
-
-                            <hr>
-
-                            @if($rocks->count() > 0)
-                                <div class="row">
-                                    <div class="col-md-8">
-                                        <select wire:model.live="selectedRockId" class="form-control">
-                                            <option value="">-- Выберите породу --</option>
-                                            @foreach($rocks as $rock)
-                                                <option value="{{ $rock->id }}" {{ $rock->id == $selectedRockId ? 'selected' : '' }}>
-                                                    {{ $rock->name_rock }}
-                                                </option>
-                                            @endforeach
-                                        </select>
-                                        <small class="text-muted">Выберите добываемую породу</small>
-                                    </div>
-                                    <div class="col-md-4 d-flex align-items-end">
-                                        <button
-                                            wire:click="setRock"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-success w-100">
-                                            <span wire:loading.remove>Установить</span>
-                                            <span wire:loading><i class="fas fa-spinner fa-spin"></i>...</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            @else
-                                <div class="alert alert-warning mb-0">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>
-                                    <strong>Нет пород в системе!</strong><br>
-                                    Обратитесь к администратору для добавления пород.
-                                </div>
-                            @endif
+                    @if($miner)
+                    <!-- Порода -->
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted text-nowrap">Порода:</span>
+                        @if($miner->currentRock)
+                            <span class="badge bg-success">{{ $miner->currentRock->name_rock }}</span>
                         @else
-                            <div class="text-center text-muted py-3">
-                                Сначала выберите экскаватор
-                            </div>
+                            <span class="badge bg-warning text-dark">Не выбрана</span>
                         @endif
+                        <select wire:model.live="selectedRockId" class="form-select form-select-sm" style="min-width: 100px; max-width: 150px;">
+                            <option value="">-- Сменить --</option>
+                            @foreach($rocks as $rock)
+                                <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                            @endforeach
+                        </select>
+                        <button wire:click="setRock" wire:loading.attr="disabled" class="btn btn-success btn-sm">
+                            <span wire:loading.remove>OK</span>
+                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                        </button>
                     </div>
+
+                    <!-- Норма погрузки -->
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted text-nowrap">Норма:</span>
+                        <input type="number" wire:model.live="targetLoadTime" class="form-control form-control-sm" style="width: 60px;" min="1" max="60">
+                        <span class="text-muted">мин</span>
+                        <button wire:click="setTargetLoadTime" wire:loading.attr="disabled" class="btn btn-outline-primary btn-sm">
+                            <span wire:loading.remove>OK</span>
+                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                        </button>
+                    </div>
+                    @endif
                 </div>
             </div>
         </div>
 
         @if($miner)
-        <!-- Управление статусом забоя -->
-        <div class="row">
-            <div class="col-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-cogs"></i> Статус забоя</h5>
+        <!-- Строка 2: Статус забоя + Кнопки -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <!-- Текущий статус -->
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="text-muted">Статус:</span>
+                    @php
+                        $statusColors = [
+                            'active' => '#198754',
+                            'breakdown' => '#dc3545',
+                            'maintenance' => '#ffc107',
+                            'dismantling' => '#6c757d',
+                            'access_setup' => '#6c757d',
+                        ];
+                        $statusTextColor = $miner->status === 'maintenance' ? '#212529' : 'white';
+                    @endphp
+                    <button disabled class="btn btn-sm" style="background-color: {{ $statusColors[$miner->status] ?? '#6c757d' }}; border-color: {{ $statusColors[$miner->status] ?? '#6c757d' }}; color: {{ $statusTextColor }}; opacity: 1; min-width: 120px;">
+                        {{ $miner->getStatusLabel() }}
+                    </button>
+                    @if($miner->isDelayed() && $miner->status_changed_at)
+                        <small class="text-muted">({{ $miner->getStatusDurationMinutes() }} мин)</small>
+                    @endif
+                </div>
+
+                <!-- Кнопки смены статуса -->
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    @if($miner->status !== 'active')
+                        <button wire:click="setStatus('active')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #198754; border-color: #198754; color: white; min-width: 130px;">
+                            В работе
+                        </button>
+                    @endif
+                    
+                    @if($miner->status !== 'breakdown')
+                        <button wire:click="setStatus('breakdown')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #dc3545; border-color: #dc3545; color: white; min-width: 130px;">
+                            Поломка
+                        </button>
+                    @endif
+                    
+                    @if($miner->status !== 'maintenance')
+                        <button wire:click="setStatus('maintenance')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #ffc107; border-color: #ffc107; color: #212529; min-width: 130px;">
+                            Обслуживание
+                        </button>
+                    @endif
+                    
+                    @if($miner->status !== 'dismantling')
+                        <button wire:click="setStatus('dismantling')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #6c757d; border-color: #6c757d; color: white; min-width: 130px;">
+                            Разбор забоя
+                        </button>
+                    @endif
+                    
+                    @if($miner->status !== 'access_setup')
+                        <button wire:click="setStatus('access_setup')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #6c757d; border-color: #6c757d; color: white; min-width: 130px;">
+                            Устр. подъезда
+                        </button>
+                    @endif
+                </div>
+            </div>
+        </div>
+
+        <!-- ГЛАВНОЕ: Самосвалы у забоя -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h5 class="mb-0 text-uppercase" style="letter-spacing: 1px;">
+                        Самосвалы в направлении забоя
+                    </h5>
+                    <button wire:click="loadMinerData" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-arrow-clockwise" wire:loading.class="bi-spin"></i>
+                    </button>
+                </div>
+
+                @if($trucks->count() > 0)
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 80px;">Номер</th>
+                                <th style="width: 180px;">Действия</th>
+                                <th style="width: 70px;">Груз.</th>
+                                <th>Перегрузка / Зона</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($trucks as $truck)
+                            @php
+                                $trip = $truck->trips->first();
+                            @endphp
+                            <tr class="{{ $truck->status === 'loading' ? 'table-warning' : '' }}">
+                                <td><strong>{{ $truck->number }}</strong></td>
+                                <td>
+                                    @if($truck->status === 'loading')
+                                        <div class="d-flex align-items-center gap-1">
+                                            <input type="number" wire:model="volumes.{{ $truck->id }}"
+                                                   class="form-control form-control-sm" style="width: 55px;" min="0" step="0.1">
+                                            <span class="text-muted small">т</span>
+                                            <button wire:click="completeLoading({{ $truck->id }})" wire:loading.attr="disabled"
+                                                    class="btn btn-success btn-sm">
+                                                <span wire:loading.remove>Загружен</span>
+                                                <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                                            </button>
+                                        </div>
+                                    @elseif($truck->status === 'to_miner')
+                                        <button wire:click="confirmArrival({{ $truck->id }})" wire:loading.attr="disabled"
+                                                class="btn btn-primary btn-sm w-100">
+                                            <span wire:loading.remove><i class="bi bi-truck"></i> Прибыл</span>
+                                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                                        </button>
+                                    @elseif($truck->status === 'waiting_loading')
+                                        <button wire:click="confirmArrival({{ $truck->id }})" wire:loading.attr="disabled"
+                                                class="btn btn-warning btn-sm w-100">
+                                            <span wire:loading.remove>Начать погрузку</span>
+                                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                                        </button>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                                <td><small>{{ $truck->load_capacity }} т</small></td>
+                                <td>
+                                    @if($trip)
+                                        <small>
+                                            {{ $trip->dump?->name_dump ?? $trip->miningOrder?->dump?->name_dump ?? '-' }}
+                                            @if($trip->zone)
+                                                / <span class="text-success fw-bold">{{ $trip->zone->name_zone }}</span>
+                                            @elseif($trip->miningOrder?->zone)
+                                                / <span class="text-success">{{ $trip->miningOrder->zone->name_zone }}</span>
+                                            @else
+                                                / <span class="text-warning">Не назначена</span>
+                                            @endif
+                                        </small>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                @else
+                <div class="alert alert-info py-3 text-center mb-0">
+                    <i class="bi bi-truck fs-3 d-block mb-2"></i>
+                    Нет самосвалов в направлении забоя
+                </div>
+                @endif
+            </div>
+        </div>
+
+        <!-- Показатели производительности (кратко) -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <div>
+                        <span class="stat-label">У забоя</span>
+                        <div class="stat-value text-primary">{{ $productivityStats['current_trucks'] ?? 0 }}</div>
                     </div>
-                    <div class="card-body">
-                        <div class="row align-items-center">
-                            <div class="col-md-4">
-                                <div class="d-flex align-items-center">
-                                    <span class="text-muted me-2">Текущий статус:</span>
-                                    <span class="badge bg-{{ $miner->getStatusClass() }}" style="font-size: 1rem; padding: 0.5rem 1rem;">
-                                        {{ $miner->getStatusLabel() }}
-                                    </span>
-                                </div>
-                                @if($miner->isDelayed() && $miner->status_changed_at)
-                                    <small class="text-muted">
-                                        <i class="fas fa-clock me-1"></i>
-                                        Время в статусе: {{ $miner->getStatusDurationMinutes() }} мин.
-                                    </small>
-                                @endif
-                            </div>
-                            <div class="col-md-8">
-                                <div class="d-flex flex-wrap gap-2 justify-content-md-end">
-                                    @if($miner->status !== 'active')
-                                        <button
-                                            wire:click="setStatus('active')"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-success">
-                                            <i class="fas fa-play me-1"></i> В работе
-                                        </button>
-                                    @endif
+                    <div>
+                        <span class="stat-label">Ожидают</span>
+                        <div class="stat-value text-warning">{{ $productivityStats['waiting_trucks'] ?? 0 }}</div>
+                    </div>
+                    <div>
+                        <span class="stat-label">На погрузке</span>
+                        <div class="stat-value text-success">{{ $productivityStats['loading_trucks'] ?? 0 }}</div>
+                    </div>
+                    <div class="vr"></div>
+                    <div>
+                        <span class="stat-label">Ср. погрузка</span>
+                        <div class="stat-value {{ ($productivityStats['avg_load_time'] ?? 999) > ($productivityStats['target_load_time'] ?? 999) ? 'text-danger' : 'text-success' }}">
+                            {{ $productivityStats['avg_load_time'] ?? '-' }}
+                            <small class="text-muted fw-normal">мин</small>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="stat-label">Ср. ожидание</span>
+                        <div class="stat-value text-secondary">
+                            {{ $productivityStats['avg_wait_time'] ?? '-' }}
+                            <small class="text-muted fw-normal">мин</small>
+                        </div>
+                    </div>
+                    @if($productivityStats['recommended_trucks'])
+                    <div class="vr"></div>
+                    <div>
+                        <span class="stat-label">Рекомендуется</span>
+                        <div class="stat-value text-info">{{ $productivityStats['recommended_trucks'] }}</div>
+                    </div>
+                    @php
+                        $balanceLabels = [
+                            'underloaded' => ['label' => 'Недогружен', 'class' => 'warning'],
+                            'balanced' => ['label' => 'Оптимально', 'class' => 'success'],
+                            'overloaded' => ['label' => 'Перегружен', 'class' => 'danger'],
+                        ];
+                        $balance = $productivityStats['balance'] ?? 'balanced';
+                        $balanceInfo = $balanceLabels[$balance] ?? $balanceLabels['balanced'];
+                    @endphp
+                    <span class="badge bg-{{ $balanceInfo['class'] }}">{{ $balanceInfo['label'] }}</span>
+                    @endif
+                </div>
+            </div>
+        </div>
 
-                                    @if($miner->status !== 'breakdown')
-                                        <button
-                                            wire:click="setStatus('breakdown')"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-danger">
-                                            <i class="fas fa-exclamation-triangle me-1"></i> Поломка
-                                        </button>
-                                    @endif
-
-                                    @if($miner->status !== 'maintenance')
-                                        <button
-                                            wire:click="setStatus('maintenance')"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-warning">
-                                            <i class="fas fa-wrench me-1"></i> Обслуживание
-                                        </button>
-                                    @endif
-
-                                    @if($miner->status !== 'dismantling')
-                                        <button
-                                            wire:click="setStatus('dismantling')"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-info">
-                                            <i class="fas fa-hammer me-1"></i> Разбор забоя
-                                        </button>
-                                    @endif
-
-                                    @if($miner->status !== 'access_setup')
-                                        <button
-                                            wire:click="setStatus('access_setup')"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-secondary">
-                                            <i class="fas fa-road me-1"></i> Устр. подъезда
-                                        </button>
-                                    @endif
+        <!-- Статистика за смену (скрыта по умолчанию) -->
+        <div class="row">
+            <div class="col-12">
+                <div class="accordion" id="statsAccordion">
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2 px-3" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#statsCollapse">
+                                <i class="bi bi-bar-chart me-2"></i>
+                                Статистика за смену ({{ $stats['shift_name'] ?? '-' }})
+                            </button>
+                        </h2>
+                        <div id="statsCollapse" class="accordion-collapse collapse" data-bs-parent="#statsAccordion">
+                            <div class="accordion-body py-2">
+                                <div class="d-flex flex-wrap" style="gap: 0.5rem 2rem;">
+                                    <div>
+                                        <span class="text-muted">Рейсов:</span>
+                                        <strong class="ms-1">{{ $stats['trips_count'] ?? 0 }}</strong>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted">Добыто:</span>
+                                        <strong class="ms-1">{{ number_format($stats['total_volume'] ?? 0, 1) }} т</strong>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted">Ср. время погрузки:</span>
+                                        <strong class="ms-1">{{ $stats['avg_loading_time'] ?? '-' }} мин</strong>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted">Начало смены:</span>
+                                        <span class="ms-1">{{ $stats['shift_start'] ?? '-' }}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
-                        @if($miner->isBreakdown())
-                            <div class="alert alert-danger mt-3 mb-0">
-                                <i class="fas fa-exclamation-circle me-2"></i>
-                                <strong>Внимание!</strong> Грузовики будут перенаправлены на другие забои.
-                            </div>
-                        @elseif($miner->isPlannedDelay())
-                            <div class="alert alert-warning mt-3 mb-0">
-                                <i class="fas fa-info-circle me-2"></i>
-                                Грузовики в пути доедут до забоя, новые назначаться не будут.
-                            </div>
-                        @endif
                     </div>
                 </div>
             </div>
+        </div>
+
+        @if($miner->isBreakdown())
+        <div class="alert alert-danger mt-3 mb-0 py-2">
+            <i class="bi bi-exclamation-circle me-2"></i>
+            <strong>Внимание!</strong> Грузовики будут перенаправлены на другие забои.
+        </div>
+        @elseif($miner->isPlannedDelay())
+        <div class="alert alert-warning mt-3 mb-0 py-2">
+            <i class="bi bi-info-circle me-2"></i>
+            Грузовики в пути доедут до забоя, новые назначаться не будут.
         </div>
         @endif
 
-        @if($miner)
-        <div class="row">
-            <!-- Статистика за смену -->
-            <div class="col-12 mb-4">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between">
-                        <h5 class="mb-0"><i class="fas fa-chart-line"></i> Статистика за смену</h5>
-                        <span class="badge bg-info">{{ $stats['shift_name'] ?? '' }} (с {{ $stats['shift_start'] ?? '' }})</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-md-4">
-                                <div style="font-size: 2rem; font-weight: bold; color: #007bff;">
-                                    {{ $stats['trips_count'] ?? 0 }}
-                                </div>
-                                <div class="text-muted">Рейсов за смену</div>
-                            </div>
-                            <div class="col-md-4">
-                                <div style="font-size: 2rem; font-weight: bold; color: #28a745;">
-                                    {{ $stats['total_volume'] ?? 0 }}
-                                </div>
-                                <div class="text-muted">Тонн добыто</div>
-                            </div>
-                            <div class="col-md-4">
-                                <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">
-                                    {{ $stats['avg_loading_time'] ?? 0 }}
-                                </div>
-                                <div class="text-muted">Мин. среднее время погрузки</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Производительность экскаватора -->
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-tachometer-alt"></i> Производительность</h5>
-                    </div>
-                    <div class="card-body">
-                        <!-- Установка целевого времени погрузки -->
-                        <div class="row align-items-end mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label text-muted">Целевое время погрузки (мин)</label>
-                                <input
-                                    type="number"
-                                    wire:model.live="targetLoadTime"
-                                    class="form-control form-control-lg"
-                                    min="1" max="60"
-                                    placeholder="Например: 5">
-                                <small class="text-muted">Установите норму погрузки самосвала</small>
-                            </div>
-                            <div class="col-md-6">
-                                <button
-                                    wire:click="setTargetLoadTime"
-                                    wire:loading.attr="disabled"
-                                    class="btn btn-primary w-100">
-                                    <span wire:loading.remove><i class="fas fa-save"></i> Сохранить</span>
-                                    <span wire:loading><i class="fas fa-spinner fa-spin"></i>...</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Фактические показатели -->
-                        <hr>
-                        <div class="row text-center">
-                            <div class="col-6">
-                                <div style="font-size: 1.5rem; font-weight: bold; color: #17a2b8;">
-                                    {{ $productivityStats['avg_load_time'] ?? '-' }}
-                                </div>
-                                <div class="text-muted small">Среднее время погрузки (мин)</div>
-                            </div>
-                            <div class="col-6">
-                                <div style="font-size: 1.5rem; font-weight: bold; color: #fd7e14;">
-                                    {{ $productivityStats['avg_wait_time'] ?? '-' }}
-                                </div>
-                                <div class="text-muted small">Среднее ожидание (мин)</div>
-                            </div>
-                        </div>
-
-                        @if($productivityStats['avg_load_time'] && $productivityStats['target_load_time'])
-                            @php
-                                $diff = $productivityStats['avg_load_time'] - $productivityStats['target_load_time'];
-                                $percent = round(($productivityStats['avg_load_time'] / $productivityStats['target_load_time']) * 100);
-                            @endphp
-                            <div class="mt-3">
-                                @if($diff <= 0)
-                                    <div class="alert alert-success mb-0 py-2">
-                                        <i class="fas fa-check-circle"></i>
-                                        В норме! ({{ $percent }}% от целевого)
-                                    </div>
-                                @else
-                                    <div class="alert alert-warning mb-0 py-2">
-                                        <i class="fas fa-exclamation-triangle"></i>
-                                        Превышение на {{ $diff }} мин ({{ $percent }}% от целевого)
-                                    </div>
-                                @endif
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-
-            <!-- Рекомендации по самосвалам -->
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-truck"></i> Самосвалы у забоя</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center mb-3">
-                            <div class="col-4">
-                                <div style="font-size: 2rem; font-weight: bold; color: #007bff;">
-                                    {{ $productivityStats['current_trucks'] ?? 0 }}
-                                </div>
-                                <div class="text-muted small">Всего</div>
-                            </div>
-                            <div class="col-4">
-                                <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">
-                                    {{ $productivityStats['waiting_trucks'] ?? 0 }}
-                                </div>
-                                <div class="text-muted small">Ожидают</div>
-                            </div>
-                            <div class="col-4">
-                                <div style="font-size: 2rem; font-weight: bold; color: #28a745;">
-                                    {{ $productivityStats['loading_trucks'] ?? 0 }}
-                                </div>
-                                <div class="text-muted small">На погрузке</div>
-                            </div>
-                        </div>
-
-                        @if($productivityStats['recommended_trucks'])
-                            <hr>
-                            <div class="row align-items-center">
-                                <div class="col-6">
-                                    <span class="text-muted">Рекомендуется:</span>
-                                    <strong style="font-size: 1.5rem;">{{ $productivityStats['recommended_trucks'] }}</strong>
-                                    <span class="text-muted">самосвалов</span>
-                                </div>
-                                <div class="col-6">
-                                    @php
-                                        $balance = $productivityStats['balance'] ?? 'balanced';
-                                        $balanceLabels = [
-                                            'underloaded' => ['label' => 'Недогружен', 'class' => 'warning'],
-                                            'balanced' => ['label' => 'Оптимально', 'class' => 'success'],
-                                            'overloaded' => ['label' => 'Перегружен', 'class' => 'danger'],
-                                        ];
-                                        $balanceInfo = $balanceLabels[$balance] ?? $balanceLabels['balanced'];
-                                    @endphp
-                                    <span class="badge bg-{{ $balanceInfo['class'] }} fs-6 px-3 py-2">
-                                        {{ $balanceInfo['label'] }}
-                                    </span>
-                                </div>
-                            </div>
-
-                            @if($productivityStats['avg_trip_time'])
-                                <small class="text-muted d-block mt-2">
-                                    <i class="fas fa-info-circle"></i>
-                                    Среднее время рейса: {{ $productivityStats['avg_trip_time'] }} мин
-                                </small>
-                            @endif
-                        @else
-                            <div class="text-center text-muted py-2">
-                                <small>Установите целевое время погрузки для расчёта рекомендаций</small>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-
-            <!-- Самосвалы у забоя -->
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="fas fa-truck"></i> Самосвалы в направлении забоя</h5>
-                        <button
-                            wire:click="loadMinerData"
-                            class="btn btn-sm btn-outline-primary"
-                            title="Обновить">
-                            <i class="fas fa-sync-alt" wire:loading.class="fa-spin"></i>
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        @if($trucks->count() > 0)
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Номер</th>
-                                            <th>Статус</th>
-                                            <th>Грузоподъёмность</th>
-                                            <th>Дамп / Порода</th>
-                                            <th>Зона</th>
-                                            <th>Действия</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                       @foreach($trucks as $truck)
-                                        @php
-                                            $trip = $truck->trips->first();
-                                            $statusLabels = [
-                                                'to_miner' => ['label' => 'Едет к забою', 'class' => 'bg-info'],
-                                                'loading' => ['label' => 'На погрузке', 'class' => 'bg-warning'],
-                                                'waiting_loading' => ['label' => 'Ожидает', 'class' => 'bg-secondary']
-                                            ];
-                                            $status = $statusLabels[$truck->status] ?? ['label' => $truck->status, 'class' => 'bg-secondary'];
-                                        @endphp
-                                        <tr>
-                                            <td><strong>{{ $truck->number }}</strong></td>
-                                            <td>
-                                                <span class="badge {{ $status['class'] }}" style="min-width: 100px;">
-                                                    {{ $status['label'] }}
-                                                </span>
-                                            </td>
-                                            <td>{{ $truck->load_capacity }} т</td>
-                                            <td>
-                                                {{ $trip?->miningOrder?->dump?->name_dump ?? '-' }}
-                                                @if($trip?->miningOrder?->rock)
-                                                    <span class="badge bg-info ms-1">{{ $trip->miningOrder->rock->name_rock }}</span>
-                                                @endif
-                                            </td>
-                                            <td>{{ $trip?->miningOrder?->zone?->name_zone ?? '-' }}</td>
-                                            <td>
-                                                @if($truck->status === 'loading')
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <input
-                                                            type="number"
-                                                            wire:model="volumes.{{ $truck->id }}"
-                                                            class="form-control form-control-sm"
-                                                            min="0" step="0.1"
-                                                            style="width: 80px;">
-                                                        <span>т</span>
-                                                        <button
-                                                            wire:click="completeLoading({{ $truck->id }})"
-                                                            wire:loading.attr="disabled"
-                                                            class="btn btn-sm btn-success">
-                                                            <span wire:loading.remove><i class="fas fa-check"></i> Загружен</span>
-                                                            <span wire:loading><i class="fas fa-spinner fa-spin"></i></span>
-                                                        </button>
-                                                    </div>
-                                                @elseif($truck->status === 'to_miner')
-                                                    <button
-                                                        wire:click="confirmArrival({{ $truck->id }})"
-                                                        wire:loading.attr="disabled"
-                                                        class="btn btn-sm btn-primary">
-                                                        <span wire:loading.remove><i class="fas fa-truck-loading"></i> Прибыл</span>
-                                                        <span wire:loading><i class="fas fa-spinner fa-spin"></i></span>
-                                                    </button>
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        @else
-                            <div class="text-center text-muted py-5">
-                                <i class="fas fa-truck" style="font-size: 3rem;"></i>
-                                <p class="mt-3">Нет самосвалов в направлении забоя</p>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
+        @else
+        <div class="alert alert-info text-center py-4">
+            Выберите экскаватор для начала работы
         </div>
         @endif
     </div>
 
     <script>
-        // Устанавливаем ID экскаватора для Echo
         @if($miner)
         window.currentMinerId = {{ $miner->id }};
         @endif
 
-        // Функция подключения к каналу
-        let currentChannel = null;
-
-        function subscribeToMinerChannel(minerId) {
-            if (!window.Echo) {
-                console.warn('Echo not initialized');
-                return;
-            }
-
-            // Отписываемся от старого канала
-            if (currentChannel) {
-                console.log('Leaving old channel');
-                window.Echo.leave(currentChannel);
-            }
-
-            console.log('🚜 Подключение к каналу miner.' + minerId);
-            currentChannel = 'private-miner.' + minerId;
-
-            window.Echo.private('miner.' + minerId)
-                .listen('.loading.started', (e) => {
-                    console.log('🚛 Событие loading.started:', e);
-
-                    // Показываем уведомление
-                    const container = document.getElementById('global-toast-container');
-                    const toast = document.createElement('div');
-                    toast.className = 'alert alert-info alert-dismissible fade show';
-                    toast.innerHTML = `
-                        <strong>🚛 ${e.message || 'Самосвал прибыл на погрузку'}</strong>
-                        <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
-                    `;
-                    container.appendChild(toast);
-
-                    // Обновляем Livewire компонент
-                    const component = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
-                    if (component) {
-                        component.call('loadMinerData');
-                    }
-
-                    setTimeout(() => {
-                        toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 300);
-                    }, 10000);
-                });
-        }
-
-        // Слушаем события Livewire
         document.addEventListener('DOMContentLoaded', () => {
-            // Уведомления
             if (typeof Livewire !== 'undefined') {
                 Livewire.on('notify', (data) => {
                     const event = Array.isArray(data) ? data[0] : data;
@@ -543,7 +358,6 @@
                     }, 10000);
                 });
 
-                // Установка cookie
                 Livewire.on('set-cookie', (data) => {
                     const event = Array.isArray(data) ? data[0] : data;
                     if (!event || !event.name) return;
@@ -552,20 +366,52 @@
                     date.setTime(date.getTime() + (event.days * 24 * 60 * 60 * 1000));
                     document.cookie = `${event.name}=${event.value};expires=${date.toUTCString()};path=/`;
                 });
+            }
+        });
 
-                // Переподключение к каналу при выборе экскаватора
-                Livewire.on('miner-selected', (data) => {
-                    const event = Array.isArray(data) ? data[0] : data;
-                    if (!event || !event.miner_id) return;
-                    console.log('📍 Miner selected event, subscribing to channel', event.miner_id);
-                    subscribeToMinerChannel(event.miner_id);
-                });
+        // =========================================
+        // Echo подписка на канал экскаватора
+        // =========================================
+        let currentMinerChannel = null;
+
+        function subscribeToMinerChannel(minerId) {
+            if (!minerId || !window.Echo) return;
+
+            // Отписываемся от старого канала
+            if (currentMinerChannel) {
+                window.Echo.leave(`private-miner.${currentMinerChannel}`);
+                currentMinerChannel = null;
             }
 
-            // Начальное подключение к каналу
-            @if($miner)
+            console.log('🚜 Подписка на канал miner.' + minerId);
+            currentMinerChannel = minerId;
+
+            window.Echo.private(`miner.${minerId}`)
+                .listen('.excavator.notification', (data) => {
+                    console.log('📢 excavator.notification:', data);
+                    Livewire.dispatch('refresh-miner-data');
+                })
+                .listen('.loading.started', (data) => {
+                    console.log('🚛 loading.started:', data);
+                    Livewire.dispatch('refresh-miner-data');
+                });
+        }
+
+        // Подписываемся при загрузке
+        @if($miner)
+        document.addEventListener('DOMContentLoaded', () => {
             subscribeToMinerChannel({{ $miner->id }});
-            @endif
+        });
+        @endif
+
+        // Переподписываемся при выборе нового экскаватора
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('miner-selected', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (event && event.miner_id) {
+                    subscribeToMinerChannel(event.miner_id);
+                }
+            });
         });
     </script>
 </div>

@@ -12,6 +12,12 @@ use App\Services\RouteAssignmentService;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
+
+
+#[Layout('components.layouts.app')]
+#[Title('Панель водителя')]
 
 class DriverPanel extends Component
 {
