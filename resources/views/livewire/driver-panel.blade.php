@@ -1,330 +1,309 @@
 <div class="driver-panel-wrapper">
     <style>
-        .bi-spin {
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
+        .bi-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .route-arrow { font-size: 1.5rem; color: #6c757d; }
+        .route-point { text-align: center; padding: 0.75rem; }
+        .route-point-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+        .route-point-value { font-size: 1.1rem; font-weight: 600; }
+        .timer-display { font-family: 'Courier New', monospace; font-size: 1.25rem; font-weight: bold; }
+        .action-row { display: flex; gap: 0.5rem; }
+        .action-row .btn { flex: 1; }
     </style>
 
-    <div class="container py-4">
-        <!-- Заголовок -->
+    <div class="container-fluid py-3 bg-gray-100">
+        <!-- Выбор грузовика -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <select wire:model.live="selectedTruckId" class="form-select" style="max-width: 300px;">
+                        <option value="">-- Выберите грузовик --</option>
+                        @foreach($trucks as $t)
+                            <option value="{{ $t['id'] }}" {{ $t['id'] == $selectedTruckId ? 'selected' : '' }}>
+                                {{ $t['number'] }}
+                                @if($t['is_mine'] && $t['is_breakdown'])
+                                    (на ремонте)
+                                @elseif(!$t['is_free'] && !$t['is_mine'])
+                                    ({{ $t['driver_name'] ?? 'занят' }})
+                                @endif
+                            </option>
+                        @endforeach
+                    </select>
+                    <button wire:click="selectTruck" wire:loading.attr="disabled" class="btn btn-primary">
+                        <span wire:loading.remove>Выбрать</span>
+                        <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @if($truck)
+        <!-- Заголовок: Грузовик | Водитель -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex align-items-center flex-wrap" style="gap: 0.5rem 2rem;">
+                    <div>
+                        <span class="text-muted">Грузовик:</span>
+                        <strong class="ms-1">{{ $truck->number }}</strong>
+                        @if($truck->brand)
+                            <span class="text-muted ms-1">({{ $truck->brand }})</span>
+                        @endif
+                    </div>
+                    <div>
+                        <span class="text-muted">Водитель:</span>
+                        <strong class="ms-1">{{ auth()->user()->name }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- МАРШРУТ + Статус -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex align-items-center" style="gap: 1rem;">
+                    <h5 class="mb-0 text-uppercase" style="letter-spacing: 1px;">Маршрут</h5>
+                    <span class="badge bg-{{ $statusColor }} fs-6">{{ $statusLabel }}</span>
+                </div>
+            </div>
+        </div>
+
+        @if($currentTrip)
+        <!-- Информация о маршруте -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex align-items-center justify-content-start flex-wrap" style="gap: 0.5rem;">
+                    <!-- Забой -->
+                    <div class="route-point">
+                        <div class="route-point-label">Забой</div>
+                        <div class="route-point-value">{{ $currentTrip->miner->name_miner ?? '-' }}</div>
+                    </div>
+
+                    <i class="bi bi-arrow-right route-arrow"></i>
+
+                    <!-- Перегрузка -->
+                    <div class="route-point">
+                        <div class="route-point-label">Перегрузка</div>
+                        <div class="route-point-value">{{ $currentTrip->dump->name_dump ?? '-' }}</div>
+                    </div>
+
+                    <i class="bi bi-arrow-right route-arrow"></i>
+
+                    <!-- Зона -->
+                    <div class="route-point">
+                        <div class="route-point-label">Зона</div>
+                        @if($currentTrip->zone)
+                            <div class="route-point-value text-success">{{ $currentTrip->zone->name_zone }}</div>
+                        @else
+                            <div class="route-point-value text-warning">Не назначена</div>
+                        @endif
+                    </div>
+
+                    <i class="bi bi-arrow-right route-arrow"></i>
+
+                    <!-- Порода -->
+                    <div class="route-point">
+                        <div class="route-point-label">Порода</div>
+                        @php
+                            $isLoaded = in_array($truck->status, ['transporting', 'unloading', 'waiting_unloading']);
+                            $rock = $isLoaded && $currentTrip->rock_id ? $currentTrip->rock : $currentTrip->miningOrder?->rock;
+                        @endphp
+                        <div class="route-point-value">{{ $rock?->name_rock ?? '-' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Показатели: Расстояние | Время | Скорость -->
         <div class="row mb-4">
             <div class="col-12">
-                <h3 class="mb-1">🚛 Панель водителя</h3>
-                <p class="text-muted mb-0">
-                    <strong>{{ $truck->driver->name ?? 'Водитель' }}</strong> |
-                    <strong>{{ $truck->number ?? '#' . $truck->id }}</strong>
-                    @if($truck->brand)
-                        <span class="badge bg-secondary ms-1">{{ $truck->brand }}</span>
+                <div class="d-flex align-items-center flex-wrap" style="gap: 0.5rem 2rem;">
+                    <div>
+                        <span class="text-muted">Расстояние:</span>
+                        <strong class="ms-1">{{ $currentTrip->miningOrder->distance_km ?? '-' }} км</strong>
+                    </div>
+                    <div>
+                        <span class="text-muted">Время в пути:</span>
+                        <strong class="ms-1 timer-display" id="trip-time"
+                               data-started="{{ $tripStartedAt ?? '' }}"
+                               data-pause-started="{{ $pauseStartedAt ?? '' }}"
+                               data-pause-type="{{ $pauseType ?? '' }}"
+                               data-total-pause="{{ $totalPauseSeconds }}"
+                               data-truck-status="{{ $truck->status }}">-</strong>
+                    </div>
+                    <div>
+                        <span class="text-muted">Объём:</span>
+                        <strong class="ms-1">{{ $currentTrip->load_volume ?? $truck->load_capacity ?? '-' }} т</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @else
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-info py-2 mb-0">
+                    Нет активного маршрута
+                </div>
+            </div>
+        </div>
+        @endif
+
+        <!-- Управление статусами -->
+        <div class="row mb-4" data-truck-status="{{ $truck->status }}">
+            <div class="col-12">
+                @php $status = $truck->status; @endphp
+
+                {{-- Свободен --}}
+                @if($status === 'free')
+                    @if(!$currentTrip)
+                        <button wire:click="assignRoute" wire:loading.attr="disabled" class="btn btn-success btn-lg w-100 mb-2">
+                            <span wire:loading.remove>Получить маршрут</span>
+                            <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
+                        </button>
                     @endif
-                    <span class="ms-3">⛽ {{ $truck->fuel_level }}%</span>
-                </p>
+                @endif
+
+                {{-- Рейс завершён --}}
+                @if($status === 'completed')
+                    <div class="alert alert-success py-2 mb-2">
+                        Рейс завершён. Запросите новый маршрут или уйдите в отстой.
+                    </div>
+                    <button wire:click="assignRoute" class="btn btn-primary btn-lg w-100 mb-2">
+                        Запросить маршрут
+                    </button>
+                    <button wire:click="goToStandby" class="btn btn-outline-secondary w-100">
+                        Уйти в отстой
+                    </button>
+                @endif
+
+                {{-- В пути к забою --}}
+                @if($status === 'to_miner')
+                    <button wire:click="startLoading" class="btn btn-warning btn-lg w-100 mb-2">
+                        Прибыл на погрузку
+                    </button>
+                    <div class="action-row">
+                        <button wire:click="openDelayModal" class="btn btn-outline-secondary">
+                            <i class="bi bi-clock"></i> Задержка
+                        </button>
+                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger">
+                            <i class="bi bi-exclamation-triangle"></i> Поломка
+                        </button>
+                    </div>
+                @endif
+
+                {{-- На погрузке --}}
+                @if($status === 'loading')
+                    <div class="alert alert-warning py-3 text-center mb-2">
+                        <strong>Ожидание завершения погрузки...</strong>
+                    </div>
+                    <div class="action-row">
+                        <button wire:click="openDelayModal" class="btn btn-outline-secondary">
+                            <i class="bi bi-clock"></i> Задержка
+                        </button>
+                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger">
+                            <i class="bi bi-exclamation-triangle"></i> Поломка
+                        </button>
+                    </div>
+                @endif
+
+                {{-- Ожидание назначения зоны --}}
+                @if($status === 'waiting_unloading')
+                    <div class="alert alert-warning py-3 text-center mb-2">
+                        <strong>Ожидание назначения зоны разгрузки</strong>
+                    </div>
+                    <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger w-100">
+                        <i class="bi bi-exclamation-triangle"></i> Поломка
+                    </button>
+                @endif
+
+                {{-- Везём груз --}}
+                @if($status === 'transporting')
+                    <button wire:click="startUnloading" class="btn btn-info btn-lg w-100 mb-2">
+                        Прибыл на выгрузку
+                    </button>
+                    <div class="action-row">
+                        <button wire:click="openDelayModal" class="btn btn-outline-secondary">
+                            <i class="bi bi-clock"></i> Задержка
+                        </button>
+                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger">
+                            <i class="bi bi-exclamation-triangle"></i> Поломка
+                        </button>
+                    </div>
+                @endif
+
+                {{-- Разгрузка --}}
+                @if($status === 'unloading')
+                    <button wire:click="completeTrip" class="btn btn-success btn-lg w-100 mb-2">
+                        Завершить рейс
+                    </button>
+                    <button wire:click="openZoneModal" class="btn btn-outline-primary w-100">
+                        Сменить зону
+                    </button>
+                @endif
+
+                {{-- Задержка --}}
+                @if($status === 'delayed')
+                    <div class="alert alert-warning py-2 mb-2">
+                        Маршрут приостановлен: {{ \App\Models\TripPause::typeLabel($pauseType ?? 'other') }}
+                    </div>
+                    <button wire:click="resumeFromDelay" class="btn btn-success btn-lg w-100 mb-2">
+                        Задержка окончена
+                    </button>
+                    <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger w-100">
+                        <i class="bi bi-exclamation-triangle"></i> Поломка
+                    </button>
+                @endif
+
+                {{-- Поломка --}}
+                @if($status === 'breakdown')
+                    <div class="alert alert-danger py-2 mb-2">
+                        Поломка. После ремонта выберите действие.
+                    </div>
+                    @if($currentTrip)
+                        <button wire:click="resolveBreakdownContinue" class="btn btn-success btn-lg w-100 mb-2">
+                            Продолжить рейс
+                        </button>
+                        <button wire:click="resolveBreakdownCancel" wire:confirm="Отменить рейс?" class="btn btn-outline-danger w-100">
+                            Отменить рейс
+                        </button>
+                    @else
+                        <button wire:click="resolveBreakdownContinue" class="btn btn-success btn-lg w-100">
+                            Поломка устранена
+                        </button>
+                    @endif
+                @endif
             </div>
         </div>
 
+        <!-- Статистика (скрыта по умолчанию) -->
         <div class="row">
-            <!-- Текущий маршрут + Управление -->
-            <div class="col-lg-8 mb-4">
-                <div class="card">
-                    <!-- Заголовок со статусом -->
-                    <div class="card-header bg-{{ $statusColor }} text-white d-flex justify-content-between align-items-center"
-                         data-truck-status="{{ $truck->status }}">
-                        <h5 class="mb-0">📍 Текущий маршрут</h5>
-                        <span class="badge bg-white text-dark fs-6">{{ $statusLabel }}</span>
-                    </div>
-
-                    <div class="card-body">
-                        @if($currentTrip)
-                            <!-- Информация о маршруте -->
-                            <div class="row mb-3">
-                                <div class="col-md-3">
-                                    <div class="border rounded p-2">
-                                        <small class="text-muted d-block">Откуда (Забой)</small>
-                                        <strong>{{ $currentTrip->miner->name_miner ?? 'Забой #' . $currentTrip->miner_id }}</strong>
+            <div class="col-12">
+                <div class="accordion" id="statsAccordion">
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#statsCollapse">
+                                <i class="bi bi-bar-chart me-2"></i>
+                                Статистика за смену ({{ $stats['shift_name'] ?? '-' }})
+                            </button>
+                        </h2>
+                        <div id="statsCollapse" class="accordion-collapse collapse" data-bs-parent="#statsAccordion">
+                            <div class="accordion-body py-2">
+                                <div class="d-flex flex-wrap" style="gap: 0.5rem 2rem;">
+                                    <div>
+                                        <span class="text-muted">Рейсов:</span>
+                                        <strong class="ms-1">{{ $stats['today_trips'] ?? 0 }}</strong>
                                     </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="border rounded p-2">
-                                        <small class="text-muted d-block">Куда (Дамп)</small>
-                                        <strong>{{ $currentTrip->dump->name_dump ?? 'Дамп #' . $currentTrip->dump_id }}</strong>
+                                    <div>
+                                        <span class="text-muted">Объём:</span>
+                                        <strong class="ms-1">{{ number_format($stats['today_volume'] ?? 0, 1) }} т</strong>
                                     </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="border rounded p-2 @if($currentTrip->zone) border-success @endif">
-                                        <small class="text-muted d-block">Зона разгрузки</small>
-                                        @if($currentTrip->zone)
-                                            <strong class="text-success">{{ $currentTrip->zone->name_zone }}</strong>
-                                        @else
-                                            <span class="text-warning">Не назначена</span>
-                                        @endif
+                                    <div>
+                                        <span class="text-muted">Ср. скорость:</span>
+                                        <strong class="ms-1">{{ $stats['avg_speed'] ?? '-' }} @if($stats['avg_speed']) км/ч @endif</strong>
                                     </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="border rounded p-2 border-info">
-                                        <small class="text-muted d-block">Порода</small>
-                                        @php
-                                            $isLoaded = in_array($truck->status, ['transporting', 'unloading']);
-                                            if ($isLoaded && $currentTrip->rock_id) {
-                                                $rock = $currentTrip->rock;
-                                            } else {
-                                                $rock = $currentTrip->miningOrder?->rock;
-                                            }
-                                        @endphp
-                                        @if($rock)
-                                            <strong class="text-info">{{ $rock->name_rock }}</strong>
-                                            @if($isLoaded)
-                                                <small class="text-success d-block">✓ Загружена</small>
-                                            @else
-                                                <small class="text-muted d-block">По маршруту</small>
-                                            @endif
-                                        @endif
+                                    <div>
+                                        <span class="text-muted">Всего рейсов:</span>
+                                        <span class="ms-1">{{ $stats['total_trips'] ?? 0 }}</span>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div class="row mb-4">
-                                <div class="col-3">
-                                    <small class="text-muted">Расстояние</small>
-                                    <p class="mb-0 fw-bold">{{ $currentTrip->miningOrder->distance_km ?? '-' }} км</p>
-                                </div>
-                                <div class="col-3">
-                                    <small class="text-muted">Объём</small>
-                                    <p class="mb-0 fw-bold">{{ $truck->load_capacity ?? '-' }} м³</p>
-                                </div>
-                                <div class="col-3">
-                                    <small class="text-muted">Начало</small>
-                                    <p class="mb-0 fw-bold">{{ $currentTrip->started_at?->format('H:i') ?? '-' }}</p>
-                                </div>
-                                <div class="col-3">
-                                    <small class="text-muted">Время</small>
-                                    <p class="mb-0 fw-bold" id="trip-time"
-                                       data-started="{{ $tripStartedAt ?? '' }}"
-                                       data-pause-started="{{ $pauseStartedAt ?? '' }}"
-                                       data-pause-type="{{ $pauseType ?? '' }}"
-                                       data-total-pause="{{ $totalPauseSeconds }}">-</p>
-                                </div>
-                            </div>
-                        @else
-                            <div class="alert alert-info mb-4">
-                                <i class="bi bi-info-circle me-2"></i> Нет активного маршрута
-                            </div>
-                        @endif
-
-                        <hr>
-
-                        <!-- Управление статусами -->
-                        <div id="status-container">
-                            @php
-                                $status = $truck->status;
-                            @endphp
-
-                            {{-- Свободен - может запросить маршрут --}}
-                            @if($status === 'free')
-                                @if(!$currentTrip)
-                                    <button
-                                        wire:click="assignRoute"
-                                        wire:loading.attr="disabled"
-                                        class="btn btn-success btn-lg w-100">
-                                        <span wire:loading.remove><i class="bi bi-arrow-right-circle"></i> Получить маршрут</span>
-                                        <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
-                                    </button>
-                                @endif
-                            @endif
-
-                            {{-- Рейс завершён - ожидает назначения --}}
-                            @if($status === 'completed')
-                                <div class="alert alert-success mb-3">
-                                    <i class="bi bi-check-circle me-2"></i>
-                                    <strong>Рейс завершён!</strong><br>
-                                    <small>Ожидание назначения нового маршрута от диспетчера.</small>
-                                </div>
-                                <button
-                                    wire:click="assignRoute"
-                                    wire:loading.attr="disabled"
-                                    class="btn btn-primary btn-lg w-100 mb-2">
-                                    <span wire:loading.remove><i class="bi bi-arrow-right-circle"></i> Запросить маршрут</span>
-                                    <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
-                                </button>
-                                <button
-                                    wire:click="goToStandby"
-                                    class="btn btn-outline-secondary w-100">
-                                    <i class="bi bi-pause-circle"></i> Уйти в отстой
-                                </button>
-                            @endif
-
-                            {{-- В пути к забою --}}
-                            @if($status === 'to_miner')
-                                <button
-                                    wire:click="startLoading"
-                                    class="btn btn-warning btn-lg w-100 mb-2">
-                                    <i class="bi bi-hourglass-split"></i> Прибыл на погрузку
-                                </button>
-                                <button
-                                    wire:click="openDelayModal"
-                                    class="btn btn-outline-warning w-100">
-                                    <i class="bi bi-clock"></i> Сообщить о задержке
-                                </button>
-                            @endif
-
-                            {{-- На погрузке --}}
-                            @if($status === 'loading')
-                                <div class="alert alert-warning mb-0 text-center py-4">
-                                    <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
-                                    <strong>⏳ Ожидание завершения погрузки...</strong><br>
-                                    <small class="text-muted">Экскаваторщик сообщит когда можно отправляться</small>
-                                </div>
-                            @endif
-
-                            {{-- Ожидание назначения зоны разгрузки --}}
-                            @if($status === 'waiting_unloading')
-                                <div class="alert alert-danger mb-3 text-center py-4">
-                                    <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
-                                    <strong>⚠️ Ожидание назначения зоны разгрузки</strong><br>
-                                    <small class="text-muted">Диспетчер назначит зону для выгрузки. Ожидайте.</small>
-                                </div>
-                                @if($currentTrip && $currentTrip->rock)
-                                    <div class="alert alert-info mb-3">
-                                        <div class="row">
-                                            <div class="col-6">
-                                                <small class="text-muted">Загруженная порода:</small><br>
-                                                <strong class="text-info">{{ $currentTrip->rock->name_rock }}</strong>
-                                            </div>
-                                            <div class="col-6">
-                                                <small class="text-muted">Объём:</small><br>
-                                                <strong>{{ $currentTrip->load_volume ?? $truck->load_capacity }} т</strong>
-                                            </div>
-                                        </div>
-                                    </div>
-                                @endif
-                                <button
-                                    wire:click="reportBreakdown"
-                                    wire:confirm="Сообщить о поломке?"
-                                    class="btn btn-outline-danger w-100">
-                                    <i class="bi bi-exclamation-triangle"></i> Поломка
-                                </button>
-                            @endif
-
-                            {{-- Везём груз --}}
-                            @if($status === 'transporting')
-                                <button
-                                    wire:click="startUnloading"
-                                    class="btn btn-info btn-lg w-100 mb-2">
-                                    <i class="bi bi-box-arrow-down"></i> Прибыл на выгрузку
-                                </button>
-                                <button
-                                    wire:click="openDelayModal"
-                                    class="btn btn-outline-warning w-100">
-                                    <i class="bi bi-clock"></i> Сообщить о задержке
-                                </button>
-                            @endif
-
-                            {{-- Разгрузка --}}
-                            @if($status === 'unloading')
-                                <button
-                                    wire:click="completeTrip"
-                                    class="btn btn-success btn-lg w-100 mb-2">
-                                    <i class="bi bi-check-circle"></i> Завершить рейс
-                                </button>
-                                <button
-                                    wire:click="openZoneModal"
-                                    class="btn btn-outline-primary w-100">
-                                    <i class="bi bi-arrow-repeat"></i> Сменить зону
-                                </button>
-                            @endif
-
-                            {{-- Задержка --}}
-                            @if($status === 'delayed')
-                                @if($currentTrip)
-                                    <div class="alert alert-warning mb-3">
-                                        <i class="bi bi-clock-history me-2"></i>
-                                        <strong>Маршрут приостановлен</strong><br>
-                                        <small>Тип: {{ \App\Models\TripPause::typeLabel($pauseType ?? 'other') }}</small>
-                                    </div>
-                                @endif
-                                <button
-                                    wire:click="resumeFromDelay"
-                                    class="btn btn-success btn-lg w-100 mb-2">
-                                    <i class="bi bi-play-circle"></i> Задержка окончена
-                                </button>
-                                <button
-                                    wire:click="reportBreakdown"
-                                    wire:confirm="Сообщить о поломке?"
-                                    class="btn btn-outline-danger w-100">
-                                    <i class="bi bi-exclamation-triangle"></i> Поломка
-                                </button>
-                            @endif
-
-                            {{-- Поломка --}}
-                            @if($status === 'breakdown')
-                                <div class="alert alert-danger mb-3">
-                                    <i class="bi bi-exclamation-triangle me-2"></i>
-                                    <strong>Поломка</strong><br>
-                                    <small>Время рейса остановлено. После ремонта выберите действие.</small>
-                                </div>
-
-                                @if($currentTrip)
-                                    <button
-                                        wire:click="resolveBreakdownContinue"
-                                        class="btn btn-success btn-lg w-100 mb-2">
-                                        <i class="bi bi-play-circle"></i> Продолжить рейс
-                                    </button>
-                                    <button
-                                        wire:click="resolveBreakdownCancel"
-                                        wire:confirm="Отменить текущий рейс?"
-                                        class="btn btn-outline-danger w-100 mb-2">
-                                        <i class="bi bi-x-circle"></i> Отменить рейс (серьёзная поломка)
-                                    </button>
-                                @else
-                                    <button
-                                        wire:click="resolveBreakdownContinue"
-                                        class="btn btn-success btn-lg w-100">
-                                        <i class="bi bi-check-circle"></i> Поломка устранена
-                                    </button>
-                                @endif
-                            @endif
-
-                            {{-- Кнопка поломки для рабочих статусов --}}
-                            @if(in_array($status, ['to_miner', 'loading', 'transporting', 'unloading', 'waiting_unloading']))
-                                <hr>
-                                <button
-                                    wire:click="reportBreakdown"
-                                    wire:confirm="Сообщить о поломке?"
-                                    class="btn btn-outline-danger w-100">
-                                    <i class="bi bi-exclamation-triangle"></i> Поломка
-                                </button>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Статистика -->
-            <div class="col-lg-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">📊 Статистика</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center g-3">
-                            <div class="col-6">
-                                <div class="border rounded p-3">
-                                    <h2 class="text-primary mb-0">{{ $stats['total_trips'] ?? 0 }}</h2>
-                                    <small class="text-muted">Всего рейсов</small>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="border rounded p-3">
-                                    <h2 class="text-success mb-0">{{ $stats['today_trips'] ?? 0 }}</h2>
-                                    <small class="text-muted">Сегодня</small>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="border rounded p-3">
-                                    <h4 class="text-info mb-0">{{ number_format($stats['total_volume'] ?? 0, 1) }}</h4>
-                                    <small class="text-muted">Объём м³</small>
                                 </div>
                             </div>
                         </div>
@@ -332,25 +311,26 @@
                 </div>
             </div>
         </div>
+        @else
+        <div class="alert alert-info text-center py-4">
+            Выберите грузовик для начала работы
+        </div>
+        @endif
 
-        <!-- Модальное окно выбора зоны -->
+        <!-- Модальные окна -->
         @if($showZoneModal)
         <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">🔄 Выберите зону разгрузки</h5>
+                        <h5 class="modal-title">Выбор зоны разгрузки</h5>
                         <button type="button" class="btn-close" wire:click="closeZoneModal"></button>
                     </div>
                     <div class="modal-body">
                         @forelse($availableZones as $zone)
-                            <div
-                                class="border rounded p-3 mb-2"
-                                style="cursor: pointer;"
-                                wire:click="selectZone({{ $zone['id'] }})">
+                            <div class="border rounded p-2 mb-2" style="cursor: pointer;" wire:click="selectZone({{ $zone['id'] }})">
                                 <strong>{{ $zone['name'] }}</strong>
-                                <small class="text-muted d-block">{{ $zone['dump_name'] }}</small>
-                                <small class="text-success">Свободно: {{ $zone['available_capacity'] }} м³</small>
+                                <small class="text-muted d-block">{{ $zone['dump_name'] }} | Свободно: {{ $zone['available_capacity'] }} м³</small>
                             </div>
                         @empty
                             <div class="alert alert-warning mb-0">Нет доступных зон</div>
@@ -361,29 +341,28 @@
         </div>
         @endif
 
-        <!-- Модальное окно задержки -->
         @if($showDelayModal)
         <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">⚠️ Укажите причину задержки</h5>
+                        <h5 class="modal-title">Задержка</h5>
                         <button type="button" class="btn-close" wire:click="closeDelayModal"></button>
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label">Причина:</label>
                             <select class="form-select" wire:model="delayReason">
-                                <option value="traffic">🚗 Пробки</option>
-                                <option value="road_works">🚧 Дорожные работы</option>
-                                <option value="waiting_loading">⏳ Ожидание погрузки</option>
-                                <option value="waiting_unloading">⏳ Ожидание выгрузки</option>
-                                <option value="weather">🌧️ Погодные условия</option>
-                                <option value="other">❓ Другое</option>
+                                <option value="traffic">Пробки</option>
+                                <option value="road_works">Дорожные работы</option>
+                                <option value="waiting_loading">Ожидание погрузки</option>
+                                <option value="waiting_unloading">Ожидание выгрузки</option>
+                                <option value="weather">Погодные условия</option>
+                                <option value="other">Другое</option>
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Ожидаемое время задержки (мин):</label>
+                            <label class="form-label">Ожидаемое время (мин):</label>
                             <input type="number" class="form-control" wire:model="delayMinutes" min="1" max="120">
                         </div>
                     </div>
@@ -398,155 +377,149 @@
     </div>
 
     <script>
-        // Глобальная переменная для app.js
+        @if($truck)
         window.truckId = {{ $truck->id }};
+        window.currentTruckId = {{ $truck->id }};
+        @else
+        window.currentTruckId = null;
+        @endif
 
-        // Таймер времени в пути
         let timerInterval = null;
 
-        // Форматирование времени
         function formatTime(seconds, prefix = '') {
             if (seconds === null || seconds < 0) return '-';
             const hours = Math.floor(seconds / 3600);
             const min = Math.floor((seconds % 3600) / 60);
             const sec = seconds % 60;
             if (hours > 0) {
-                return prefix + hours + ' ч ' + min + ' мин ' + sec + ' сек';
+                return prefix + hours + ':' + String(min).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
             }
-            return prefix + min + ' мин ' + sec + ' сек';
+            return prefix + min + ':' + String(sec).padStart(2, '0');
         }
 
-        // Получить текущий статус
         function getCurrentStatus() {
             const el = document.querySelector('[data-truck-status]');
             return el ? el.getAttribute('data-truck-status') : 'free';
         }
 
-        // Вычислить чистое время в пути (без пауз)
         function calculateTripSeconds() {
             const el = document.getElementById('trip-time');
             if (!el) return null;
-
             const startedAtStr = el.getAttribute('data-started');
             if (!startedAtStr) return null;
-
             const startedAt = new Date(startedAtStr);
             if (isNaN(startedAt.getTime())) return null;
-
             const now = new Date();
             let totalSeconds = Math.floor((now - startedAt) / 1000);
-
-            // Вычитаем время завершённых пауз
             const totalPause = parseInt(el.getAttribute('data-total-pause') || '0', 10);
             totalSeconds -= totalPause;
-
-            // Вычитаем время текущей активной паузы
             const pauseStartedStr = el.getAttribute('data-pause-started');
             if (pauseStartedStr) {
                 const pauseStarted = new Date(pauseStartedStr);
                 if (!isNaN(pauseStarted.getTime())) {
-                    const currentPauseSeconds = Math.floor((now - pauseStarted) / 1000);
-                    totalSeconds -= currentPauseSeconds;
+                    totalSeconds -= Math.floor((now - pauseStarted) / 1000);
                 }
             }
-
             return totalSeconds;
         }
 
-        // Вычислить "замороженное" время на момент начала паузы
         function calculateFrozenSeconds() {
             const el = document.getElementById('trip-time');
             if (!el) return null;
-
             const startedAtStr = el.getAttribute('data-started');
             const pauseStartedStr = el.getAttribute('data-pause-started');
-
             if (!startedAtStr || !pauseStartedStr) return null;
-
             const startedAt = new Date(startedAtStr);
             const pauseStarted = new Date(pauseStartedStr);
-
             if (isNaN(startedAt.getTime()) || isNaN(pauseStarted.getTime())) return null;
-
-            // Время до паузы
             let frozenSeconds = Math.floor((pauseStarted - startedAt) / 1000);
-
-            // Вычитаем завершённые паузы
             const totalPause = parseInt(el.getAttribute('data-total-pause') || '0', 10);
             frozenSeconds -= totalPause;
-
             return frozenSeconds;
         }
 
-        // Обновление таймера
         function updateTimer() {
             const el = document.getElementById('trip-time');
             if (!el) return;
-
             const status = getCurrentStatus();
             const pauseType = el.getAttribute('data-pause-type');
             let seconds;
             let prefix = '';
 
-            // Статусы с активной паузой - показываем замороженное время
             if (status === 'breakdown' || status === 'delayed') {
                 seconds = calculateFrozenSeconds();
-
-                // Иконка по типу паузы
-                if (pauseType === 'breakdown') {
-                    prefix = '🔧 ';
-                } else {
-                    prefix = '⏸ ';
-                }
+                prefix = pauseType === 'breakdown' ? '⏸ ' : '⏸ ';
             } else if (status === 'free') {
                 el.innerText = '-';
                 return;
             } else {
-                // Рабочие статусы - показываем чистое время
                 seconds = calculateTripSeconds();
             }
-
             el.innerText = formatTime(seconds, prefix);
         }
 
-        // Запуск таймера
         function startTimer() {
             const el = document.getElementById('trip-time');
             if (!el) return;
-
-            console.log('startTimer:', {
-                status: getCurrentStatus(),
-                started: el.getAttribute('data-started'),
-                pauseStarted: el.getAttribute('data-pause-started'),
-                pauseType: el.getAttribute('data-pause-type'),
-                totalPause: el.getAttribute('data-total-pause'),
-            });
-
             if (timerInterval) {
                 clearInterval(timerInterval);
                 timerInterval = null;
             }
-
             const status = getCurrentStatus();
             const started = el.getAttribute('data-started');
             if (status === 'free' && !started) {
                 el.innerText = '-';
                 return;
             }
-
             updateTimer();
             timerInterval = setInterval(updateTimer, 1000);
         }
 
-        document.addEventListener('DOMContentLoaded', startTimer);
+        let echoChannels = [];
 
-        // Слушаем событие перезапуска таймера от Livewire
-        document.addEventListener('livewire:init', () => {
-            Livewire.on('restart-timer', () => {
-                setTimeout(startTimer, 50);
+        function subscribeToTruckChannels(truckId) {
+            echoChannels.forEach(ch => {
+                if (window.Echo) window.Echo.leave(ch);
             });
+            echoChannels = [];
+            if (!truckId || !window.Echo) return;
+
+            window.Echo.private(`driver.${truckId}`)
+                .listen('.route.updated', (eventData) => {
+                    Livewire.dispatch('route-updated', { data: { ...eventData, truck_id: truckId } });
+                })
+                .listen('.zone.changed', (eventData) => {
+                    Livewire.dispatch('zone-changed');
+                });
+            echoChannels.push(`driver.${truckId}`);
+
+            window.Echo.private(`truck.${truckId}`)
+                .listen('.loading.completed', (eventData) => {
+                    Livewire.dispatch('loading-completed', { data: { ...eventData, truck_id: truckId } });
+                });
+            echoChannels.push(`truck.${truckId}`);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            startTimer();
+            @if($truck)
+            subscribeToTruckChannels({{ $truck->id }});
+            @endif
         });
 
-        // Уведомления обрабатываются глобально в layout (showNotification)
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('restart-timer', () => setTimeout(startTimer, 50));
+            Livewire.on('set-cookie', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (!event || !event.name) return;
+                const date = new Date();
+                date.setTime(date.getTime() + (event.days * 24 * 60 * 60 * 1000));
+                document.cookie = `${event.name}=${event.value};expires=${date.toUTCString()};path=/`;
+            });
+            Livewire.on('truck-selected', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (event && event.truck_id) subscribeToTruckChannels(event.truck_id);
+            });
+        });
     </script>
 </div>

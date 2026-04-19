@@ -143,7 +143,7 @@ class IndexController extends BaseController
     });
 
    
-        return view('dump.index', compact('dumps', 'sortedDumps', 'activeFilter'));
+        return view('dumps.index', compact('dumps', 'sortedDumps', 'activeFilter'));
         
     }
 }

@@ -22,14 +22,10 @@ class TruckStatusService
     const TRAIN_CAPACITY = 380; // куб.м в одном ж.д. составе
 
     protected RouteAssignmentService $assignmentService;
-    protected ZoneStatusService $zoneStatusService;
 
-    public function __construct(
-        RouteAssignmentService $assignmentService,
-        ZoneStatusService $zoneStatusService
-    ) {
+    public function __construct(RouteAssignmentService $assignmentService)
+    {
         $this->assignmentService = $assignmentService;
-        $this->zoneStatusService = $zoneStatusService;
     }
 
     /* =========================
@@ -95,7 +91,7 @@ class TruckStatusService
                 break;
 
             case 'unloading':
-                $this->onUnloading($truck);
+                $this->onUnloading($truck, $context);
                 break;
         }
     }
@@ -500,11 +496,6 @@ class TruckStatusService
                 'load_volume'  => $loadVolume,
             ]);
 
-            // Обновляем метрики времени ожидания маршрута
-            if ($trip->miningOrder) {
-                $trip->miningOrder->updateWaitTimeMetrics();
-            }
-
             // Логируем статистику пауз
             $pauseStats = $trip->pauses()
                 ->selectRaw('type, SUM(duration_seconds) as total_seconds')
@@ -625,72 +616,20 @@ class TruckStatusService
     protected function onWaitingUnloading(Truck $truck, array $context = []): void
     {
         Log::info("Truck {$truck->id} waiting for unloading", $context);
-
-        $trip = $this->getActiveTrip($truck);
-
-        if (!$trip) {
-            Log::warning("Truck {$truck->id} has no active trip on waiting_unloading");
-            return;
-        }
-
-        // Начинаем паузу ожидания разгрузки
-        $this->startPause($trip, TripPause::TYPE_WAITING_UNLOADING);
-
-        $zone = $trip->zone;
-
-        if (!$zone) {
-            Log::warning("Truck {$truck->id} has no zone assigned");
-            return;
-        }
-
-        // === ТРИГГЕР АВТОМАТИЧЕСКОЙ ПРОВЕРКИ ЗОНЫ ===
-        // При установке статуса "ожидание разгрузки" проверяем перегрузку зоны
-        $result = $this->zoneStatusService->onWaitingUnloading($truck, $zone);
-
-        Log::info("Zone overload check result", [
-            'truck_id' => $truck->id,
-            'zone_id' => $zone->id,
-            'action' => $result['action'],
-            'reason' => $result['reason'] ?? null,
-        ]);
     }
 
-    /**
-     * Обработчик начала разгрузки
-     */
-    protected function onUnloading(Truck $truck): void
+    protected function onUnloading(Truck $truck, array $context = []): void
     {
-        Log::info("Truck {$truck->id} started unloading");
-
         $trip = $this->getActiveTrip($truck);
 
-        if (!$trip) {
-            return;
-        }
+        if ($trip) {
+            // Записываем время начала разгрузки для расчёта времени перевозки
+            $trip->update(['unloading_started_at' => now()]);
 
-        // Завершаем паузу ожидания разгрузки если есть
-        $waitingPause = $trip->pauses()
-            ->where('type', TripPause::TYPE_WAITING_UNLOADING)
-            ->whereNull('ended_at')
-            ->first();
-
-        if ($waitingPause) {
-            $waitingPause->end();
-            Log::info("Waiting unloading pause ended", [
-                'truck_id' => $truck->id,
-                'duration_seconds' => $waitingPause->duration_seconds,
+            Log::info("Truck {$truck->id} started unloading", [
+                'trip_id' => $trip->id,
+                'transporting_seconds' => $trip->getTransportingSeconds(),
             ]);
-        }
-
-        // Проверяем нормализацию зоны и восстанавливаем вес маршрутов
-        $zone = $trip->zone;
-        if ($zone) {
-            $this->zoneStatusService->checkAndRestoreWeight($zone);
-        }
-
-        // Обновляем метрики маршрута (время ожидания)
-        if ($trip->miningOrder) {
-            $trip->miningOrder->updateWaitTimeMetrics();
         }
     }
 

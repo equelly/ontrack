@@ -26,6 +26,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+                // Установка московского часового пояса
+        date_default_timezone_set('Europe/Moscow');
+
         Carbon::setLocale('ru_RU');
 
         // Регистрация Observer для автоматического создания mining_orders

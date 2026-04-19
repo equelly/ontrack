@@ -19,6 +19,7 @@ class TruckTrip extends Model
         'wait_start',
         'load_start',
         'loaded_at',
+        'unloading_started_at',
         'completed_at',
         'zone_id',
     ];
@@ -28,6 +29,7 @@ class TruckTrip extends Model
         'wait_start'   => 'datetime',
         'load_start'   => 'datetime',
         'loaded_at'    => 'datetime',
+        'unloading_started_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
 
@@ -223,5 +225,36 @@ class TruckTrip extends Model
         $minutes = floor($seconds / 60);
 
         return sprintf('%d мин', $minutes);
+    }
+
+    // ==========================================
+    // ВРЕМЯ ПЕРЕВОЗКИ (БЕЗ РАЗГРУЗКИ)
+    // ==========================================
+
+    /**
+     * Время перевозки в секундах (loaded_at -> unloading_started_at)
+     * Это чистое время движения с грузом, без разгрузки
+     */
+    public function getTransportingSeconds(): int
+    {
+        if (!$this->loaded_at) {
+            return 0;
+        }
+
+        // Конец перевозки - начало разгрузки или completed_at для завершённых рейсов
+        $endTime = $this->unloading_started_at ?? $this->completed_at;
+        if (!$endTime) {
+            return 0;
+        }
+
+        return (int) $this->loaded_at->diffInSeconds($endTime);
+    }
+
+    /**
+     * Время перевозки в часах
+     */
+    public function getTransportingHours(): float
+    {
+        return $this->getTransportingSeconds() / 3600;
     }
 }

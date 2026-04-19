@@ -12,18 +12,21 @@ use App\Services\RouteAssignmentService;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
-use Livewire\Attributes\Layout;
-
-
-#[Layout('components.layouts.app')]
-
 
 class DriverPanel extends Component
 {
-    public Truck $truck;
+    public ?Truck $truck = null;
+    public ?int $selectedTruckId = null;
+    public array $trucks = [];
     public ?TruckTrip $currentTrip = null;
     public ?TripPause $activePause = null;
-    public array $stats = [];
+    public array $stats = [
+        'shift_name' => '-',
+        'total_trips' => 0,
+        'today_trips' => 0,
+        'today_volume' => 0,
+        'avg_speed' => '-',
+    ];
     public string $statusColor = 'secondary';
     public string $statusLabel = '';
 
@@ -36,19 +39,79 @@ class DriverPanel extends Component
     // Модальные окна
     public bool $showZoneModal = false;
     public bool $showDelayModal = false;
-    public bool $showBreakdownModal = false; // Для выбора: продолжить или отменить
     public string $delayReason = 'traffic';
     public int $delayMinutes = 15;
     public $availableZones = [];
 
-    public function mount(Truck $truck)
+    public function mount(): void
     {
-        $this->truck = $truck;
-        $this->loadData();
+        $this->loadTrucks();
+        
+        // Пробуем восстановить выбранный грузовик из cookie
+        $savedTruckId = request()->cookie('selected_truck_id');
+        if ($savedTruckId) {
+            $this->selectedTruckId = (int) $savedTruckId;
+            $this->selectTruck();
+        }
+    }
+
+    protected function loadTrucks(): void
+    {
+        $user = auth()->user();
+        $driverId = $user->id;
+
+        // В режиме разработки показываем все грузовики
+        $allTrucks = Truck::with('driver')->orderBy('number')->get();
+
+        $this->trucks = $allTrucks->map(function ($t) use ($driverId) {
+            $isMine = $t->driver_id === $driverId;
+            $isBreakdown = $t->status === 'breakdown';
+            $isFree = in_array($t->status, ['free', 'completed', 'breakdown']) || !$t->driver_id;
+
+            return [
+                'id' => $t->id,
+                'number' => $t->number,
+                'is_mine' => $isMine,
+                'is_breakdown' => $isBreakdown,
+                'is_free' => $isFree || $isMine,
+                'driver_name' => $t->driver?->name,
+            ];
+        })->toArray();
+    }
+
+    public function selectTruck(): void
+    {
+        if (!$this->selectedTruckId) {
+            return;
+        }
+
+        $this->truck = Truck::find($this->selectedTruckId);
+        
+        if ($this->truck) {
+            // Привязываем грузовик к водителю если нужно
+            if ($this->truck->driver_id !== auth()->id()) {
+                $this->truck->update(['driver_id' => auth()->id()]);
+            }
+            
+            $this->loadData();
+            
+            // Сохраняем в cookie
+            $this->dispatch('set-cookie', [
+                'name' => 'selected_truck_id',
+                'value' => $this->selectedTruckId,
+                'days' => 30,
+            ]);
+
+            $this->dispatch('truck-selected', ['truck_id' => $this->truck->id]);
+        }
     }
 
     protected function loadData(): void
     {
+        if (!$this->truck) {
+            return;
+        }
+
         $this->truck->refresh();
 
         $this->currentTrip = TruckTrip::where('truck_id', $this->truck->id)
@@ -73,45 +136,11 @@ class DriverPanel extends Component
         // Считаем общее время пауз (завершённые + текущая)
         $this->totalPauseSeconds = $this->currentTrip?->getTotalPauseSeconds() ?? 0;
 
-        Log::info('DriverPanel TIMER DATA', [
-            'trip_id' => $this->currentTrip?->id,
-            'started_at_raw' => $this->currentTrip?->started_at,
-            'tripStartedAt_iso' => $this->tripStartedAt,
-            'pauseStartedAt' => $this->pauseStartedAt,
-            'pauseType' => $this->pauseType,
-            'totalPauseSeconds' => $this->totalPauseSeconds,
-        ]);
-
         $this->statusColor = TruckStatus::color($this->truck->status);
         $this->statusLabel = TruckStatus::label($this->truck->status);
 
-        Log::info('DriverPanel loadData', [
-            'truck_id' => $this->truck->id,
-            'truck_number' => $this->truck->number,
-            'truck_status' => $this->truck->status,
-            '--- TRIP ---' => '---',
-            'trip_id' => $this->currentTrip?->id,
-            'trip_miner_id' => $this->currentTrip?->miner_id,
-            'trip_miner_name' => $this->currentTrip?->miner?->name_miner,
-            'trip_dump_id' => $this->currentTrip?->dump_id,
-            'trip_dump_name' => $this->currentTrip?->dump?->name_dump,
-            'trip_zone_id' => $this->currentTrip?->zone_id,
-            'trip_zone_name' => $this->currentTrip?->zone?->name_zone,
-            'trip_rock_id' => $this->currentTrip?->rock_id,
-            'trip_rock_name' => $this->currentTrip?->rock?->name_rock,
-            '--- MINER ROCK ---' => '---',
-            'miner_rock_name' => $this->currentTrip?->miner?->rocks?->first()?->name_rock,
-            '--- ORDER ---' => '---',
-            'order_id' => $this->currentTrip?->miningOrder?->id,
-            'order_rock_id' => $this->currentTrip?->miningOrder?->rock_id,
-            'order_rock_name' => $this->currentTrip?->miningOrder?->rock?->name_rock,
-            '--- PAUSE ---' => '---',
-            'pause_started_at' => $this->pauseStartedAt,
-            'pause_type' => $this->pauseType,
-            'total_pause_seconds' => $this->totalPauseSeconds,
-        ]);
-
         $this->stats = [
+            'shift_name' => $this->getShiftName(),
             'total_trips' => TruckTrip::where('truck_id', $this->truck->id)
                 ->whereNotNull('completed_at')
                 ->count(),
@@ -119,13 +148,38 @@ class DriverPanel extends Component
                 ->whereNotNull('completed_at')
                 ->whereDate('completed_at', today())
                 ->count(),
-            'total_volume' => TruckTrip::where('truck_id', $this->truck->id)
+            'today_volume' => (float) TruckTrip::where('truck_id', $this->truck->id)
                 ->whereNotNull('completed_at')
+                ->whereDate('completed_at', today())
                 ->sum('load_volume'),
+            'avg_speed' => $this->calculateAverageSpeed() ?? '-',
         ];
 
         // Отправляем событие для перезапуска таймера
         $this->dispatch('restart-timer');
+    }
+
+    protected function getShiftName(): string
+    {
+        $hour = now()->hour;
+        $minute = now()->minute;
+        
+        // Дневная смена: 7:30 - 19:30
+        // Ночная смена: 19:30 - 7:30
+        
+        // Проверяем дневную смену
+        if ($hour > 7 && $hour < 19) {
+            return 'Дневная (7:30-19:30)';
+        }
+        if ($hour === 7 && $minute >= 30) {
+            return 'Дневная (7:30-19:30)';
+        }
+        if ($hour === 19 && $minute < 30) {
+            return 'Дневная (7:30-19:30)';
+        }
+        
+        // Остальное - ночная смена
+        return 'Ночная (19:30-7:30)';
     }
 
     // =========================================
@@ -202,9 +256,6 @@ class DriverPanel extends Component
         }
     }
 
-    /**
-     * Уйти в отстой (из статуса completed)
-     */
     public function goToStandby(): void
     {
         try {
@@ -245,9 +296,6 @@ class DriverPanel extends Component
         }
     }
 
-    /**
-     * Поломка устранена - продолжить рейс
-     */
     public function resolveBreakdownContinue(): void
     {
         try {
@@ -268,9 +316,6 @@ class DriverPanel extends Component
         }
     }
 
-    /**
-     * Поломка устранена - отменить рейс
-     */
     public function resolveBreakdownCancel(): void
     {
         try {
@@ -291,9 +336,6 @@ class DriverPanel extends Component
         }
     }
 
-    /**
-     * Возобновление после задержки
-     */
     public function resumeFromDelay(): void
     {
         try {
@@ -413,77 +455,27 @@ class DriverPanel extends Component
     }
 
     // =========================================
-    // REAL-TIME EVENTS (от Echo через Livewire)
+    // REAL-TIME EVENTS
     // =========================================
 
-    #[On('echo:dispatcher,truck-updated')]
-    public function onTruckUpdated(array $data = []): void
+    #[On('route-updated')]
+    public function onRouteUpdated(array $data): void
     {
-        // Проверяем, что событие касается именно этого грузовика
-        $truckId = $data['truck_id'] ?? null;
-        if ($truckId && $truckId !== $this->truck->id) {
-            return;
-        }
-
-        // Сохраняем текущий статус до обновления
-        $oldStatus = $this->truck->status;
-
-        Log::info('DispatcherNotification received in DriverPanel', [
-            'truck_id' => $truckId,
-            'old_status' => $oldStatus,
-            'new_status' => $data['status'] ?? null,
-        ]);
-
-        $this->loadData();
-    }
-
-    #[On('echo-private:driver.{truck.id},.route.updated')]
-    public function onDriverRouteUpdated(array $data = []): void
-    {
-        Log::info('DriverRouteUpdated event received', $data);
-
-        // Проверяем тип действия
-        $action = $data['action'] ?? null;
-
-        // Действия, которые НЕ требуют показа "Назначен новый маршрут"
-        // и уже обработаны в своих методах DriverPanel
-        $skipActions = ['breakdown', 'route_completed', 'planned_stop'];
-
-        if (in_array($action, $skipActions)) {
-            Log::info("DriverRouteUpdated: skipping for action '{$action}'");
-            return;
-        }
-
-        $this->loadData();
-
-        // Показываем сообщение только для реального назначения маршрута
-        $this->dispatch('notify', [
-            'type' => 'success',
-            'message' => 'Назначен новый маршрут!',
-        ]);
-    }
-
-    #[On('echo-private:truck.{truck.id},.loading.completed')]
-    public function onLoadingCompleted(array $data): void
-    {
-        Log::info('LoadingCompleted event received', $data);
-        $this->loadData();
+        Log::info('Route updated event', $data);
         
-        $message = 'Погрузка завершена! Можете отправляться.';
-        if (isset($data['zone_changed']) && $data['zone_changed']) {
-            $message = "Погрузка завершена. Место разгрузки изменено: {$data['new_dump']} - {$data['new_zone']}";
+        if ($this->truck && isset($data['truck_id']) && $data['truck_id'] === $this->truck->id) {
+            $this->loadData();
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Назначен новый маршрут!',
+            ]);
         }
-        
-        $this->dispatch('notify', [
-            'type' => 'success',
-            'message' => $message,
-        ]);
     }
 
-    #[On('echo-private:driver.{truck.id},.zone.changed')]
-    public function onZoneChangedEcho(): void
+    #[On('zone-changed')]
+    public function onZoneChanged(): void
     {
-        Log::info('ZoneChanged event received via Echo');
+        Log::info('Zone changed event');
         $this->loadData();
         $this->dispatch('notify', [
             'type' => 'info',
@@ -491,9 +483,73 @@ class DriverPanel extends Component
         ]);
     }
 
+    #[On('loading-completed')]
+    public function onLoadingCompleted(array $data): void
+    {
+        Log::info('Loading completed event', $data);
+        $this->loadData();
+
+        $message = 'Погрузка завершена! Можете отправляться.';
+        if (isset($data['zone_changed']) && $data['zone_changed']) {
+            $message = "Погрузка завершена. Место разгрузки изменено: {$data['new_dump']} - {$data['new_zone']}";
+        }
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => $message,
+        ]);
+    }
+
+    // =========================================
+    // СТАТИСТИКА
+    // =========================================
+
+    /**
+     * Рассчитать среднюю скорость за смену (км/ч)
+     * Средняя скорость = общее расстояние / общее время перевозки
+     * Время перевозки = только время в статусе transporting (без разгрузки)
+     */
+    protected function calculateAverageSpeed(): ?float
+    {
+        if (!$this->truck) {
+            return null;
+        }
+
+        // Получаем завершённые рейсы за сегодня с данными о времени перевозки
+        $trips = TruckTrip::where('truck_id', $this->truck->id)
+            ->whereNotNull('completed_at')
+            ->whereDate('completed_at', today())
+            ->whereNotNull('loaded_at')
+            ->whereNotNull('unloading_started_at')
+            ->with('miningOrder')
+            ->get();
+
+        if ($trips->isEmpty()) {
+            return null;
+        }
+
+        $totalDistance = 0;
+        $totalTransportingHours = 0;
+
+        foreach ($trips as $trip) {
+            // Расстояние из miningOrder
+            $distance = $trip->miningOrder?->distance_km ?? 0;
+            $totalDistance += $distance;
+
+            // Время перевозки в часах
+            $totalTransportingHours += $trip->getTransportingHours();
+        }
+
+        if ($totalTransportingHours <= 0) {
+            return null;
+        }
+
+        // Средняя скорость = расстояние / время
+        return round($totalDistance / $totalTransportingHours, 1);
+    }
+
     public function render()
     {
-        return view('livewire.driver-panel')
-            ->title("Водитель: " . $this->truck->number); // Динамический заголовок;
+        return view('livewire.driver-panel');
     }
 }

@@ -57,7 +57,7 @@ Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excava
 
 //Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
 Route::get('/test', TestComponent::class)->name('test'); 
-Route::get('/driver/{truckId}', DriverPanel::class)->name('driver.panel');
+Route::get('/driver', DriverPanel::class)->name('driver.panel');
 
 
 // базовый в приложении не применяю
