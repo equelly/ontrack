@@ -1619,6 +1619,76 @@ class MainDispatcherPanel extends Component
         }
         return "{$mins}м";
     }
+       // =========================================
+    // АНАЛИТИКА СКОРОСТЕЙ ПО МАРШРУТАМ
+    // =========================================
+
+    /**
+     * Получить среднюю скорость по маршрутам за текущую смену
+     */
+    public function getRouteSpeedsProperty(): array
+    {
+        // Определяем начало текущей смены
+        $now = now();
+        $hour = $now->hour;
+        $minute = $now->minute;
+
+        // Дневная смена: 7:30 - 19:30, Ночная: 19:30 - 7:30
+        if ($hour > 7 && $hour < 19) {
+            $shiftStart = $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 7 && $minute >= 30) {
+            $shiftStart = $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 19 && $minute < 30) {
+            $shiftStart = $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour >= 19) {
+            $shiftStart = $now->copy()->setTime(19, 30, 0);
+        } else {
+            // Ночная смена (после полуночи до 7:30)
+            $shiftStart = $now->copy()->subDay()->setTime(19, 30, 0);
+        }
+
+        // Получаем завершённые рейсы за смену с данными о времени перевозки
+        $trips = TruckTrip::with(['miner', 'dump', 'miningOrder'])
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $shiftStart)
+            ->whereNotNull('loaded_at')
+            ->whereNotNull('unloading_started_at')
+            ->get();
+
+        if ($trips->isEmpty()) {
+            return [];
+        }
+
+        // Группируем по маршруту (забой → перегрузка)
+        $routeStats = $trips->groupBy(function ($trip) {
+            $minerName = $trip->miner?->name_miner ?? 'Неизвестный забой';
+            $dumpName = $trip->dump?->name_dump ?? 'Неизвестная перегрузка';
+            return "{$minerName} → {$dumpName}";
+        })->map(function ($routeTrips, $routeName) {
+            $totalDistance = 0;
+            $totalTransportingSeconds = 0;
+
+            foreach ($routeTrips as $trip) {
+                $distance = $trip->miningOrder?->distance_km ?? 0;
+                $totalDistance += $distance;
+                $totalTransportingSeconds += $trip->getTransportingSeconds();
+            }
+
+            $avgSpeed = $totalTransportingSeconds > 0
+                ? round($totalDistance / ($totalTransportingSeconds / 3600), 1)
+                : 0;
+
+            return [
+                'route' => $routeName,
+                'avg_speed' => $avgSpeed,
+                'trips_count' => $routeTrips->count(),
+                'total_distance' => round($totalDistance, 1),
+            ];
+        })->sortBy('avg_speed')->values()->toArray(); // Сортируем по скорости (проблемные вверху)
+
+        return $routeStats;
+    }
+
 
     public function render()
     {

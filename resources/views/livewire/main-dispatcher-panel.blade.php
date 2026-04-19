@@ -158,6 +158,13 @@
                 @endif
             </button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link {{ $activeTab === 'analyticsTab' ? 'active' : '' }}" 
+                    data-bs-toggle="tab" data-bs-target="#analyticsTab" type="button"
+                    wire:click="setActiveTab('analyticsTab')">
+                <i class="fas fa-chart-line me-1"></i> Аналитика
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -1396,6 +1403,85 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Аналитика скоростей по маршрутам -->
+        <div class="tab-pane fade {{ $activeTab === 'analyticsTab' ? 'show active' : '' }}" id="analyticsTab">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Средняя скорость по маршрутам
+                </h5>
+                <small class="text-muted">За текущую смену</small>
+            </div>
+
+            @php
+                $routeSpeeds = $this->route_speeds;
+            @endphp
+
+            @if(empty($routeSpeeds))
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Нет данных за текущую смену. Данные появятся после завершения рейсов.
+                </div>
+            @else
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Маршрут</th>
+                                <th style="width: 100px;">Ср. скорость</th>
+                                <th style="width: 80px;">Рейсов</th>
+                                <th style="width: 100px;">Расстояние</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($routeSpeeds as $route)
+                                <tr class="{{ $route['avg_speed'] > 0 && $route['avg_speed'] < 20 ? 'table-danger' : '' }}">
+                                    <td>
+                                        <strong>{{ $route['route'] }}</strong>
+                                        @if($route['avg_speed'] > 0 && $route['avg_speed'] < 20)
+                                            <small class="text-danger d-block">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                                Низкая скорость
+                                            </small>
+                                        @elseif($route['avg_speed'] > 0 && $route['avg_speed'] < 25)
+                                            <small class="text-warning d-block">
+                                                <i class="fas fa-clock me-1"></i>
+                                                Средняя скорость
+                                            </small>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($route['avg_speed'] > 0)
+                                            <span class="badge {{ $route['avg_speed'] < 20 ? 'bg-danger' : ($route['avg_speed'] < 25 ? 'bg-warning text-dark' : 'bg-success') }}">
+                                                {{ $route['avg_speed'] }} км/ч
+                                            </span>
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ $route['trips_count'] }}</span>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ $route['total_distance'] }} км</small>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="alert alert-light py-2 mt-3 mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    <small>
+                        <strong>Подсказка:</strong>
+                        Маршруты отсортированы по скорости (проблемные вверху).
+                        Низкая: < 20 км/ч, Средняя: 20-25 км/ч, Высокая: ≥ 25 км/ч.
+                    </small>
+                </div>
+            @endif
         </div>
     </div>
 
