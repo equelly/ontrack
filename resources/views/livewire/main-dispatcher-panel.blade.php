@@ -165,6 +165,13 @@
                 <i class="fas fa-chart-line me-1"></i> Аналитика
             </button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link {{ $activeTab === 'settingsTab' ? 'active' : '' }}" 
+                    data-bs-toggle="tab" data-bs-target="#settingsTab" type="button"
+                    wire:click="setActiveTab('settingsTab')">
+                <i class="fas fa-cog me-1"></i> Настройки
+            </button>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -1830,6 +1837,90 @@
             </div>
         </div>
     @endif
+
+    <!-- Настройки порогов перегруженности -->
+    <div class="tab-pane fade {{ $activeTab === 'settingsTab' ? 'show active' : '' }}" id="settingsTab">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Пороги перегруженности</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-4">
+                    Пороги определяют, когда система считает забой или зону разгрузки перегруженными.
+                    При превышении порога система автоматически перенаправляет самосвалы на другие маршруты.
+                </p>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-mountain text-warning me-2"></i>
+                                    Порог ожидания на забое
+                                </h6>
+                                <p class="text-muted small">
+                                    Количество самосвалов в статусе "Ожидание погрузки" для признания забоя перегруженным.
+                                </p>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" 
+                                           class="form-range" 
+                                           min="1" max="10" 
+                                           wire:model.live="minerThreshold"
+                                           style="width: 150px;">
+                                    <span class="badge bg-primary fs-5">{{ $minerThreshold }}</span>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        Текущее значение: <strong>{{ $minerThreshold }}</strong> самосвал(ов)
+                                    </small>
+                                </div>
+                                <small class="text-success mt-2 d-block">
+                                    <i class="fas fa-check-circle"></i> Сохраняется автоматически
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-map-marker-alt text-success me-2"></i>
+                                    Порог ожидания на зоне разгрузки
+                                </h6>
+                                <p class="text-muted small">
+                                    Количество самосвалов в статусе "Ожидание разгрузки" для признания зоны перегруженной.
+                                </p>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" 
+                                           class="form-range" 
+                                           min="1" max="10" 
+                                           wire:model.live="zoneThreshold"
+                                           style="width: 150px;">
+                                    <span class="badge bg-success fs-5">{{ $zoneThreshold }}</span>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        Текущее значение: <strong>{{ $zoneThreshold }}</strong> самосвал(ов)
+                                    </small>
+                                </div>
+                                <small class="text-success mt-2 d-block">
+                                    <i class="fas fa-check-circle"></i> Сохраняется автоматически
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info py-2 mt-2">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Примечание:</strong> 
+                    Пороги применяются к <em>всем</em> забоям и зонам разгрузки.
+                    Изменения вступают в силу немедленно при следующей проверке перегруженности.
+                </div>
+            </div>
+        </div>
+    </div>
 
     <style>
         .truck-card { transition: all 0.2s; }

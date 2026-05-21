@@ -67,5 +67,61 @@ class SystemSetting extends Model
     {
         return static::getRouteActivationMode() === 'manual';
     }
+
+    // ==========================================
+    // ПОРОГИ ПЕРЕГРУЖЕННОСТИ
+    // ==========================================
+
+    /**
+     * Порог ожидания на забое (сколько самосвалов в waiting_loading = перегрузка)
+     */
+    public static function getMinerOverloadThreshold(): int
+    {
+        return (int) static::get('miner_overload_threshold', 3);
+    }
+
+    /**
+     * Установить порог ожидания на забое
+     */
+    public static function setMinerOverloadThreshold(int $threshold): void
+    {
+        static::set('miner_overload_threshold', $threshold, 'Порог ожидания на забое (самосвалов)');
+    }
+
+    /**
+     * Порог ожидания на зоне разгрузки (сколько самосвалов в waiting_unloading = перегрузка)
+     */
+    public static function getZoneOverloadThreshold(): int
+    {
+        return (int) static::get('zone_overload_threshold', 3);
+    }
+
+    /**
+     * Установить порог ожидания на зоне разгрузки
+     */
+    public static function setZoneOverloadThreshold(int $threshold): void
+    {
+        static::set('zone_overload_threshold', $threshold, 'Порог ожидания на зоне разгрузки (самосвалов)');
+    }
+
+    /**
+     * Получить все настройки порогов
+     */
+    public static function getOverloadThresholds(): array
+    {
+        return [
+            'miner_threshold' => static::getMinerOverloadThreshold(),
+            'zone_threshold' => static::getZoneOverloadThreshold(),
+        ];
+    }
+
+    /**
+     * Установить все пороги разом
+     */
+    public static function setOverloadThresholds(int $minerThreshold, int $zoneThreshold): void
+    {
+        static::setMinerOverloadThreshold($minerThreshold);
+        static::setZoneOverloadThreshold($zoneThreshold);
+    }    
 }
 

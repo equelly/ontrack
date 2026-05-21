@@ -63,9 +63,6 @@ class MainDispatcherPanel extends Component
     // Смена статуса забоя
     public ?int $editMinerStatusId = null;
     public ?string $editMinerStatusNew = null;
-    public bool $showMinerWarning = false;
-    public ?string $minerStatusWarning = null;
-    public ?array $minerSafetyCheck = null;
 
     // Фильтры простоев
     public string $pausePeriod = 'shift';
@@ -92,12 +89,18 @@ class MainDispatcherPanel extends Component
     public function mount()
     {
         $this->loadData();
+        $this->loadThresholds();
+    }
+
+    public function loadThresholds(): void
+    {
+        $thresholds = SystemSetting::getOverloadThresholds();
+        $this->minerThreshold = $thresholds['miner_threshold'];
+        $this->zoneThreshold = $thresholds['zone_threshold'];
     }
 
     public function loadData(): void
     {
-        Log::info('=== MainDispatcherPanel loadData START ===');
-
         $this->trucks = Truck::with(['truckModel', 'driver', 'trips' => function ($q) {
             $q->whereNull('completed_at')
                 ->with([
@@ -109,37 +112,11 @@ class MainDispatcherPanel extends Component
                     'dump',
                     'miningOrder.rock',
                     'pauses' => function ($q) {
-                        $q->whereNull('ended_at'); // Только активные паузы
+                        $q->whereNull('ended_at');
                     },
                 ])
-                ->latest(); // ВАЖНО: берём последний trip!
+                ->latest();
         }])->get();
-
-        // Полное логирование всех данных рейса
-        foreach ($this->trucks as $truck) {
-            $trip = $truck->trips->first(); // После latest() первый = последний
-            if ($trip) {
-                Log::info('TRUCK DATA', [
-                    'truck_id' => $truck->id,
-                    'truck_number' => $truck->number,
-                    'truck_status' => $truck->status,
-                    '--- TRIP ---' => '---',
-                    'trip_id' => $trip->id,
-                    'trip_miner_id' => $trip->miner_id,
-                    'trip_miner_name' => $trip->miner?->name_miner,
-                    'trip_dump_id' => $trip->dump_id,
-                    'trip_dump_name' => $trip->dump?->name_dump,
-                    'trip_zone_id' => $trip->zone_id,
-                    'trip_zone_name' => $trip->zone?->name_zone,
-                    'trip_rock_id' => $trip->rock_id,
-                    'trip_rock_name' => $trip->rock?->name_rock,
-                    '--- MINER ROCK ---' => '---',
-                    'miner_rock_name' => $trip->miner?->rocks?->first()?->name_rock,
-                    '--- ZONE ROCK ---' => '---',
-                    'zone_rock_name' => $trip->zone?->rocks?->first()?->name_rock,
-                ]);
-            }
-        }
 
         $this->miners = Miner::with(['rocks', 'currentRock'])->get();
 
@@ -152,8 +129,6 @@ class MainDispatcherPanel extends Component
         $this->orders = MiningOrder::with(['miner.rocks', 'dump', 'zone.rocks', 'rock'])
             ->where('active', true)
             ->get();
-
-        Log::info('=== MainDispatcherPanel loadData END ===');
     }
 
     public function updatedSelectedMinerId(?int $value): void
@@ -270,10 +245,6 @@ class MainDispatcherPanel extends Component
 
         if ($activeTrip) {
             $activeTrip->update(['completed_at' => now()]);
-            Log::info('Previous trip completed before new assignment', [
-                'truck_id' => $truck->id,
-                'trip_id' => $activeTrip->id
-            ]);
         }
 
         if (!$zone) {
@@ -313,6 +284,21 @@ class MainDispatcherPanel extends Component
 
             event(new DriverRouteUpdated($truck, $order));
 
+            // Уведомляем экскаваторщика о новом грузовике
+            if ($order->miner_id) {
+                event(new \App\Events\ExcavatorNotification(
+                    $order->miner_id,
+                    'truck_assigned',
+                    [
+                        'truck_id' => $truck->id,
+                        'truck_number' => $truck->number,
+                        'driver_name' => $truck->driver?->name,
+                        'status' => 'to_miner',
+                        'message' => "Самосвал {$truck->number} направляется к забою",
+                    ]
+                ));
+            }
+
             $this->reset(['selectedTruckId', 'selectedMinerId', 'selectedOrderId', 'selectedZoneId']);
             $this->availableOrders = [];
             $this->availableZones = [];
@@ -333,50 +319,20 @@ class MainDispatcherPanel extends Component
      */
     private function assignZoneToLoadedTruck(Truck $truck): void
     {
-        // Получаем свежий trip из базы с актуальными данными
-        $trip = TruckTrip::where('truck_id', $truck->id)
-            ->whereNull('completed_at')
-            ->with(['rock', 'miner.currentRock', 'zone', 'dump'])
-            ->latest()
-            ->first();
+        $trip = $truck->trips->first();
 
         if (!$trip) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Нет активного рейса у грузовика']);
             return;
         }
 
-        // Используем выбранную зону из UI
         $zone = $this->selectedZoneId ? Zone::with('dump')->find($this->selectedZoneId) : null;
 
-        // Определяем породу: сначала из loadedTruckRockId (если диспетчер изменил), потом из trip->rock
-        $rock = null;
-        if ($this->loadedTruckRockId) {
-            $rock = \App\Models\Rock::find($this->loadedTruckRockId);
-            Log::info('Using rock from loadedTruckRockId', [
-                'loadedTruckRockId' => $this->loadedTruckRockId,
-                'rock_name' => $rock?->name_rock,
-            ]);
-        }
-        if (!$rock) {
-            $rock = $trip->rock;
-        }
+        // Определяем породу: сначала из trip->rock, потом из miner->currentRock
+        $rock = $trip->rock;
         if (!$rock && $trip->miner) {
             $rock = $trip->miner->currentRock;
         }
-
-        Log::info('assignZoneToLoadedTruck START', [
-            'truck_id' => $truck->id,
-            'truck_status' => $truck->status,
-            'trip_id' => $trip->id,
-            'trip_zone_id' => $trip->zone_id,
-            'trip_rock_id' => $trip->rock_id,
-            'selected_zone_id' => $this->selectedZoneId,
-            'zone_from_ui' => $zone?->id,
-            'zone_name' => $zone?->name_zone,
-            'rock_id' => $rock?->id,
-            'rock_name' => $rock?->name_rock,
-            'loadedTruckRockId' => $this->loadedTruckRockId,
-        ]);
 
         // Если зона не выбрана, ищем автоматически на ВСЕХ отвалах
         if (!$zone && $rock) {
@@ -385,18 +341,12 @@ class MainDispatcherPanel extends Component
 
             // Если не нашли - ищем на всех отвалах
             if (!$zone) {
-                $zone = Zone::with('dump')
+                $zone = \App\Models\Zone::with('dump')
                     ->where('delivery', true)
                     ->whereRaw('volume < capacity')
                     ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
                     ->orderBy('volume', 'asc')
                     ->first();
-
-                Log::info('Zone found on all dumps', [
-                    'zone_id' => $zone?->id,
-                    'zone_name' => $zone?->name_zone,
-                    'dump_id' => $zone?->dump_id,
-                ]);
             }
         }
 
@@ -409,15 +359,8 @@ class MainDispatcherPanel extends Component
             // Обновляем зону, породу и отвал в текущем рейсе
             $trip->update([
                 'zone_id' => $zone->id,
-                'dump_id' => $zone->dump_id, // Может измениться если зона на другом отвале
-                'rock_id' => $rock?->id,
-            ]);
-
-            Log::info('Trip updated', [
-                'trip_id' => $trip->id,
-                'zone_id' => $zone->id,
                 'dump_id' => $zone->dump_id,
-                'rock_id' => $rock?->id,
+                'rock_id' => $rock?->id ?? $trip->rock_id,
             ]);
 
             // Обновляем mining_order если есть
@@ -425,7 +368,7 @@ class MainDispatcherPanel extends Component
                 $trip->miningOrder->update([
                     'zone_id' => $zone->id,
                     'dump_id' => $zone->dump_id,
-                    'rock_id' => $rock?->id,
+                    'rock_id' => $rock?->id ?? $trip->rock_id,
                 ]);
             }
 
@@ -443,10 +386,6 @@ class MainDispatcherPanel extends Component
 
             if ($waitingPause) {
                 $waitingPause->update(['ended_at' => now()]);
-                Log::info('Waiting pause ended', [
-                    'truck_id' => $truck->id,
-                    'pause_id' => $waitingPause->id
-                ]);
             }
 
             // Перезагружаем trip с обновлёнными данными для события
@@ -667,7 +606,6 @@ class MainDispatcherPanel extends Component
 
             $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
 
-            Log::info('Routes optimized from UI', $result['stats']);
         } catch (\Exception $e) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Ошибка оптимизации: ' . $e->getMessage()]);
             Log::error('optimizeRoutes error', ['message' => $e->getMessage()]);
@@ -933,8 +871,6 @@ class MainDispatcherPanel extends Component
                 ]);
             }
 
-            Log::info('Manual zone balancing executed', ['results' => $results]);
-
         } catch (\Exception $e) {
             Log::error('Zone balancing failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
@@ -1017,20 +953,6 @@ class MainDispatcherPanel extends Component
         }
 
         $isLoaded = in_array($truck->status, $this->getLoadedTruckStatuses());
-
-        // Отладка
-        if ($isLoaded) {
-            $trip = $truck->trips->first();
-            Log::info('isSelectedTruckLoaded DEBUG', [
-                'truck_id' => $truck->id,
-                'truck_status' => $truck->status,
-                'trip_id' => $trip?->id,
-                'trip_rock_id' => $trip?->rock_id,
-                'trip_rock_name' => $trip?->rock?->name_rock,
-                'miner_id' => $trip?->miner_id,
-                'miner_current_rock_id' => $trip?->miner?->current_rock_id,
-            ]);
-        }
 
         return $isLoaded;
     }
@@ -1124,13 +1046,6 @@ class MainDispatcherPanel extends Component
             ->sortBy('fill')
             ->values()
             ->toArray();
-
-            Log::info('updatedLoadedTruckRockId - available zones', [
-                'rock_id' => $rock->id,
-                'rock_name' => $rock->name_rock,
-                'zones_count' => count($this->availableZones),
-                'zones' => $this->availableZones,
-            ]);
         }
 
         // Сбрасываем выбранную зону
@@ -1219,29 +1134,24 @@ class MainDispatcherPanel extends Component
     #[On('truck-status-changed')]
     public function onTruckStatusChanged(array $data): void
     {
-        Log::info('MainDispatcherPanel: truck-status-changed received', $data);
         $this->loadData();
     }
 
     #[On('refresh-dispatcher-data')]
     public function onRefreshData(): void
     {
-        Log::info('MainDispatcherPanel: refresh-dispatcher-data event received');
         $this->loadData();
     }
 
     #[On('echo:dispatcher,.truck-updated')]
     public function onTruckUpdated(): void
     {
-        Log::info('MainDispatcherPanel: truck-updated received via Echo');
         $this->loadData();
     }
 
     #[On('echo:dispatcher,.miner-productivity-updated')]
     public function onMinerProductivityUpdated(array $data): void
     {
-        Log::info('MainDispatcherPanel: miner-productivity-updated received', $data);
-
         // Обновляем данные о забоях
         $this->miners = Miner::with(['rocks', 'currentRock'])->get();
 
@@ -1360,15 +1270,6 @@ class MainDispatcherPanel extends Component
         if ($miner) {
             $this->editMinerStatusId = $minerId;
             $this->editMinerStatusNew = $miner->status;
-
-            // Проверяем перегрузку при остановке забоя
-            $minerStatusService = app(MinerStatusService::class);
-            $safetyCheck = $minerStatusService->canSafelyStop($miner);
-
-            // Показываем предупреждение только если планируем остановить активный забой
-            $this->showMinerWarning = $miner->status === Miner::STATUS_ACTIVE && !$safetyCheck['safe'];
-            $this->minerStatusWarning = $safetyCheck['warning'] ?? $safetyCheck['reason'] ?? null;
-            $this->minerSafetyCheck = $safetyCheck;
         }
     }
 
@@ -1379,9 +1280,6 @@ class MainDispatcherPanel extends Component
     {
         $this->editMinerStatusId = null;
         $this->editMinerStatusNew = null;
-        $this->showMinerWarning = false;
-        $this->minerStatusWarning = null;
-        $this->minerSafetyCheck = null;
     }
 
     /**
@@ -1619,7 +1517,8 @@ class MainDispatcherPanel extends Component
         }
         return "{$mins}м";
     }
-       // =========================================
+
+    // =========================================
     // АНАЛИТИКА СКОРОСТЕЙ ПО МАРШРУТАМ
     // =========================================
 
@@ -1689,6 +1588,33 @@ class MainDispatcherPanel extends Component
         return $routeStats;
     }
 
+    // =========================================
+    // УПРАВЛЕНИЕ ПОРОГАМИ ПЕРЕГРУЖЕННОСТИ
+    // =========================================
+
+    // Пороги (для формы)
+    public int $minerThreshold = 3;
+    public int $zoneThreshold = 3;
+
+    /**
+     * Автосохранение при изменении ползунка забоя
+     */
+    public function updatedMinerThreshold(int $value): void
+    {
+        if ($value >= 1 && $value <= 20) {
+            SystemSetting::setMinerOverloadThreshold($value);
+        }
+    }
+
+    /**
+     * Автосохранение при изменении ползунка зоны
+     */
+    public function updatedZoneThreshold(int $value): void
+    {
+        if ($value >= 1 && $value <= 20) {
+            SystemSetting::setZoneOverloadThreshold($value);
+        }
+    }
 
     public function render()
     {

@@ -8,6 +8,7 @@ use App\Models\TruckTrip;
 use App\Models\MiningOrder;
 use App\Models\Miner;
 use App\Models\TripPause;
+use App\Models\SystemSetting;
 use App\Events\DispatcherNotification;
 use App\Events\DriverRouteUpdated;
 use Illuminate\Support\Facades\DB;
@@ -25,10 +26,18 @@ use Illuminate\Support\Facades\Log;
  */
 class ZoneStatusService
 {
-    // Пороговые значения
-    const OVERLOAD_THRESHOLD = 3; // Сколько грузовиков в ожидании = перегрузка
+    // Пороговые значения по умолчанию (могут переопределяться через настройки)
+    const DEFAULT_OVERLOAD_THRESHOLD = 3;
     const NORMALIZATION_THRESHOLD = 2; // Ниже этого значения = нормализация
     const WEIGHT_REDUCTION = 50; // Насколько уменьшать вес маршрута
+
+    /**
+     * Получить порог перегруженности зоны (настраиваемый)
+     */
+    protected function getOverloadThreshold(): int
+    {
+        return SystemSetting::getZoneOverloadThreshold();
+    }
 
     /**
      * Получить нагрузку на зону
@@ -74,7 +83,7 @@ class ZoneStatusService
             'avg_wait_minutes' => $avgWaitTime,
             'fill_percentage' => $fillPercentage,
             'is_available' => $zone->isAvailable(),
-            'is_overloaded' => $waitingCount >= self::OVERLOAD_THRESHOLD,
+            'is_overloaded' => $waitingCount >= $this->getOverloadThreshold(),
             'status' => $this->determineZoneStatus($waitingCount, $fillPercentage),
         ];
     }
@@ -117,7 +126,7 @@ class ZoneStatusService
         if ($fillPercentage >= 95) {
             return 'full';
         }
-        if ($waitingCount >= self::OVERLOAD_THRESHOLD) {
+        if ($waitingCount >= $this->getOverloadThreshold()) {
             return 'overloaded';
         }
         if ($waitingCount > 0) {
@@ -157,7 +166,7 @@ class ZoneStatusService
         if (!$load['is_overloaded']) {
             Log::info('Zone is not overloaded, no action needed', [
                 'waiting_count' => $load['waiting_count'],
-                'threshold' => self::OVERLOAD_THRESHOLD,
+                'threshold' => $this->getOverloadThreshold(),
             ]);
 
             return [
@@ -471,7 +480,7 @@ class ZoneStatusService
             $score += $minerCapacity * 10;
 
             // Учитываем корректировку веса (если вес уменьшен - ниже приоритет)
-            $score += $route->weight_adjustment;
+            $score += $route->weight_adjustment ?? 0;
 
             // Если есть доступная зона - отличный маршрут
             if ($availableZone) {

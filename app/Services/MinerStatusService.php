@@ -283,9 +283,11 @@ class MinerStatusService
             if (in_array($newStatus, Miner::STATUSES_DELAYED)) {
                 $this->deactivateRoutes($miner);
 
-                // Активируем маршруты альтернативного забоя
-                // (чтобы новые назначения шли на другие забои)
-                $this->activateAlternativeRoutes($miner);
+                // Запускаем полную оптимизацию маршрутов
+                // Это активирует маршруты других забоев к тем же перегрузкам
+                // и обеспечивает непрерывность поставок на точки разгрузки
+                $optimizer = app(RouteOptimizerService::class);
+                $optimizer->optimize();
             }
 
             // Активируем маршруты при возвращении в работу
@@ -585,27 +587,6 @@ class MinerStatusService
             ->update(['active' => false]);
 
         Log::info("Deactivated {$count} routes for miner {$miner->id}");
-
-        return $count;
-    }
-
-    /**
-     * Активировать маршруты альтернативного забоя
-     */
-    protected function activateAlternativeRoutes(Miner $stoppedMiner): int
-    {
-        $alternativeMiner = $this->findAlternativeMiner($stoppedMiner);
-
-        if (!$alternativeMiner) {
-            Log::info("No alternative miner found for activation");
-            return 0;
-        }
-
-        // Активируем все маршруты альтернативного забоя
-        $count = MiningOrder::where('miner_id', $alternativeMiner->id)
-            ->update(['active' => true]);
-
-        Log::info("Activated {$count} routes for alternative miner {$alternativeMiner->id}");
 
         return $count;
     }
