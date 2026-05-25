@@ -390,8 +390,18 @@
                                 <td>
                                     <span class="fw-bold">{{ $miner->name_miner }}</span>
                                     @if($miner->status !== 'active' && $miner->status_changed_at)
+                                        @php
+                                            $statusLabels = [
+                                                'breakdown' => 'Поломка',
+                                                'maintenance' => 'Обслуживание',
+                                                'dismantling' => 'Демонтаж',
+                                                'access_setup' => 'Подготовка',
+                                            ];
+                                            $statusLabel = $statusLabels[$miner->status] ?? $miner->status;
+                                            $duration = $miner->status_changed_at->locale('ru')->diffForHumans(null, true);
+                                        @endphp
                                         <br><small class="text-muted">
-                                            {{ $miner->status_changed_at->diffForHumans() }}
+                                            {{ $statusLabel }}: {{ $duration }}
                                         </small>
                                     @endif
                                 </td>
