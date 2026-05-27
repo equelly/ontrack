@@ -12,8 +12,9 @@ use Illuminate\Database\Eloquent\Model;
  * - active: В работе (маршруты активны)
  * - breakdown: Поломка (грузовики перенаправляются, маршруты деактивируются)
  * - maintenance: Обслуживание (грузовики доезжают, новые не назначаются)
- * - dismantling: Разбор забоя (грузовики доезжают, новые не назначаются)
+ * - face_dismantling: Разбор забоя (грузовики доезжают, новые не назначаются)
  * - access_setup: Устройство подъезда (грузовики доезжают, новые не назначаются)
+ * - relocation: Переезд (грузовики доезжают, новые не назначаются)
  */
 class Miner extends Model
 {
@@ -23,21 +24,24 @@ class Miner extends Model
     const STATUS_ACTIVE = 'active';
     const STATUS_BREAKDOWN = 'breakdown';
     const STATUS_MAINTENANCE = 'maintenance';
-    const STATUS_DISMANTLING = 'dismantling';
+    const STATUS_FACE_DISMANTLING = 'face_dismantling';
     const STATUS_ACCESS_SETUP = 'access_setup';
+    const STATUS_RELOCATION = 'relocation';
 
     // Группы статусов
     const STATUSES_WORKING = [self::STATUS_ACTIVE];
     const STATUSES_DELAYED = [
         self::STATUS_BREAKDOWN,
         self::STATUS_MAINTENANCE,
-        self::STATUS_DISMANTLING,
+        self::STATUS_FACE_DISMANTLING,
         self::STATUS_ACCESS_SETUP,
+        self::STATUS_RELOCATION,
     ];
     const STATUSES_PLANNED_DELAY = [
         self::STATUS_MAINTENANCE,
-        self::STATUS_DISMANTLING,
+        self::STATUS_FACE_DISMANTLING,
         self::STATUS_ACCESS_SETUP,
+        self::STATUS_RELOCATION,
     ];
 
     protected $fillable = [
@@ -166,14 +170,7 @@ class Miner extends Model
      */
     public function getStatusLabel(): string
     {
-        return match($this->status) {
-            self::STATUS_ACTIVE => 'В работе',
-            self::STATUS_BREAKDOWN => 'Поломка',
-            self::STATUS_MAINTENANCE => 'Обслуживание',
-            self::STATUS_DISMANTLING => 'Разбор забоя',
-            self::STATUS_ACCESS_SETUP => 'Устройство подъезда',
-            default => $this->status,
-        };
+        return \App\Domain\MinerStatus::label($this->status);
     }
 
     /**
@@ -181,14 +178,7 @@ class Miner extends Model
      */
     public function getStatusClass(): string
     {
-        return match($this->status) {
-            self::STATUS_ACTIVE => 'success',
-            self::STATUS_BREAKDOWN => 'danger',
-            self::STATUS_MAINTENANCE => 'warning',
-            self::STATUS_DISMANTLING => 'info',
-            self::STATUS_ACCESS_SETUP => 'secondary',
-            default => 'secondary',
-        };
+        return \App\Domain\MinerStatus::color($this->status);
     }
 
     /**
@@ -196,13 +186,11 @@ class Miner extends Model
      */
     public static function getAllStatuses(): array
     {
-        return [
-            self::STATUS_ACTIVE => 'В работе',
-            self::STATUS_BREAKDOWN => 'Поломка',
-            self::STATUS_MAINTENANCE => 'Обслуживание',
-            self::STATUS_DISMANTLING => 'Разбор забоя',
-            self::STATUS_ACCESS_SETUP => 'Устройство подъезда',
-        ];
+        $statuses = [];
+        foreach (\App\Domain\MinerStatus::all() as $status) {
+            $statuses[$status] = \App\Domain\MinerStatus::label($status);
+        }
+        return $statuses;
     }
 
     // ==========================================

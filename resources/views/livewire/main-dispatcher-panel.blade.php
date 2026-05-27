@@ -375,29 +375,13 @@
                                 
                                 // Рекомендации по производительности
                                 $recommendations = $miner->getRecommendedTruckCount();
-                                
-                                // CSS класс для строки в зависимости от статуса
-                                $rowClass = match($miner->status) {
-                                    'active' => '',
-                                    'breakdown' => 'table-danger',
-                                    'maintenance' => 'table-warning',
-                                    'dismantling' => 'table-info',
-                                    'access_setup' => 'table-secondary',
-                                    default => ''
-                                };
                             @endphp
-                            <tr class="{{ $rowClass }}">
+                            <tr class="{{ \App\Domain\MinerStatus::rowClass($miner->status) }}">
                                 <td>
                                     <span class="fw-bold">{{ $miner->name_miner }}</span>
                                     @if($miner->status !== 'active' && $miner->status_changed_at)
                                         @php
-                                            $statusLabels = [
-                                                'breakdown' => 'Поломка',
-                                                'maintenance' => 'Обслуживание',
-                                                'dismantling' => 'Демонтаж',
-                                                'access_setup' => 'Подготовка',
-                                            ];
-                                            $statusLabel = $statusLabels[$miner->status] ?? $miner->status;
+                                            $statusLabel = \App\Domain\MinerStatus::label($miner->status);
                                             $duration = $miner->status_changed_at->locale('ru')->diffForHumans(null, true);
                                         @endphp
                                         <br><small class="text-muted">
@@ -496,7 +480,7 @@
                                             Рекомендуется: {{ $recommendations['recommended'] }} самосвалов
                                         </small>
                                     @else
-                                        <span class="text-muted small">Задайте норму</span>
+                                        <span class="text-muted small">Данных нет</span>
                                     @endif
                                 </td>
                                 <td>
@@ -1814,11 +1798,19 @@
                                     <strong>Поломка:</strong> Грузовики будут перенаправлены на другие забои.
                                     Маршруты деактивируются.
                                 </div>
-                            @elseif(in_array($editMinerStatusNew, ['maintenance', 'dismantling', 'access_setup']))
+                            @elseif(in_array($editMinerStatusNew, ['maintenance', 'face_dismantling', 'access_setup', 'relocation']))
                                 <div class="alert alert-warning py-2 small">
                                     <i class="fas fa-clock me-1"></i>
-                                    <strong>Плановая остановка:</strong> Грузовики в пути доедут до забоя.
-                                    Новые назначения будут перенаправлены на другие забои.
+                                    @if($editMinerStatusNew === 'maintenance')
+                                        <strong>Обслуживание:</strong> Плановые работы на забое.
+                                    @elseif($editMinerStatusNew === 'face_dismantling')
+                                        <strong>Разбор забоя:</strong> Проведение работ по разбору.
+                                    @elseif($editMinerStatusNew === 'access_setup')
+                                        <strong>Устройство подъезда:</strong> Подготовка подъездных путей.
+                                    @else
+                                        <strong>Переезд:</strong> Экскаватор перемещается на новое место.
+                                    @endif
+                                    Грузовики в пути доедут, новые назначения перенаправляются.
                                 </div>
                             @elseif($editMinerStatusNew === 'active')
                                 <div class="alert alert-success py-2 small">

@@ -74,8 +74,9 @@
                             'active' => '#198754',
                             'breakdown' => '#dc3545',
                             'maintenance' => '#ffc107',
-                            'dismantling' => '#6c757d',
+                            'face_dismantling' => '#0dcaf0',
                             'access_setup' => '#6c757d',
+                            'relocation' => '#0d6efd',
                         ];
                         $statusTextColor = $miner->status === 'maintenance' ? '#212529' : 'white';
                     @endphp
@@ -110,9 +111,9 @@
                         </button>
                     @endif
                     
-                    @if($miner->status !== 'dismantling')
-                        <button wire:click="setStatus('dismantling')" wire:loading.attr="disabled" 
-                                class="btn btn-sm" style="background-color: #6c757d; border-color: #6c757d; color: white; min-width: 130px;">
+                     @if($miner->status !== 'face_dismantling')
+                        <button wire:click="setStatus('face_dismantling')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #0dcaf0; border-color: #0dcaf0; color: white; min-width: 130px;">
                             Разбор забоя
                         </button>
                     @endif
@@ -121,6 +122,13 @@
                         <button wire:click="setStatus('access_setup')" wire:loading.attr="disabled" 
                                 class="btn btn-sm" style="background-color: #6c757d; border-color: #6c757d; color: white; min-width: 130px;">
                             Устр. подъезда
+                        </button>
+                    @endif
+                    
+                    @if($miner->status !== 'relocation')
+                        <button wire:click="setStatus('relocation')" wire:loading.attr="disabled" 
+                                class="btn btn-sm" style="background-color: #0d6efd; border-color: #0d6efd; color: white; min-width: 130px;">
+                            Переезд                            
                         </button>
                     @endif
                 </div>

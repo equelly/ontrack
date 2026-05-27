@@ -622,21 +622,12 @@ class MinerStatusService
                 'miner_id' => $miner->id,
                 'miner_name' => $miner->name_miner,
                 'old_status' => $oldStatus,
-                'old_status_label' => match ($oldStatus) {
-                    Miner::STATUS_ACTIVE => 'В работе',
-                    Miner::STATUS_BREAKDOWN => 'Поломка',
-                    Miner::STATUS_MAINTENANCE => 'Обслуживание',
-                    Miner::STATUS_DISMANTLING => 'Разбор забоя',
-                    Miner::STATUS_ACCESS_SETUP => 'Устройство подъезда',
-                    default => $oldStatus,
-                },
+                'old_status_label' => \App\Domain\MinerStatus::label($oldStatus),
                 'new_status' => $newStatus,
                 'new_status_label' => $miner->getStatusLabel(),
                 'duration_minutes' => $miner->getStatusDurationMinutes(),
                 'requires_action' => $newStatus === Miner::STATUS_BREAKDOWN,
             ]
         ));
-
-        Log::info("Dispatcher notified: {$event} for miner {$miner->id}");
     }
 }
