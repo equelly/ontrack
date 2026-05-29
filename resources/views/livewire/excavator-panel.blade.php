@@ -1,4 +1,7 @@
 <div class="excavator-panel-wrapper">
+        <!-- Toast контейнер для уведомлений -->
+    <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+  
     <style>
         .bi-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -14,7 +17,7 @@
                     <!-- Экскаватор -->
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="text-muted text-nowrap">Экскаватор:</span>
-                        <select wire:model.live="selectedMinerId" class="form-select form-select-sm flex-grow-1" style="min-width: 120px; max-width: 200px;">
+                        <select wire:model.live="selectedMinerId" class="form-select form-select-sm flex-grow-1" style="min-width: 130px; max-width: 200px;">
                             <option value="">-- Выберите --</option>
                             @foreach($miners as $m)
                                 <option value="{{ $m->id }}">{{ $m->name_miner }}</option>
@@ -50,8 +53,8 @@
                     <!-- Норма погрузки -->
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="text-muted text-nowrap">Норма:</span>
-                        <input type="number" wire:model.live="targetLoadTime" class="form-control form-control-sm" style="width: 60px;" min="1" max="60">
-                        <span class="text-muted">мин</span>
+                        <input type="number" wire:model.defer="targetLoadTime" class="form-control form-control-sm" style="width: 80px;" min="25" max="3600">
+                        <span class="text-muted">сек</span>
                         <button wire:click="setTargetLoadTime" wire:loading.attr="disabled" class="btn btn-outline-primary btn-sm">
                             <span wire:loading.remove>OK</span>
                             <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
@@ -80,7 +83,7 @@
                         ];
                         $statusTextColor = $miner->status === 'maintenance' ? '#212529' : 'white';
                     @endphp
-                    <button disabled class="btn btn-sm" style="background-color: {{ $statusColors[$miner->status] ?? '#6c757d' }}; border-color: {{ $statusColors[$miner->status] ?? '#6c757d' }}; color: {{ $statusTextColor }}; opacity: 1; min-width: 120px;">
+                    <button disabled class="btn btn-sm" style="background-color: {{ $statusColors[$miner->status] ?? '#6c757d' }}; border-color: {{ $statusColors[$miner->status] ?? '#6c757d' }}; color: {{ $statusTextColor }}; opacity: 1; min-width: 130px;">
                         {{ $miner->getStatusLabel() }}
                     </button>
                     @if($miner->isDelayed() && $miner->status_changed_at)
@@ -111,7 +114,7 @@
                         </button>
                     @endif
                     
-                     @if($miner->status !== 'face_dismantling')
+                    @if($miner->status !== 'face_dismantling')
                         <button wire:click="setStatus('face_dismantling')" wire:loading.attr="disabled" 
                                 class="btn btn-sm" style="background-color: #0dcaf0; border-color: #0dcaf0; color: white; min-width: 130px;">
                             Разбор забоя
@@ -128,7 +131,7 @@
                     @if($miner->status !== 'relocation')
                         <button wire:click="setStatus('relocation')" wire:loading.attr="disabled" 
                                 class="btn btn-sm" style="background-color: #0d6efd; border-color: #0d6efd; color: white; min-width: 130px;">
-                            Переезд                            
+                            Переезд
                         </button>
                     @endif
                 </div>
@@ -243,8 +246,13 @@
                     <div class="vr"></div>
                     <div>
                         <span class="stat-label">Ср. погрузка</span>
-                        <div class="stat-value {{ ($productivityStats['avg_load_time'] ?? 999) > ($productivityStats['target_load_time'] ?? 999) ? 'text-danger' : 'text-success' }}">
-                            {{ $productivityStats['avg_load_time'] ?? '-' }}
+                        @php
+                            // target_load_time в секундах, avg_load_time в минутах
+                            $targetForCompare = ($productivityStats['target_load_time'] ?? 0) / 60;
+                            $avgLoadTime = $productivityStats['avg_load_time'] ?? 999;
+                        @endphp
+                        <div class="stat-value {{ $avgLoadTime > $targetForCompare && $targetForCompare > 0 ? 'text-danger' : 'text-success' }}">
+                            {{ $avgLoadTime == 999 ? '-' : $avgLoadTime }}
                             <small class="text-muted fw-normal">мин</small>
                         </div>
                     </div>
@@ -339,42 +347,40 @@
         window.currentMinerId = {{ $miner->id }};
         @endif
 
-        document.addEventListener('DOMContentLoaded', () => {
-            if (typeof Livewire !== 'undefined') {
-                Livewire.on('notify', (data) => {
-                    const event = Array.isArray(data) ? data[0] : data;
-                    if (!event || !event.message) return;
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('notify', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (!event || !event.message) return;
 
-                    const container = document.getElementById('global-toast-container');
-                    const toast = document.createElement('div');
+                const container = document.getElementById('global-toast-container');
+                const toast = document.createElement('div');
 
-                    const bgClass = event.type === 'success' ? 'alert-success' :
-                                   event.type === 'error' ? 'alert-danger' :
-                                   event.type === 'warning' ? 'alert-warning' :
-                                   'alert-info';
+                const bgClass = event.type === 'success' ? 'alert-success' :
+                               event.type === 'error' ? 'alert-danger' :
+                               event.type === 'warning' ? 'alert-warning' :
+                               'alert-info';
 
-                    toast.className = `alert ${bgClass} alert-dismissible fade show`;
-                    toast.innerHTML = `
-                        ${event.message}
-                        <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
-                    `;
-                    container.appendChild(toast);
+                toast.className = `alert ${bgClass} alert-dismissible fade show`;
+                toast.innerHTML = `
+                    ${event.message}
+                    <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+                `;
+                container.appendChild(toast);
 
-                    setTimeout(() => {
-                        toast.classList.remove('show');
-                        setTimeout(() => toast.remove(), 300);
-                    }, 10000);
-                });
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => toast.remove(), 300);
+                }, 5000);
+            });
 
-                Livewire.on('set-cookie', (data) => {
-                    const event = Array.isArray(data) ? data[0] : data;
-                    if (!event || !event.name) return;
+            Livewire.on('set-cookie', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (!event || !event.name) return;
 
-                    const date = new Date();
-                    date.setTime(date.getTime() + (event.days * 24 * 60 * 60 * 1000));
-                    document.cookie = `${event.name}=${event.value};expires=${date.toUTCString()};path=/`;
-                });
-            }
+                const date = new Date();
+                date.setTime(date.getTime() + (event.days * 24 * 60 * 60 * 1000));
+                document.cookie = `${event.name}=${event.value};expires=${date.toUTCString()};path=/`;
+            });
         });
 
         // =========================================

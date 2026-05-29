@@ -32,6 +32,7 @@ class MinerProductivityUpdated implements ShouldBroadcast
     {
         return [
             'miner_id' => $this->minerId,
+            'miner_name' => $this->data['miner_name'] ?? null,            
             'target_load_time' => $this->data['target_load_time'] ?? null,
             'avg_load_time' => $this->data['avg_load_time'] ?? null,
             'avg_wait_time' => $this->data['avg_wait_time'] ?? null,

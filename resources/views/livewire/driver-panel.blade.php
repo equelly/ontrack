@@ -1,4 +1,7 @@
 <div class="driver-panel-wrapper">
+    <!-- Toast контейнер для уведомлений -->
+    <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+    
     <style>
         .bi-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -500,14 +503,39 @@
             echoChannels.push(`truck.${truckId}`);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('livewire:init', () => {
+            // Запускаем таймер и подписываемся на каналы
             startTimer();
             @if($truck)
             subscribeToTruckChannels({{ $truck->id }});
             @endif
-        });
 
-        document.addEventListener('livewire:init', () => {
+            // Уведомления
+            Livewire.on('notify', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (!event || !event.message) return;
+
+                const container = document.getElementById('global-toast-container');
+                const toast = document.createElement('div');
+
+                const bgClass = event.type === 'success' ? 'alert-success' :
+                               event.type === 'error' ? 'alert-danger' :
+                               event.type === 'warning' ? 'alert-warning' :
+                               'alert-info';
+
+                toast.className = `alert ${bgClass} alert-dismissible fade show`;
+                toast.innerHTML = `
+                    ${event.message}
+                    <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+                `;
+                container.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => toast.remove(), 300);
+                }, 5000);
+            });
+
             Livewire.on('restart-timer', () => setTimeout(startTimer, 50));
             Livewire.on('set-cookie', (data) => {
                 const event = Array.isArray(data) ? data[0] : data;

@@ -691,13 +691,18 @@ class ExcavatorPanel extends Component
             return;
         }
 
-        if (!$this->targetLoadTime || $this->targetLoadTime < 1) {
+        // Очищаем и проверяем значение
+        $value = trim($this->targetLoadTime ?? '');
+        
+        if ($value === '' || !is_numeric($value) || (int)$value < 25) {
             $this->dispatch('notify', [
                 'type' => 'error',
-                'message' => 'Укажите время погрузки (минимум 1 минута)',
+                'message' => 'Минимальное время погрузки: 25 секунд (один ковш)',
             ]);
             return;
         }
+
+        $this->targetLoadTime = (int)$value;
 
         $this->miner->update([
             'target_load_time' => $this->targetLoadTime,
@@ -719,7 +724,7 @@ class ExcavatorPanel extends Component
 
         $this->dispatch('notify', [
             'type' => 'success',
-            'message' => "Целевое время погрузки: {$this->targetLoadTime} мин",
+            'message' => "Целевое время погрузки: {$this->targetLoadTime} сек",
         ]);
     }
 
@@ -739,6 +744,7 @@ class ExcavatorPanel extends Component
         $recentTrips = $this->miner->getRecentTrips(5);
 
         return [
+            'miner_name' => $this->miner->name_miner,
             'target_load_time' => $this->miner->target_load_time,
             'avg_load_time' => $this->miner->getAvgLoadTime(5),
             'avg_wait_time' => $this->miner->getAvgWaitTime(5),

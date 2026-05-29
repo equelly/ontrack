@@ -471,9 +471,20 @@ class DriverPanel extends Component
         
         if ($this->truck && isset($data['truck_id']) && $data['truck_id'] === $this->truck->id) {
             $this->loadData();
+            
+            // Определяем сообщение по типу действия
+            $action = $data['action'] ?? 'route_assigned';
+            $message = match ($action) {
+                'route_assigned' => 'Назначен новый маршрут!',
+                'route_reassigned' => 'Маршрут изменён!',
+                'route_completed' => 'Рейс завершён!',
+                'zone_reassigned' => 'Зона изменена!',
+                default => 'Данные обновлены',
+            };
+            
             $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => 'Назначен новый маршрут!',
+                'type' => $action === 'route_completed' ? 'success' : 'info',
+                'message' => $message,
             ]);
         }
     }

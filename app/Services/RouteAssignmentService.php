@@ -10,8 +10,10 @@ use App\Models\Miner;
 use App\Models\MinerDumpDistance;
 use App\Events\DriverRouteUpdated;
 use App\Events\DispatcherNotification;
+use App\Events\ExcavatorNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+
 
 /**
  * RouteAssignmentService - назначение маршрутов грузовикам
@@ -43,9 +45,9 @@ class RouteAssignmentService
             return $avgLoadTime;
         }
 
-        // Затем целевое время (установленное оператором)
+        // Затем целевое время (установленное оператором) - в секундах, конвертируем в минуты
         if ($miner->target_load_time && $miner->target_load_time > 0) {
-            return (float) $miner->target_load_time;
+            return (float) $miner->target_load_time / 60;
         }
 
         // Дефолт
@@ -110,6 +112,7 @@ class RouteAssignmentService
 
             $this->notifyDriver($truck, $selectedRoute['order'], 'route_assigned');
             $this->notifyDispatcher($truck, $selectedRoute['order'], 'route_assigned');
+            $this->notifyExcavator($truck, $selectedRoute['order'], 'route_assigned');
 
             Log::info('assignForTruck END');
         });
@@ -284,6 +287,7 @@ class RouteAssignmentService
 
             $this->notifyDriver($truck, $newOrder, 'route_reassigned');
             $this->notifyDispatcher($truck, $newOrder, 'route_reassigned');
+            $this->notifyExcavator($truck, $newOrder, 'route_reassigned');
 
             return true;
         });
@@ -338,6 +342,7 @@ class RouteAssignmentService
             ]);
 
             Log::info('TruckTrip created', ['trip_id' => $trip->id]);
+
             // Обновляем породу в miningOrder (чтобы водитель видел правильную породу)
             if ($rockId) {
                 $order->update(['rock_id' => $rockId]);
@@ -564,5 +569,31 @@ class RouteAssignmentService
         ));
 
         Log::info("DispatcherNotification ({$action}) sent for truck {$truck->id}");
+    }
+
+    /**
+     * Уведомление экскаваторщика
+     */
+    protected function notifyExcavator(Truck $truck, MiningOrder $order, string $action = 'route_assigned'): void
+    {
+        if (!$order->miner_id) {
+            return;
+        }
+
+        event(new ExcavatorNotification(
+            $order->miner_id,
+            $action,
+            [
+                'truck_id' => $truck->id,
+                'truck_number' => $truck->number,
+                'driver_name' => $truck->driver?->name,
+                'status' => 'to_miner',
+                'message' => $action === 'route_assigned'
+                    ? "Самосвал {$truck->number} направляется к забою"
+                    : "Самосвал {$truck->number} переназначен",
+            ]
+        ));
+
+        Log::info("ExcavatorNotification ({$action}) sent for truck {$truck->id} to miner {$order->miner_id}");
     }
 }

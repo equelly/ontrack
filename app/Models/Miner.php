@@ -307,7 +307,8 @@ class Miner extends Model
     {
         // Получаем среднее время погрузки (фактическое или целевое)
         $avgLoadTime = $this->getAvgLoadTime();
-        $targetLoadTime = $this->target_load_time;
+        // target_load_time хранится в секундах, конвертируем в минуты
+        $targetLoadTime = $this->target_load_time ? $this->target_load_time / 60 : null;
 
         // Используем фактическое время если есть, иначе целевое
         $loadTime = $avgLoadTime ?? $targetLoadTime;

@@ -1,4 +1,7 @@
 <div class="dispatcher-panel-wrapper">
+        <!-- Toast контейнер для уведомлений -->
+    <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+  
     <!-- Статистика в строку -->
     <div class="card mb-4">
         <div class="card-body py-2 px-3">
@@ -347,7 +350,7 @@
                         <tr>
                             <th style="width: 150px;">Забой</th>
                             <th style="width: 100px;">Порода</th>
-                            <th style="width: 100px;">Цель (мин)</th>
+                            <th style="width: 100px;">Цель (сек)</th>
                             <th style="width: 100px;">Факт (мин)</th>
                             <th style="width: 100px;">Ожидание</th>
                             <th style="width: 100px;">В работе</th>
@@ -401,7 +404,7 @@
                                 </td>
                                 <td>
                                     @if($miner->target_load_time)
-                                        <span class="badge bg-primary">{{ $miner->target_load_time }} мин</span>
+                                        <span class="badge bg-primary">{{ $miner->target_load_time }} сек</span>
                                     @else
                                         <span class="text-muted small">Не задано</span>
                                     @endif
@@ -411,13 +414,15 @@
                                     @if($avgLoadTime)
                                         @if($miner->target_load_time)
                                             @php 
-                                                $diff = $avgLoadTime - $miner->target_load_time;
-                                                $percent = round(($avgLoadTime / $miner->target_load_time) * 100);
+                                                // target_load_time в секундах, конвертируем в минуты
+                                                $targetInMinutes = $miner->target_load_time / 60;
+                                                $diff = $avgLoadTime - $targetInMinutes;
+                                                $percent = round(($avgLoadTime / $targetInMinutes) * 100);
                                             @endphp
                                             @if($diff <= 0)
                                                 <span class="badge bg-success">{{ $avgLoadTime }} мин</span>
                                             @else
-                                                <span class="badge bg-warning text-dark" title="Превышение на {{ $diff }} мин">
+                                                <span class="badge bg-warning text-dark" title="Превышение на {{ round($diff, 1) }} мин">
                                                     {{ $avgLoadTime }} мин ({{ $percent }}%)
                                                 </span>
                                             @endif
@@ -2025,8 +2030,9 @@
                         Livewire.dispatch('refresh-dispatcher-data');
                         console.log('✅ Dispatched refresh-dispatcher-data');
                     })
-                    .listen('.miner-productivity-updated', (data) => {
-                        console.log('📊 Miner productivity updated:', data);
+                    .listen('.miner-productivity-updated', (eventData) => {
+                        console.log('📊 Miner productivity updated:', eventData);
+                        Livewire.dispatch('miner-productivity-updated', { data: eventData });
                     });
                 console.log('✅ Echo listeners set up');
             } else {

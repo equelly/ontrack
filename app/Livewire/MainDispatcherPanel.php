@@ -12,6 +12,7 @@ use App\Models\MiningOrder;
 use App\Models\TripPause;
 use App\Models\SystemSetting;
 use App\Events\DriverRouteUpdated;
+use App\Events\ExcavatorNotification;
 use App\Services\RouteAssignmentService;
 use App\Services\RouteOptimizerService;
 use App\Services\MinerStatusService;
@@ -22,7 +23,6 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
-
 
 #[Layout('components.layouts.app')]
 #[Title('Панель диспетчера')]
@@ -286,7 +286,7 @@ class MainDispatcherPanel extends Component
 
             // Уведомляем экскаваторщика о новом грузовике
             if ($order->miner_id) {
-                event(new \App\Events\ExcavatorNotification(
+                event(new ExcavatorNotification(
                     $order->miner_id,
                     'truck_assigned',
                     [
@@ -1149,16 +1149,18 @@ class MainDispatcherPanel extends Component
         $this->loadData();
     }
 
-    #[On('echo:dispatcher,.miner-productivity-updated')]
+    #[On('miner-productivity-updated')]
     public function onMinerProductivityUpdated(array $data): void
     {
         // Обновляем данные о забоях
         $this->miners = Miner::with(['rocks', 'currentRock'])->get();
 
         // Отправляем уведомление
+        $minerName = $data['miner_name'] ?? "Забой #{$data['miner_id']}";
         $this->dispatch('notify', [
             'type' => 'info',
-            'message' => "Обновлена производительность забоя (цель: {$data['target_load_time']} мин)",
+            'message' => "Обновлено время погрузки забоя «{$minerName}»: {$data['target_load_time']} сек",
+
         ]);
     }
 
@@ -1601,9 +1603,25 @@ class MainDispatcherPanel extends Component
      */
     public function updatedMinerThreshold(int $value): void
     {
-        if ($value >= 1 && $value <= 20) {
-            SystemSetting::setMinerOverloadThreshold($value);
+        $this->saveMinerThreshold($value);
+    }
+
+    /**
+     * Сохранить порог забоя
+     */
+    private function saveMinerThreshold(int $value): void
+    {
+        if ($value < 1 || $value > 20) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог должен быть от 1 до 20']);
+            return;
         }
+
+        SystemSetting::setMinerOverloadThreshold($value);
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Порог забоя установлен: {$value}",
+        ]);
     }
 
     /**
@@ -1611,9 +1629,25 @@ class MainDispatcherPanel extends Component
      */
     public function updatedZoneThreshold(int $value): void
     {
-        if ($value >= 1 && $value <= 20) {
-            SystemSetting::setZoneOverloadThreshold($value);
+        $this->saveZoneThreshold($value);
+    }
+
+    /**
+     * Сохранить порог зоны
+     */
+    private function saveZoneThreshold(int $value): void
+    {
+        if ($value < 1 || $value > 20) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог должен быть от 1 до 20']);
+            return;
         }
+
+        SystemSetting::setZoneOverloadThreshold($value);
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Порог зоны установлен: {$value}",
+        ]);
     }
 
     public function render()
