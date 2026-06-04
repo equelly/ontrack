@@ -62,6 +62,9 @@ class DriverPanel extends Component
         'next_to_type' => 'TO-1',
     ];
 
+    // Текущее обслуживание
+    public ?array $currentServiceTask = null;
+
     public function mount(): void
     {
         $this->loadTrucks();
@@ -114,6 +117,9 @@ class DriverPanel extends Component
             
             $this->loadData();
             
+            // Временно отключено - проверка запланированного обслуживания
+            // $this->checkScheduledService();
+            
             // Сохраняем в cookie
             $this->dispatch('set-cookie', [
                 'name' => 'selected_truck_id',
@@ -122,6 +128,34 @@ class DriverPanel extends Component
             ]);
 
             $this->dispatch('truck-selected', ['truck_id' => $this->truck->id]);
+        }
+    }
+
+    /**
+     * Проверить запланированное обслуживание при начале смены
+     */
+    protected function checkScheduledService(): void
+    {
+        if (!$this->truck) {
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+
+        // Планируем обслуживание на смену (если ещё не запланировано)
+        $plannedTasks = $service->planServiceForShift($this->truck);
+
+        // Показываем уведомление о запланированных задачах, но НЕ отправляем автоматически
+        if (!empty($plannedTasks)) {
+            $messages = [];
+            foreach ($plannedTasks as $taskInfo) {
+                $messages[] = $taskInfo['reason'];
+            }
+            
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => 'Запланировано: ' . implode(', ', $messages),
+            ]);
         }
     }
 
@@ -179,6 +213,34 @@ class DriverPanel extends Component
 
         // Загружаем данные по обслуживанию
         $this->loadServiceStats();
+
+        // Загружаем текущую задачу обслуживания
+        $this->loadCurrentServiceTask();
+    }
+
+    /**
+     * Загрузить текущую задачу обслуживания
+     */
+    protected function loadCurrentServiceTask(): void
+    {
+        if (!$this->truck) {
+            $this->currentServiceTask = null;
+            return;
+        }
+
+        $task = $this->truck->currentServiceTask()->with('servicePost')->first();
+
+        if ($task) {
+            $this->currentServiceTask = [
+                'id' => $task->id,
+                'type' => $task->getTypeLabel(),
+                'post_name' => $task->servicePost?->name,
+                'started_at' => $task->started_at?->format('H:i'),
+                'duration' => $task->getDuration(),
+            ];
+        } else {
+            $this->currentServiceTask = null;
+        }
     }
 
     protected function loadServiceStats(): void
@@ -204,7 +266,7 @@ class DriverPanel extends Component
                 'queue_position' => $task->queue_position,
                 'started_at' => $task->started_at?->format('H:i'),
                 'duration' => $task->getDuration(),
-                'post_name' => $task->servicePost?->name,                
+                'post_name' => $task->servicePost?->name,
             ])
             ->toArray();
     }
@@ -297,11 +359,74 @@ class DriverPanel extends Component
             $statusService = app(TruckStatusService::class);
             $statusService->changeStatus($this->truck, 'completed');
             $this->loadData();
+
+            // Проверяем, есть ли запланированные задачи обслуживания
+            $this->checkPendingServiceTasks();
+
         } catch (\Exception $e) {
             Log::error('Complete trip failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Проверить запланированные задачи обслуживания после завершения рейса
+     */
+    protected function checkPendingServiceTasks(): void
+    {
+        if (!$this->truck) {
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+
+        // Получаем все незавершённые задачи без started_at (в очереди)
+        $pendingTasks = TruckPlannedTask::where('truck_id', $this->truck->id)
+            ->where('completed', false)
+            ->whereNull('started_at')
+            ->orderBy('queue_position')
+            ->get();
+
+        if ($pendingTasks->isEmpty()) {
+            return;
+        }
+
+        // Берём первую задачу
+        $nextTask = $pendingTasks->first();
+
+        // Проверяем наличие свободного поста
+        $freePost = $service->getFreePosts($nextTask->task_type)->first();
+
+        if ($freePost) {
+            // Есть свободный пост - отправляем на обслуживание
+            $freePost->occupy($this->truck, $nextTask->getDuration());
+            $nextTask->start($freePost->id);
+
+            // Определяем статус
+            $newStatus = match($nextTask->task_type) {
+                TruckPlannedTask::TYPE_FUELING => 'fueling',
+                TruckPlannedTask::TYPE_MAINTENANCE => 'maintenance',
+                default => 'service',
+            };
+
+            $this->truck->update(['status' => $newStatus]);
+            $this->loadData();
+
+            $taskLabel = $nextTask->getTypeLabel();
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => "Направление на {$taskLabel}. Пост: {$freePost->name}",
+            ]);
+        } else {
+            // Посты заняты - уведомляем о позиции в очереди
+            $taskLabel = $nextTask->getTypeLabel();
+            $position = $nextTask->queue_position;
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => "Запланировано: {$taskLabel}. Очередь: позиция {$position}",
             ]);
         }
     }
@@ -475,6 +600,37 @@ class DriverPanel extends Component
 
         } catch (\Exception $e) {
             Log::error('Cancel service task failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Завершить текущее обслуживание
+     */
+    public function completeService(): void
+    {
+        try {
+            $task = $this->truck->currentServiceTask()->first();
+
+            if (!$task) {
+                throw new \Exception('Нет активной задачи обслуживания');
+            }
+
+            $service = app(ServiceSchedulingService::class);
+            $service->completeService($task);
+
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Обслуживание завершено!',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Complete service failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => 'Ошибка: ' . $e->getMessage(),
@@ -690,3 +846,4 @@ class DriverPanel extends Component
         return view('livewire.driver-panel');
     }
 }
+

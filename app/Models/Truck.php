@@ -69,6 +69,17 @@ class Truck extends Model
     {
         return $this->truckModel?->fuel_capacity ?? 500;
     }
+    /**
+     * Текущая задача на обслуживании (в процессе)
+     */
+    public function currentServiceTask()
+    {
+        return $this->hasOne(TruckPlannedTask::class)
+            ->whereNotNull('started_at')
+            ->where('completed', false)
+            ->latest();
+    }
+
 
     public function getFuelConsumptionAttribute()
     {

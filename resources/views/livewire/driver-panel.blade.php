@@ -274,6 +274,57 @@
                         </button>
                     @endif
                 @endif
+
+                {{-- Обслуживание (подкачка шин, обтяжка колёс) --}}
+                @if($status === 'service')
+                    <div class="alert alert-warning py-3 text-center mb-2">
+                        <strong>{{ $currentServiceTask['type'] ?? 'Обслуживание' }}</strong>
+                        @if($currentServiceTask['post_name'])
+                            <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
+                        @endif
+                        @if($currentServiceTask['started_at'])
+                            <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
+                        @endif
+                    </div>
+                    <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
+                        <i class="bi bi-check-lg me-1"></i> Завершить обслуживание
+                    </button>
+                @endif
+
+                {{-- Заправка --}}
+                @if($status === 'fueling')
+                    <div class="alert alert-info py-3 text-center mb-2">
+                        <strong>Заправка</strong>
+                        @if($currentServiceTask['post_name'])
+                            <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
+                        @endif
+                        @if($currentServiceTask['started_at'])
+                            <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
+                        @endif
+                    </div>
+                    <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
+                        <i class="bi bi-check-lg me-1"></i> Завершить заправку
+                    </button>
+                @endif
+
+                {{-- Техническое обслуживание (ТО) --}}
+                @if($status === 'maintenance')
+                    <div class="alert alert-warning py-3 text-center mb-2">
+                        <strong>{{ $currentServiceTask['type'] ?? 'Техническое обслуживание' }}</strong>
+                        @if($currentServiceTask['post_name'])
+                            <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
+                        @endif
+                        @if($currentServiceTask['started_at'])
+                            <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
+                        @endif
+                        @if($currentServiceTask['duration'])
+                            <div class="text-muted small">Плановая длительность: {{ $currentServiceTask['duration'] }} мин</div>
+                        @endif
+                    </div>
+                    <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
+                        <i class="bi bi-check-lg me-1"></i> Завершить ТО
+                    </button>
+                @endif                
             </div>
         </div>
 

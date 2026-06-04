@@ -5,32 +5,35 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    /**
+     * Исправляем ENUM статусов грузовика - добавляем все необходимые статусы
+     */
     public function up(): void
     {
-        // Добавляем новые статусы для обслуживания
         DB::statement("ALTER TABLE trucks MODIFY COLUMN status ENUM(
             'free',
-            'assigned',
+            'to_miner',
             'loading',
-            'loaded',
             'transporting',
             'unloading',
             'completed',
             'delayed',
             'breakdown',
-            'fueling',
             'maintenance',
-            'service'
+            'fueling',
+            'service',
+            'waiting_loading',
+            'waiting_unloading'
         ) DEFAULT 'free'");
     }
 
     public function down(): void
     {
+        // Возврат к базовым статусам
         DB::statement("ALTER TABLE trucks MODIFY COLUMN status ENUM(
             'free',
-            'assigned',
+            'to_miner',
             'loading',
-            'loaded',
             'transporting',
             'unloading',
             'completed',
