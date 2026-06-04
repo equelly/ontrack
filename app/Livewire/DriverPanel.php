@@ -204,6 +204,7 @@ class DriverPanel extends Component
                 'queue_position' => $task->queue_position,
                 'started_at' => $task->started_at?->format('H:i'),
                 'duration' => $task->getDuration(),
+                'post_name' => $task->servicePost?->name,                
             ])
             ->toArray();
     }

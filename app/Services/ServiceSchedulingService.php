@@ -448,6 +448,7 @@ class ServiceSchedulingService
             'message' => '',
             'task' => null,
             'queue_position' => null,
+            'post_name' => null,            
         ];
 
         // Проверяем, есть ли активный рейс
@@ -458,17 +459,33 @@ class ServiceSchedulingService
         $result['task'] = $task;
 
         // Проверяем наличие свободных постов
-        if ($this->hasFreePost($taskType)) {
+        $freePost = $this->getFreePosts($taskType)->first();
+
+        if ($freePost) {
             // Есть свободный пост
             if ($hasActiveTrip) {
                 // Нужно завершить рейс сначала
-                $result['message'] = 'Заявка принята. Завершите текущий рейс, затем отправляйтесь на обслуживание.';
+                $result['message'] = 'Заявка принята. Завершите текущий рейс, затем отправляйтесь на пост "' . $freePost->name . '".';
                 $result['needs_complete_trip'] = true;
+                $result['post_name'] = $freePost->name;
             } else {
-                // Можно сразу начинать
-                $this->startService($task);
+                // Можно сразу начинать - занимаем пост
+                $freePost->occupy($truck, $task->getDuration());
+                $task->start($freePost->id);
+
+                // Обновляем статус грузовика
+                $truck->update([
+                    'status' => match($taskType) {
+                        TruckPlannedTask::TYPE_FUELING => 'fueling',
+                        TruckPlannedTask::TYPE_MAINTENANCE => 'maintenance',
+                        default => 'service',
+                    },
+                ]);
+
                 $result['success'] = true;
-                $result['message'] = 'Свободный пост найден. Отправляйтесь на обслуживание.';
+                $result['post_name'] = $freePost->name;
+                $result['message'] = 'Свободный пост найден. Отправляйтесь на пост "' . $freePost->name . '".';
+
             }
         } else {
             // Нет свободных постов - ставим в очередь

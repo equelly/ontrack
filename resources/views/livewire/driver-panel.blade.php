@@ -358,7 +358,10 @@
                                             <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-1">
                                                 <div>
                                                     <strong>{{ $task['type'] }}</strong>
-                                                    @if($task['queue_position'])
+                                                    @if($task['post_name'])
+                                                        <span class="badge bg-primary ms-1">{{ $task['post_name'] }}</span>
+                                                    @elseif($task['queue_position'])
+
                                                         <span class="badge bg-secondary ms-1">Очередь: {{ $task['queue_position'] }}</span>
                                                     @endif
                                                     @if($task['started_at'])
