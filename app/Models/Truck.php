@@ -94,6 +94,29 @@ class Truck extends Model
     {
         return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
     }
+    // Геттеры для пробега и мото-часов
+    public function getMotoHoursAttribute(): float
+    {
+        return round($this->moto_minutes / 60, 1);
+    }
+
+    public function getMotoHoursSinceToAttribute(): float
+    {
+        return round($this->moto_minutes_since_to / 60, 1);
+    }
+
+    public function getMileageKmAttribute(): string
+    {
+        return number_format($this->mileage, 0, ',', ' ') . ' км';
+    }
+
+    /**
+     * Получить мото-часы с момента последнего ТО
+     */
+    public function getMotoHoursSinceLastTO(): float
+    {
+        return $this->moto_hours_since_to;
+    }
 
     // Scope'ы
     public function scopeFree($query)

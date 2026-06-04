@@ -7,8 +7,10 @@ use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Models\TripPause;
 use App\Models\Zone;
+use App\Models\TruckPlannedTask;
 use App\Services\TruckStatusService;
 use App\Services\RouteAssignmentService;
+use App\Services\ServiceSchedulingService;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
@@ -45,9 +47,20 @@ class DriverPanel extends Component
     // Модальные окна
     public bool $showZoneModal = false;
     public bool $showDelayModal = false;
+    public bool $showServiceModal = false;
     public string $delayReason = 'traffic';
     public int $delayMinutes = 15;
     public $availableZones = [];
+
+    // Запрос на обслуживание
+    public ?string $serviceType = null;
+    public array $pendingServiceTasks = [];
+    public array $serviceStats = [
+        'mileage_since_fuel' => 0,
+        'moto_hours_since_to' => 0,
+        'fueling_threshold' => 0,
+        'next_to_type' => 'TO-1',
+    ];
 
     public function mount(): void
     {
@@ -163,6 +176,36 @@ class DriverPanel extends Component
 
         // Отправляем событие для перезапуска таймера
         $this->dispatch('restart-timer');
+
+        // Загружаем данные по обслуживанию
+        $this->loadServiceStats();
+    }
+
+    protected function loadServiceStats(): void
+    {
+        if (!$this->truck) {
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+
+        $this->serviceStats = [
+            'mileage_since_fuel' => $this->truck->mileage_since_fuel ?? 0,
+            'moto_hours_since_to' => round(($this->truck->moto_minutes_since_to ?? 0) / 60, 1),
+            'fueling_threshold' => $service->calculateFuelingThreshold($this->truck),
+            'next_to_type' => $service->getNextTOType($this->truck),
+        ];
+
+        // Загружаем запланированные задачи
+        $this->pendingServiceTasks = $service->getPendingTasks($this->truck)
+            ->map(fn($task) => [
+                'id' => $task->id,
+                'type' => $task->getTypeLabel(),
+                'queue_position' => $task->queue_position,
+                'started_at' => $task->started_at?->format('H:i'),
+                'duration' => $task->getDuration(),
+            ])
+            ->toArray();
     }
 
     protected function getShiftName(): string
@@ -358,6 +401,82 @@ class DriverPanel extends Component
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    // =========================================
+    // ЗАПРОСЫ НА ОБСЛУЖИВАНИЕ
+    // =========================================
+
+    public function openServiceModal(string $type): void
+    {
+        $this->serviceType = $type;
+        $this->showServiceModal = true;
+    }
+
+    public function closeServiceModal(): void
+    {
+        $this->showServiceModal = false;
+        $this->serviceType = null;
+    }
+
+    public function requestTireInflation(): void
+    {
+        $this->requestService(TruckPlannedTask::TYPE_TIRE_INFLATION);
+    }
+
+    public function requestWheelTightening(): void
+    {
+        $this->requestService(TruckPlannedTask::TYPE_WHEEL_TIGHTENING);
+    }
+
+    protected function requestService(string $taskType): void
+    {
+        try {
+            $service = app(ServiceSchedulingService::class);
+            $result = $service->handleDriverRequest($this->truck, $taskType);
+
+            $this->loadData();
+            $this->showServiceModal = false;
+
+            $type = $result['success'] ? 'success' : 'info';
+            $this->dispatch('notify', [
+                'type' => $type,
+                'message' => $result['message'],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Service request failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function cancelServiceTask(int $taskId): void
+    {
+        try {
+            $task = TruckPlannedTask::where('id', $taskId)
+                ->where('truck_id', $this->truck->id)
+                ->firstOrFail();
+
+            $service = app(ServiceSchedulingService::class);
+            $service->cancelTask($task);
+
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => 'Заявка отменена',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Cancel service task failed', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка: ' . $e->getMessage(),
             ]);
         }
     }

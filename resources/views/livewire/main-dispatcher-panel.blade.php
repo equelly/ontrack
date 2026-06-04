@@ -1847,7 +1847,7 @@
 
     <!-- Настройки порогов перегруженности -->
     <div class="tab-pane fade {{ $activeTab === 'settingsTab' ? 'show active' : '' }}" id="settingsTab">
-        <div class="card">
+        <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Пороги перегруженности</h5>
             </div>
@@ -1925,6 +1925,197 @@
                     Пороги применяются к <em>всем</em> забоям и зонам разгрузки.
                     Изменения вступают в силу немедленно при следующей проверке перегруженности.
                 </div>
+            </div>
+        </div>
+
+        <!-- Настройки сервисных постов -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-tools me-2"></i>Сервисные посты</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-4">
+                    Настройка количества постов для различных видов обслуживания.
+                    При занятости всех постов грузовики становятся в очередь.
+                </p>
+
+                <div class="row">
+                    <!-- Посты заправки -->
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-gas-pump text-info me-2"></i>
+                                    Посты заправки
+                                </h6>
+                                <p class="text-muted small">
+                                    Количество постов для заправки грузовиков (15 мин).
+                                </p>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" 
+                                           class="form-range" 
+                                           min="1" max="5" 
+                                           wire:model.live="fuelingPostsCount"
+                                           style="width: 100px;">
+                                    <span class="badge bg-info fs-5">{{ $fuelingPostsCount }}</span>
+                                </div>
+                                @php $postsStatus = $this->servicePostsStatus; @endphp
+                                @if(!empty($postsStatus['fueling']))
+                                    <div class="mt-2">
+                                        @foreach($postsStatus['fueling'] as $post)
+                                            <span class="badge {{ $post['is_occupied'] ? 'bg-warning' : 'bg-success' }} me-1">
+                                                {{ $post['name'] }}
+                                                @if($post['truck'])
+                                                    ({{ $post['truck'] }})
+                                                @endif
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Посты ТО -->
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-wrench text-warning me-2"></i>
+                                    Посты ТО
+                                </h6>
+                                <p class="text-muted small">
+                                    Техническое обслуживание (TO-1: 2ч, TO-2: 4ч).
+                                </p>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" 
+                                           class="form-range" 
+                                           min="1" max="5" 
+                                           wire:model.live="maintenancePostsCount"
+                                           style="width: 100px;">
+                                    <span class="badge bg-warning fs-5">{{ $maintenancePostsCount }}</span>
+                                </div>
+                                @if(!empty($postsStatus['maintenance']))
+                                    <div class="mt-2">
+                                        @foreach($postsStatus['maintenance'] as $post)
+                                            <span class="badge {{ $post['is_occupied'] ? 'bg-warning' : 'bg-success' }} me-1">
+                                                {{ $post['name'] }}
+                                                @if($post['truck'])
+                                                    ({{ $post['truck'] }})
+                                                @endif
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Посты шиномонтажа -->
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-truck-loading text-secondary me-2"></i>
+                                    Шиномонтаж
+                                </h6>
+                                <p class="text-muted small">
+                                    Подкачка шин и обтяжка колёс (общие посты).
+                                </p>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" 
+                                           class="form-range" 
+                                           min="1" max="5" 
+                                           wire:model.live="tireServicePostsCount"
+                                           style="width: 100px;">
+                                    <span class="badge bg-secondary fs-5">{{ $tireServicePostsCount }}</span>
+                                </div>
+                                @if(!empty($postsStatus['tire_service']))
+                                    <div class="mt-2">
+                                        @foreach($postsStatus['tire_service'] as $post)
+                                            <span class="badge {{ $post['is_occupied'] ? 'bg-warning' : 'bg-success' }} me-1">
+                                                {{ $post['name'] }}
+                                                @if($post['truck'])
+                                                    ({{ $post['truck'] }})
+                                                @endif
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Очередь на обслуживание -->
+                @php $serviceQueue = $this->serviceQueue; @endphp
+                @if(!empty($serviceQueue['fueling']) || !empty($serviceQueue['maintenance']) || !empty($serviceQueue['tire_inflation']) || !empty($serviceQueue['wheel_tightening']))
+                <div class="mt-3">
+                    <h6 class="text-muted mb-2">Очередь на обслуживание:</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Тип</th>
+                                    <th>Грузовик</th>
+                                    <th>Позиция</th>
+                                    <th>Статус</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach(['fueling' => 'Заправка', 'maintenance' => 'ТО', 'tire_inflation' => 'Подкачка шин', 'wheel_tightening' => 'Обтяжка колёс'] as $type => $typeLabel)
+                                    @foreach($serviceQueue[$type] ?? [] as $task)
+                                        <tr>
+                                            <td>
+                                                {{ $typeLabel }}
+                                                @if($task['to_type'])
+                                                    ({{ $task['to_type'] }})
+                                                @endif
+                                            </td>
+                                            <td>{{ $task['truck'] }}</td>
+                                            <td>
+                                                @if($task['started_at'])
+                                                    <span class="badge bg-success">В процессе</span>
+                                                @else
+                                                    <span class="badge bg-secondary">{{ $task['position'] }}</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if($task['started_at'])
+                                                    Начало: {{ $task['started_at'] }}
+                                                @else
+                                                    Ожидание
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if($task['started_at'])
+                                                    <button wire:click="completeServiceTask({{ $task['id'] }})"
+                                                            class="btn btn-sm btn-success"
+                                                            wire:confirm="Завершить обслуживание?">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                @else
+                                                    <button wire:click="cancelServiceTask({{ $task['id'] }})"
+                                                            class="btn btn-sm btn-outline-danger"
+                                                            wire:confirm="Отменить задачу?">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                @endif
+
+                <small class="text-success mt-2 d-block">
+                    <i class="fas fa-check-circle"></i> Настройки сохраняются автоматически
+                </small>
+
             </div>
         </div>
     </div>

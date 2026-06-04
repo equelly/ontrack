@@ -314,6 +314,94 @@
                 </div>
             </div>
         </div>
+
+        <!-- Секция обслуживания -->
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="accordion" id="serviceAccordion">
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#serviceCollapse">
+                                <i class="bi bi-tools me-2"></i>
+                                Обслуживание
+                                @if(count($pendingServiceTasks) > 0)
+                                    <span class="badge bg-warning text-dark ms-2">{{ count($pendingServiceTasks) }}</span>
+                                @endif
+                            </button>
+                        </h2>
+                        <div id="serviceCollapse" class="accordion-collapse collapse" data-bs-parent="#serviceAccordion">
+                            <div class="accordion-body py-2">
+                                <!-- Показатели обслуживания -->
+                                <div class="mb-3">
+                                    <div class="d-flex flex-wrap" style="gap: 0.5rem 2rem;">
+                                        <div>
+                                            <span class="text-muted">Пробег с заправки:</span>
+                                            <strong class="ms-1 {{ $serviceStats['mileage_since_fuel'] >= $serviceStats['fueling_threshold'] ? 'text-danger' : '' }}">
+                                                {{ $serviceStats['mileage_since_fuel'] }} / {{ $serviceStats['fueling_threshold'] }} км
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span class="text-muted">Мото-часы с ТО:</span>
+                                            <strong class="ms-1">
+                                                {{ $serviceStats['moto_hours_since_to'] }} ч
+                                            </strong>
+                                            <small class="text-muted">(след. {{ $serviceStats['next_to_type'] }})</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Запланированные задачи -->
+                                @if(count($pendingServiceTasks) > 0)
+                                    <div class="mb-3">
+                                        <h6 class="text-muted mb-2">Запланировано:</h6>
+                                        @foreach($pendingServiceTasks as $task)
+                                            <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-1">
+                                                <div>
+                                                    <strong>{{ $task['type'] }}</strong>
+                                                    @if($task['queue_position'])
+                                                        <span class="badge bg-secondary ms-1">Очередь: {{ $task['queue_position'] }}</span>
+                                                    @endif
+                                                    @if($task['started_at'])
+                                                        <span class="badge bg-success ms-1">Начато: {{ $task['started_at'] }}</span>
+                                                    @endif
+                                                </div>
+                                                @if(!$task['started_at'])
+                                                    <button wire:click="cancelServiceTask({{ $task['id'] }})"
+                                                            wire:confirm="Отменить заявку?"
+                                                            class="btn btn-sm btn-outline-danger">
+                                                        <i class="bi bi-x"></i>
+                                                    </button>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                <!-- Кнопки запроса обслуживания -->
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <button wire:click="requestTireInflation"
+                                                class="btn btn-outline-primary w-100"
+                                                @if(in_array($truck->status, ['loading', 'unloading', 'maintenance', 'fueling'])) disabled @endif>
+                                            <i class="bi bi-disc me-1"></i>
+                                            Подкачка шин
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button wire:click="requestWheelTightening"
+                                                class="btn btn-outline-primary w-100"
+                                                @if(in_array($truck->status, ['loading', 'unloading', 'maintenance', 'fueling'])) disabled @endif>
+                                            <i class="bi bi-nut me-1"></i>
+                                            Обтяжка колёс
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         @else
         <div class="alert alert-info text-center py-4">
             Выберите грузовик для начала работы

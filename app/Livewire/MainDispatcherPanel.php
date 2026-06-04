@@ -11,18 +11,22 @@ use App\Models\TruckTrip;
 use App\Models\MiningOrder;
 use App\Models\TripPause;
 use App\Models\SystemSetting;
+use App\Models\ServicePost;
+use App\Models\TruckPlannedTask;
 use App\Events\DriverRouteUpdated;
 use App\Events\ExcavatorNotification;
 use App\Services\RouteAssignmentService;
 use App\Services\RouteOptimizerService;
 use App\Services\MinerStatusService;
 use App\Services\ZoneStatusService;
+use App\Services\ServiceSchedulingService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
+
 
 #[Layout('components.layouts.app')]
 #[Title('Панель диспетчера')]
@@ -90,6 +94,7 @@ class MainDispatcherPanel extends Component
     {
         $this->loadData();
         $this->loadThresholds();
+        $this->loadServicePostSettings();
     }
 
     public function loadThresholds(): void
@@ -1160,7 +1165,6 @@ class MainDispatcherPanel extends Component
         $this->dispatch('notify', [
             'type' => 'info',
             'message' => "Обновлено время погрузки забоя «{$minerName}»: {$data['target_load_time']} сек",
-
         ]);
     }
 
@@ -1647,6 +1651,246 @@ class MainDispatcherPanel extends Component
         $this->dispatch('notify', [
             'type' => 'success',
             'message' => "Порог зоны установлен: {$value}",
+        ]);
+    }
+
+    // =========================================
+    // УПРАВЛЕНИЕ СЕРВИСНЫМИ ПОСТАМИ
+    // =========================================
+
+    // Количество постов
+    public int $fuelingPostsCount = 2;
+    public int $maintenancePostsCount = 2;
+    public int $tireServicePostsCount = 3;
+
+    // Интервалы ТО
+    public int $to1IntervalHours = 250;
+    public int $to2IntervalHours = 500;
+
+    // Коэффициент пустых пробегов
+    public float $emptyRunCoefficient = 0.5;
+
+    /**
+     * Загрузить настройки сервисных постов
+     */
+    public function loadServicePostSettings(): void
+    {
+        $settings = SystemSetting::getServicePostsSettings();
+        $this->fuelingPostsCount = $settings['fueling_posts_count'];
+        $this->maintenancePostsCount = $settings['maintenance_posts_count'];
+        $this->tireServicePostsCount = $settings['tire_service_posts_count'];
+        $this->to1IntervalHours = $settings['to1_interval_hours'];
+        $this->to2IntervalHours = $settings['to2_interval_hours'];
+        $this->emptyRunCoefficient = $settings['empty_run_coefficient'];
+    }
+
+    /**
+     * Получить статус сервисных постов
+     */
+    public function getServicePostsStatusProperty(): array
+    {
+        $posts = ServicePost::with('currentTruck')->get();
+
+        $result = [
+            'fueling' => [],
+            'maintenance' => [],
+            'tire_service' => [],
+        ];
+
+        foreach ($posts as $post) {
+            $result[$post->type][] = [
+                'id' => $post->id,
+                'name' => $post->name,
+                'is_occupied' => $post->is_occupied,
+                'truck' => $post->currentTruck?->number,
+                'minutes_until_free' => $post->getMinutesUntilFree(),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Получить очередь на обслуживание
+     */
+    public function getServiceQueueProperty(): array
+    {
+        $tasks = TruckPlannedTask::with('truck')
+            ->where('completed', false)
+            ->orderBy('queue_position')
+            ->get();
+
+        $result = [
+            'fueling' => [],
+            'maintenance' => [],
+            'tire_inflation' => [],
+            'wheel_tightening' => [],
+        ];
+
+        foreach ($tasks as $task) {
+            if (!isset($result[$task->task_type])) {
+                continue;
+            }
+
+            $result[$task->task_type][] = [
+                'id' => $task->id,
+                'truck' => $task->truck?->number,
+                'position' => $task->queue_position,
+                'started_at' => $task->started_at?->format('H:i'),
+                'duration' => $task->getDuration(),
+                'to_type' => $task->to_type,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Автосохранение количества постов заправки
+     */
+    public function updatedFuelingPostsCount(int $value): void
+    {
+        $this->saveServicePostCount('fueling', $value);
+    }
+
+    /**
+     * Автосохранение количества постов ТО
+     */
+    public function updatedMaintenancePostsCount(int $value): void
+    {
+        $this->saveServicePostCount('maintenance', $value);
+    }
+
+    /**
+     * Автосохранение количества постов шиномонтажа
+     */
+    public function updatedTireServicePostsCount(int $value): void
+    {
+        $this->saveServicePostCount('tire_service', $value);
+    }
+
+    /**
+     * Сохранить количество постов
+     */
+    private function saveServicePostCount(string $type, int $value): void
+    {
+        if ($value < 1 || $value > 10) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Количество постов должно быть от 1 до 10']);
+            return;
+        }
+
+        match($type) {
+            'fueling' => SystemSetting::setFuelingPostsCount($value),
+            'maintenance' => SystemSetting::setMaintenancePostsCount($value),
+            'tire_service' => SystemSetting::setTireServicePostsCount($value),
+        };
+
+        // Синхронизируем посты в базе
+        $this->syncServicePosts();
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Количество постов обновлено: {$value}",
+        ]);
+    }
+
+    /**
+     * Синхронизировать посты в базе с настройками
+     */
+    private function syncServicePosts(): void
+    {
+        // Убедимся что количество постов соответствует настройкам
+        $types = [
+            'fueling' => ['type' => ServicePost::TYPE_FUELING, 'count' => $this->fuelingPostsCount],
+            'maintenance' => ['type' => ServicePost::TYPE_MAINTENANCE, 'count' => $this->maintenancePostsCount],
+            'tire_service' => ['type' => ServicePost::TYPE_TIRE_SERVICE, 'count' => $this->tireServicePostsCount],
+        ];
+
+        foreach ($types as $data) {
+            $existing = ServicePost::ofType($data['type'])->count();
+            $needed = $data['count'];
+
+            if ($existing < $needed) {
+                // Добавляем недостающие посты
+                for ($i = $existing + 1; $i <= $needed; $i++) {
+                    ServicePost::create([
+                        'type' => $data['type'],
+                        'name' => match($data['type']) {
+                            ServicePost::TYPE_FUELING => "Заправка {$i}",
+                            ServicePost::TYPE_MAINTENANCE => "ТО {$i}",
+                            ServicePost::TYPE_TIRE_SERVICE => "Шиномонтаж {$i}",
+                        },
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Отправить грузовик на обслуживание
+     */
+    public function sendToService(int $truckId, string $taskType, ?string $toType = null): void
+    {
+        $truck = Truck::find($truckId);
+        if (!$truck) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Грузовик не найден']);
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+        $task = $service->createTask($truck, $taskType, $toType);
+
+        // Если есть свободный пост - сразу начинаем
+        if ($service->hasFreePost($taskType)) {
+            $service->startService($task);
+        }
+
+        $this->loadData();
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Грузовик {$truck->number} отправлен на {$task->getTypeLabel()}",
+        ]);
+    }
+
+    /**
+     * Завершить обслуживание
+     */
+    public function completeServiceTask(int $taskId): void
+    {
+        $task = TruckPlannedTask::find($taskId);
+        if (!$task) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Задача не найдена']);
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+        $service->completeService($task);
+
+        $this->loadData();
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Обслуживание завершено",
+        ]);
+    }
+
+    /**
+     * Отменить задачу из очереди
+     */
+    public function cancelServiceTask(int $taskId): void
+    {
+        $task = TruckPlannedTask::find($taskId);
+        if (!$task) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Задача не найдена']);
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+        $service->cancelTask($task);
+
+        $this->loadData();
+        $this->dispatch('notify', [
+            'type' => 'info',
+            'message' => "Задача отменена",
         ]);
     }
 
