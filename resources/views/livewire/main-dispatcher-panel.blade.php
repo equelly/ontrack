@@ -1,7 +1,7 @@
 <div class="dispatcher-panel-wrapper">
-        <!-- Toast контейнер для уведомлений -->
+    <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-  
+    
     <!-- Статистика в строку -->
     <div class="card mb-4">
         <div class="card-body py-2 px-3">
@@ -103,6 +103,33 @@
                         <small class="text-muted">км</small>
                     </div>
                 </div>
+                <!-- Разделитель -->
+                <div class="vr"></div>
+                <!-- Очереди обслуживания -->
+                @php $queueStats = $this->queue_stats; @endphp
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-success bg-opacity-10 rounded px-2 py-1">
+                        <i class="fas fa-tools text-success"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block">Очереди обслуживания</small>
+                        <small class="text-muted">
+                            ТО: {{ $queueStats['maintenance']['waiting'] }}/{{ $queueStats['maintenance']['in_progress'] }},
+                            Запр: {{ $queueStats['fueling']['waiting'] }}/{{ $queueStats['fueling']['in_progress'] }}
+                        </small>
+                    </div>
+                </div>
+                <!-- Кнопка планирования -->
+                <div class="ms-auto">
+                    <button
+                        wire:click="runShiftPlanning"
+                        wire:loading.attr="disabled"
+                        class="btn btn-success btn-sm">
+                        <span wire:loading.remove><i class="fas fa-calendar-check"></i> Планировать смену</span>
+                        <span wire:loading><i class="fas fa-spinner fa-spin"></i> Планирование...</span>
+                    </button>
+                </div>
+
             </div>
         </div>
     </div>
@@ -2115,7 +2142,6 @@
                 <small class="text-success mt-2 d-block">
                     <i class="fas fa-check-circle"></i> Настройки сохраняются автоматически
                 </small>
-
             </div>
         </div>
     </div>
@@ -2211,23 +2237,14 @@
             });
 
             // WebSocket для обновлений
-            console.log('🔧 Setting up Echo listeners...', { Echo: !!window.Echo });
             if (window.Echo) {
-                console.log('📡 Subscribing to dispatcher channel...');
                 window.Echo.channel('dispatcher')
                     .listen('.truck-updated', (data) => {
-                        console.log('🔔 Dispatcher notification:', data);
-                        // В Livewire v3 используем Livewire.dispatch
                         Livewire.dispatch('refresh-dispatcher-data');
-                        console.log('✅ Dispatched refresh-dispatcher-data');
                     })
                     .listen('.miner-productivity-updated', (eventData) => {
-                        console.log('📊 Miner productivity updated:', eventData);
                         Livewire.dispatch('miner-productivity-updated', { data: eventData });
                     });
-                console.log('✅ Echo listeners set up');
-            } else {
-                console.warn('⚠️ Echo not available');
             }
 
             Livewire.on('sync-tabs', () => {

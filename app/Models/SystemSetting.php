@@ -245,4 +245,54 @@ class SystemSetting extends Model
             static::setEmptyRunCoefficient($settings['empty_run_coefficient']);
         }
     }
+
+    // ==========================================
+    // БУФЕРЫ ОБСЛУЖИВАНИЯ
+    // ==========================================
+
+    /**
+     * Буфер ТО (моточасы до наступления срока для отправки)
+     */
+    public static function getServiceToBufferHours(): int
+    {
+        return (int) static::get('service_to_buffer_hours', 20);
+    }
+
+    public static function setServiceToBufferHours(int $hours): void
+    {
+        static::set('service_to_buffer_hours', $hours, 'Буфер ТО (моточасы до наступления срока)');
+    }
+
+    /**
+     * Буфер заправки (% остатка топлива для отправки)
+     */
+    public static function getServiceFuelingBufferPercent(): int
+    {
+        return (int) static::get('service_fueling_buffer_percent', 15);
+    }
+
+    public static function setServiceFuelingBufferPercent(int $percent): void
+    {
+        static::set('service_fueling_buffer_percent', $percent, 'Буфер заправки (% остатка топлива)');
+    }
+
+    /**
+     * Получить все настройки буферов
+     */
+    public static function getServiceBuffers(): array
+    {
+        return [
+            'to_buffer_hours' => static::getServiceToBufferHours(),
+            'fueling_buffer_percent' => static::getServiceFuelingBufferPercent(),
+        ];
+    }
+
+    /**
+     * Установить все настройки буферов
+     */
+    public static function setServiceBuffers(int $toBufferHours, int $fuelingBufferPercent): void
+    {
+        static::setServiceToBufferHours($toBufferHours);
+        static::setServiceFuelingBufferPercent($fuelingBufferPercent);
+    }
 }

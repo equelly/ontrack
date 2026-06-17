@@ -279,10 +279,10 @@
                 @if($status === 'service')
                     <div class="alert alert-warning py-3 text-center mb-2">
                         <strong>{{ $currentServiceTask['type'] ?? 'Обслуживание' }}</strong>
-                        @if($currentServiceTask['post_name'])
+                        @if(!empty($currentServiceTask['post_name']))
                             <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
                         @endif
-                        @if($currentServiceTask['started_at'])
+                        @if(!empty($currentServiceTask['started_at']))
                             <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
                         @endif
                     </div>
@@ -295,10 +295,10 @@
                 @if($status === 'fueling')
                     <div class="alert alert-info py-3 text-center mb-2">
                         <strong>Заправка</strong>
-                        @if($currentServiceTask['post_name'])
+                        @if(!empty($currentServiceTask['post_name']))
                             <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
                         @endif
-                        @if($currentServiceTask['started_at'])
+                        @if(!empty($currentServiceTask['started_at']))
                             <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
                         @endif
                     </div>
@@ -311,22 +311,82 @@
                 @if($status === 'maintenance')
                     <div class="alert alert-warning py-3 text-center mb-2">
                         <strong>{{ $currentServiceTask['type'] ?? 'Техническое обслуживание' }}</strong>
-                        @if($currentServiceTask['post_name'])
+                        @if(!empty($currentServiceTask['post_name']))
                             <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
                         @endif
-                        @if($currentServiceTask['started_at'])
+                        @if(!empty($currentServiceTask['started_at']))
                             <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
                         @endif
-                        @if($currentServiceTask['duration'])
+                        @if(!empty($currentServiceTask['duration']))
                             <div class="text-muted small">Плановая длительность: {{ $currentServiceTask['duration'] }} мин</div>
                         @endif
                     </div>
                     <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
                         <i class="bi bi-check-lg me-1"></i> Завершить ТО
                     </button>
-                @endif                
+                @endif
             </div>
         </div>
+
+        <!-- Запланированные ТО и заправка на смену -->
+        @if(count($plannedShiftServices) > 0)
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-dark py-2">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        <strong>Запланировано на смену</strong>
+                    </div>
+                    <div class="card-body py-2">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Тип обслуживания</th>
+                                        <th>Позиция в очереди</th>
+                                        <th>Прогноз времени</th>
+                                        <th>Статус</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($plannedShiftServices as $task)
+                                        <tr class="{{ $task['started'] ? 'table-success' : '' }}">
+                                            <td>
+                                                <strong>{{ $task['type'] }}</strong>
+                                            </td>
+                                            <td>
+                                                @if($task['started'])
+                                                    <span class="badge bg-success">В работе</span>
+                                                @elseif($task['queue_position'] > 0)
+                                                    <span class="badge bg-secondary">{{ $task['queue_position'] }}</span>
+                                                @else
+                                                    <span class="badge bg-info">Ожидает</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if($task['forecast'])
+                                                    <span class="text-muted">{{ $task['forecast'] }}</span>
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if($task['started'])
+                                                    <span class="text-success"><i class="bi bi-check-circle"></i> Выполняется</span>
+                                                @else
+                                                    <span class="text-warning"><i class="bi bi-clock"></i> В очереди</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
 
         <!-- Статистика (скрыта по умолчанию) -->
         <div class="row">
@@ -412,7 +472,6 @@
                                                     @if($task['post_name'])
                                                         <span class="badge bg-primary ms-1">{{ $task['post_name'] }}</span>
                                                     @elseif($task['queue_position'])
-
                                                         <span class="badge bg-secondary ms-1">Очередь: {{ $task['queue_position'] }}</span>
                                                     @endif
                                                     @if($task['started_at'])

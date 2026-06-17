@@ -14,6 +14,7 @@ class ServicePost extends Model
     protected $fillable = [
         'type',
         'name',
+        'is_active',
         'is_occupied',
         'current_truck_id',
         'occupied_at',
@@ -21,6 +22,7 @@ class ServicePost extends Model
     ];
 
     protected $casts = [
+        'is_active' => 'boolean',
         'is_occupied' => 'boolean',
         'occupied_at' => 'datetime',
     ];
@@ -56,6 +58,16 @@ class ServicePost extends Model
     public function scopeFree($query)
     {
         return $query->where('is_occupied', false);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
     }
 
     // ==========================================
@@ -136,6 +148,8 @@ class ServicePost extends Model
             self::firstOrCreate([
                 'type' => self::TYPE_FUELING,
                 'name' => "Заправка {$i}",
+            ], [
+                'is_active' => true,
             ]);
         }
 
@@ -144,6 +158,8 @@ class ServicePost extends Model
             self::firstOrCreate([
                 'type' => self::TYPE_MAINTENANCE,
                 'name' => "ТО {$i}",
+            ], [
+                'is_active' => true,
             ]);
         }
 
@@ -152,7 +168,28 @@ class ServicePost extends Model
             self::firstOrCreate([
                 'type' => self::TYPE_TIRE_SERVICE,
                 'name' => "Шиномонтаж {$i}",
+            ], [
+                'is_active' => true,
             ]);
         }
+    }
+
+    /**
+     * Получить свободные активные посты
+     */
+    public static function getFreeActivePosts(string $type): \Illuminate\Database\Eloquent\Collection
+    {
+        return self::ofType($type)
+            ->active()
+            ->free()
+            ->get();
+    }
+
+    /**
+     * Получить количество активных постов типа
+     */
+    public static function getActivePostsCount(string $type): int
+    {
+        return self::ofType($type)->active()->count();
     }
 }

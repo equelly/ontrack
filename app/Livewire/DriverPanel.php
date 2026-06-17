@@ -11,6 +11,7 @@ use App\Models\TruckPlannedTask;
 use App\Services\TruckStatusService;
 use App\Services\RouteAssignmentService;
 use App\Services\ServiceSchedulingService;
+use App\Services\ShiftPlanningService;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
@@ -64,6 +65,9 @@ class DriverPanel extends Component
 
     // Текущее обслуживание
     public ?array $currentServiceTask = null;
+    // Запланированное обслуживание на смену
+    public array $plannedShiftServices = [];
+
 
     public function mount(): void
     {
@@ -216,6 +220,10 @@ class DriverPanel extends Component
 
         // Загружаем текущую задачу обслуживания
         $this->loadCurrentServiceTask();
+        
+        // Загружаем запланированные ТО и заправку на смену
+        $this->loadPlannedShiftServices();
+
     }
 
     /**
@@ -241,6 +249,21 @@ class DriverPanel extends Component
         } else {
             $this->currentServiceTask = null;
         }
+    }
+
+    /**
+     * Загрузить запланированные ТО и заправку на текущую смену
+     */
+    protected function loadPlannedShiftServices(): void
+    {
+        if (!$this->truck) {
+            $this->plannedShiftServices = [];
+            return;
+        }
+
+        $shiftPlanningService = app(ShiftPlanningService::class);
+        $this->plannedShiftServices = $shiftPlanningService->getPlannedTasksInfo($this->truck);
+
     }
 
     protected function loadServiceStats(): void
@@ -624,16 +647,75 @@ class DriverPanel extends Component
 
             $this->loadData();
 
-            $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => 'Обслуживание завершено!',
-            ]);
+            // Проверяем, есть ли ещё задачи в очереди для этого грузовика
+            $this->checkAndStartNextService();
 
         } catch (\Exception $e) {
             Log::error('Complete service failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => 'Ошибка: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Проверить и начать следующее обслуживание из очереди
+     */
+    protected function checkAndStartNextService(): void
+    {
+        if (!$this->truck) {
+            return;
+        }
+
+        $service = app(ServiceSchedulingService::class);
+
+        // Получаем следующую задачу из очереди для этого грузовика
+        $nextTask = TruckPlannedTask::where('truck_id', $this->truck->id)
+            ->where('completed', false)
+            ->whereNull('started_at')
+            ->orderBy('queue_position')
+            ->first();
+
+        if (!$nextTask) {
+            // Нет больше задач - грузовик свободен
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Обслуживание завершено! Запросите маршрут.',
+            ]);
+            return;
+        }
+
+        // Проверяем наличие свободного поста для следующей задачи
+        $freePost = $service->getFreePosts($nextTask->task_type)->first();
+
+        if ($freePost) {
+            // Есть свободный пост - начинаем обслуживание
+            $freePost->occupy($this->truck, $nextTask->getDuration());
+            $nextTask->start($freePost->id);
+
+            // Определяем статус
+            $newStatus = match($nextTask->task_type) {
+                TruckPlannedTask::TYPE_FUELING => 'fueling',
+                TruckPlannedTask::TYPE_MAINTENANCE => 'maintenance',
+                default => 'service',
+            };
+
+            $this->truck->update(['status' => $newStatus]);
+            $this->loadData();
+
+            $taskLabel = $nextTask->getTypeLabel();
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => "Следующее обслуживание: {$taskLabel}. Пост: {$freePost->name}",
+            ]);
+        } else {
+            // Нет свободных постов - остаёмся в очереди
+            $taskLabel = $nextTask->getTypeLabel();
+            $position = $nextTask->queue_position;
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => "Обслуживание завершено! {$taskLabel} в очереди, позиция: {$position}",
             ]);
         }
     }

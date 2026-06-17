@@ -99,7 +99,7 @@ class TruckStatusService
     protected function canTransition(string $from, string $to): bool
     {
         $map = [
-            'free'              => ['to_miner', 'maintenance', 'fueling'],
+            'free'              => ['to_miner', 'maintenance', 'fueling', 'service'],
             'completed'         => ['to_miner', 'free'], // Получить маршрут или в отстой
             'to_miner'          => ['loading', 'delayed', 'breakdown'],
             'loading'           => ['transporting', 'waiting_loading', 'waiting_unloading', 'breakdown'],
@@ -111,6 +111,7 @@ class TruckStatusService
             'breakdown'         => ['free'],
             'maintenance'       => ['free'],
             'fueling'           => ['free'],
+            'service'           => ['free'],
         ];
 
         if ($to === 'breakdown') {
@@ -496,6 +497,9 @@ class TruckStatusService
                 'load_volume'  => $loadVolume,
             ]);
 
+            // Записываем пробег и мото-часы
+            $this->recordTripMetrics($truck, $trip);
+
             // Логируем статистику пауз
             $pauseStats = $trip->pauses()
                 ->selectRaw('type, SUM(duration_seconds) as total_seconds')
@@ -562,6 +566,43 @@ class TruckStatusService
         // НЕ назначаем маршрут автоматически - ждём решения диспетчера
         // Грузовик остаётся в статусе 'completed' (Ожидает назначения)
         Log::info("Truck {$truck->id} completed trip, waiting for dispatcher decision");
+    }
+
+    /**
+     * Записать метрики рейса (пробег и мото-часы)
+     */
+    protected function recordTripMetrics(Truck $truck, TruckTrip $trip): void
+    {
+        $service = app(ServiceSchedulingService::class);
+
+        // Рассчитываем пробег: расстояние туда и обратно
+        $distance = $trip->miningOrder?->distance_km ?? 0;
+
+        // Гружёный пробег
+        if ($distance > 0) {
+            $service->addMileage($truck, $distance, false); // Гружёный
+            $service->addMileage($truck, $distance, true);  // Порожний (с коэффициентом)
+        }
+
+        // Рассчитываем мото-часы: время от начала до конца рейса минус паузы
+        if ($trip->started_at) {
+            $tripDurationMinutes = now()->diffInMinutes($trip->started_at);
+            $pauseMinutes = (int) ($trip->getTotalPauseSeconds() / 60);
+            $workMinutes = max(0, $tripDurationMinutes - $pauseMinutes);
+
+            if ($workMinutes > 0) {
+                $service->addMotoMinutes($truck, $workMinutes);
+            }
+
+            Log::info("Trip metrics recorded", [
+                'truck_id' => $truck->id,
+                'distance_km' => $distance * 2, // Туда и обратно
+                'work_minutes' => $workMinutes,
+                'new_mileage' => $truck->fresh()->mileage,
+                'new_moto_hours' => $truck->fresh()->moto_hours,
+                'moto_hours_since_to' => round($truck->fresh()->moto_minutes_since_to / 60, 1),
+            ]);
+        }
     }
 
     protected function onFree(Truck $truck): void

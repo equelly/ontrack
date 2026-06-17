@@ -20,6 +20,7 @@ use App\Services\RouteOptimizerService;
 use App\Services\MinerStatusService;
 use App\Services\ZoneStatusService;
 use App\Services\ServiceSchedulingService;
+use App\Services\ShiftPlanningService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
@@ -79,15 +80,19 @@ class MainDispatcherPanel extends Component
     protected RouteAssignmentService $routeService;
     protected RouteOptimizerService $optimizerService;
     protected ZoneStatusService $zoneStatusService;
+    protected ShiftPlanningService $planningService;
+
 
     public function boot(
         RouteAssignmentService $routeService,
         RouteOptimizerService $optimizerService,
-        ZoneStatusService $zoneStatusService
+        ZoneStatusService $zoneStatusService,
+        ShiftPlanningService $planningService
     ) {
         $this->routeService = $routeService;
         $this->optimizerService = $optimizerService;
         $this->zoneStatusService = $zoneStatusService;
+        $this->planningService = $planningService;
     }
 
     public function mount()
@@ -1893,6 +1898,91 @@ class MainDispatcherPanel extends Component
             'message' => "Задача отменена",
         ]);
     }
+    // =========================================
+    // ПЛАНИРОВАНИЕ ОБСЛУЖИВАНИЯ НА СМЕНУ
+    // =========================================
+
+    /**
+     * Запустить планирование обслуживания на смену
+     */
+    public function runShiftPlanning(): void
+    {
+        try {
+            $result = $this->planningService->planShift();
+
+            $this->loadData();
+
+            $message = "Запланировано: {$result['planned']} задач";
+            if ($result['queued'] > 0) {
+                $message .= ", в очереди: {$result['queued']}";
+            }
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => $message,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Shift planning error', ['error' => $e->getMessage()]);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка планирования: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Статистика очередей обслуживания
+     */
+    public function getQueueStatsProperty(): array
+    {
+        return [
+            'fueling' => [
+                'waiting' => TruckPlannedTask::pending()
+                    ->where('task_type', TruckPlannedTask::TYPE_FUELING)
+                    ->whereNull('started_at')
+                    ->count(),
+                'in_progress' => TruckPlannedTask::pending()
+                    ->where('task_type', TruckPlannedTask::TYPE_FUELING)
+                    ->whereNotNull('started_at')
+                    ->count(),
+            ],
+            'maintenance' => [
+                'waiting' => TruckPlannedTask::pending()
+                    ->where('task_type', TruckPlannedTask::TYPE_MAINTENANCE)
+                    ->whereNull('started_at')
+                    ->count(),
+                'in_progress' => TruckPlannedTask::pending()
+                    ->where('task_type', TruckPlannedTask::TYPE_MAINTENANCE)
+                    ->whereNotNull('started_at')
+                    ->count(),
+            ],
+            'tire_service' => [
+                'waiting' => TruckPlannedTask::pending()
+                    ->whereIn('task_type', [TruckPlannedTask::TYPE_TIRE_INFLATION, TruckPlannedTask::TYPE_WHEEL_TIGHTENING])
+                    ->whereNull('started_at')
+                    ->count(),
+                'in_progress' => TruckPlannedTask::pending()
+                    ->whereIn('task_type', [TruckPlannedTask::TYPE_TIRE_INFLATION, TruckPlannedTask::TYPE_WHEEL_TIGHTENING])
+                    ->whereNotNull('started_at')
+                    ->count(),
+            ],
+        ];
+    }
+
+    /**
+     * Получить информацию о запланированных задачах для грузовика
+     */
+    public function getPlannedTasksForTruck(int $truckId): array
+    {
+        $truck = $this->trucks->firstWhere('id', $truckId);
+        if (!$truck) {
+            return [];
+        }
+
+        return $this->planningService->getPlannedTasksInfo($truck);
+    }
+
 
     public function render()
     {

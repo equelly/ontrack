@@ -13,16 +13,19 @@ class Truck extends Model
         'driver_id', 'status', 'current_load', 'last_free_at', 'fuel_level', 'truck_model_id',
         'route_version', 'route_ack_version',
         'before_breakdown', 'pause_started_at',  // Для сохранения состояния при поломке/задержке
+        'mileage', 'mileage_since_fuel',  // Пробег
+        'moto_minutes', 'moto_minutes_since_to', 'last_to_type',  // Мото-часы
     ];
 
     protected $casts = [
         'load_capacity' => 'decimal:2',
         'current_load' => 'decimal:2',
+        'fuel_level' => 'decimal:1',  // литры топлива
         'last_free_at' => 'datetime',
         'pause_started_at' => 'datetime',
     ];
 
-    protected $appends = ['fuelLiters', 'fuelCapacity', 'fuelConsumption', 'fullName'];
+    protected $appends = ['fuelLiters', 'fuelPercent', 'fuelCapacity', 'fuelConsumption', 'fullName'];
 
     // Константы статусов
     const STATUS_FREE = 'free';
@@ -64,11 +67,6 @@ class Truck extends Model
             ->latest();
     }
 
-    // Геттеры для топлива
-    public function getFuelCapacityAttribute()
-    {
-        return $this->truckModel?->fuel_capacity ?? 500;
-    }
     /**
      * Текущая задача на обслуживании (в процессе)
      */
@@ -80,15 +78,50 @@ class Truck extends Model
             ->latest();
     }
 
-
-    public function getFuelConsumptionAttribute()
+    // Геттеры для топлива
+    public function getFuelCapacityAttribute()
     {
-        return $this->truckModel?->fuel_consumption ?? 35;
+        return $this->truckModel?->fuel_capacity ?? 500;
     }
 
+    /**
+     * Расход топлива (л/мото-час)
+     */
+    public function getFuelConsumptionAttribute()
+    {
+        return $this->truckModel?->fuel_consumption ?? 25;
+    }
+
+    /**
+     * Топливо в литрах (fuel_level теперь хранит литры)
+     */
     public function getFuelLitersAttribute()
     {
-        return round(($this->fuel_level / 100) * $this->fuel_capacity, 1);
+        return round($this->fuel_level, 1);
+    }
+
+    /**
+     * Топливо в процентах (вычисляемое)
+     */
+    public function getFuelPercentAttribute()
+    {
+        $capacity = $this->fuel_capacity;
+        if ($capacity <= 0) {
+            return 0;
+        }
+        return round(($this->fuel_level / $capacity) * 100, 1);
+    }
+
+    /**
+     * Мото-часы до пустого бака
+     */
+    public function getMotoHoursUntilEmptyAttribute(): float
+    {
+        $consumption = $this->fuel_consumption;
+        if ($consumption <= 0) {
+            return 0;
+        }
+        return round($this->fuel_level / $consumption, 1);
     }
 
     public function getFullNameAttribute()
@@ -96,15 +129,6 @@ class Truck extends Model
         return ($this->truckModel?->full_name ?? 'Неизвестная модель') . ' #' . $this->number;
     }
 
-    public function miningOrders(): HasMany
-    {
-        return $this->hasMany(MiningOrder::class);
-    }
-
-    public function currentOrder()
-    {
-        return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
-    }
     // Геттеры для пробега и мото-часов
     public function getMotoHoursAttribute(): float
     {
@@ -127,6 +151,16 @@ class Truck extends Model
     public function getMotoHoursSinceLastTO(): float
     {
         return $this->moto_hours_since_to;
+    }
+
+    public function miningOrders(): HasMany
+    {
+        return $this->hasMany(MiningOrder::class);
+    }
+
+    public function currentOrder()
+    {
+        return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
     }
 
     // Scope'ы
