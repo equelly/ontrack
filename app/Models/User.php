@@ -4,10 +4,12 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+
 
 class User extends Authenticatable
 {
@@ -17,6 +19,12 @@ class User extends Authenticatable
        protected $table = 'users';
        //снимем защиту для возможности записи атрубутов модели в БД
        protected $guarded = []; // ... или false
+
+       // Константы ролей
+        const ROLE_ADMIN = 'admin';
+        const ROLE_DISPATCHER = 'dispatcher';
+        const ROLE_DRIVER = 'driver';
+        const ROLE_EXCAVATOR_OPERATOR = 'excavator_operator';
     /**
      * Get the orders for the user.
      */
@@ -29,7 +37,21 @@ class User extends Authenticatable
        
         return $this->belongsToMany(Set::class, 'set_users', 'user_id', 'set_id');
     }
+        /**
+     * Грузовики водителя
+     */
+    public function trucks(): HasMany
+    {
+        return $this->hasMany(Truck::class, 'driver_id');
+    }
 
+    /**
+     * Экскаватор, к которому привязан оператор
+     */
+    public function miner(): BelongsTo
+    {
+        return $this->belongsTo(Miner::class);
+    }
     /**
      * The attributes that are mass assignable.
      *
@@ -40,6 +62,8 @@ class User extends Authenticatable
         'role',
         'email',
         'password',
+        'miner_id',
+        'position'
     ];
 
     /**
@@ -61,4 +85,23 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+    public function isAdmin(): bool
+    {
+        return $this->role === self::ROLE_ADMIN;
+    }
+
+    public function isDispatcher(): bool
+    {
+        return $this->role === self::ROLE_DISPATCHER;
+    }
+
+    public function isDriver(): bool
+    {
+        return $this->role === self::ROLE_DRIVER;
+    }
+
+    public function isExcavatorOperator(): bool
+    {
+        return $this->role === self::ROLE_EXCAVATOR_OPERATOR;
+    }
 }

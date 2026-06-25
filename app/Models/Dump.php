@@ -4,71 +4,56 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Auth;
 
 class Dump extends Model
 {
     use HasFactory;
 
-
-    //модель при создании связана с таблицей 'dumps' установим защиту дополнительно в модели
-    protected $table = 'dumps';
-    //снимем защиту для возможности записи атрубутов модели в БД
-        protected $fillable = [
+    protected $fillable = [
         'name_dump',
+        'delivered_volume',
+        'trips_count',
         'last_updated_by',
         'last_updated_at',
-        'loader_zone_id',  
+        'loader_zone_id'
     ];
 
-        // ✅ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ ПОЛЕЙ АУДИТА
-    protected static function boot()
+    protected $casts = [
+        'delivered_volume' => 'decimal:2',
+        'trips_count' => 'integer',
+        'last_updated_at' => 'datetime'
+    ];
+
+    public function zones()
     {
-        parent::boot();
-
-        // При СОЗДАНИИ новой записи
-        static::creating(function ($dump) {
-            $dump->last_updated_at = now();  // Текущее время
-            $dump->last_updated_by = Auth::id();  // ID пользователя или 1 (admin)
-        });
-
-        // При КАЖДОМ ОБНОВЛЕНИИ
-        static::updating(function ($dump) {
-            $dump->last_updated_at = now();
-            $dump->last_updated_by = Auth::id();
-        });
+        return $this->hasMany(Zone::class, 'dump_id');
     }
 
-        public function routes()
+    public function activeZones()
     {
-        return $this->hasMany(Route::class);
+        return $this->zones()->where('delivery', true);
     }
 
-        public function zones()
+    public function orders()
     {
-        return $this->hasMany(Zone::class);
+        return $this->hasMany(MiningOrder::class, 'dump_id');
     }
 
-    public function lastEditor()
+    public function updater()
     {
         return $this->belongsTo(User::class, 'last_updated_by');
     }
-        // ОТНОШЕНИЕ: dump → выбранная зона отгрузки
+
     public function loaderZone()
     {
         return $this->belongsTo(Zone::class, 'loader_zone_id');
     }
 
-    protected $casts = [
-    'last_updated_at' => 'datetime',
-    ];
-
-    public function miners()
+    public function incrementVolume($volume)
     {
-        return $this->belongsToMany(Miner::class, 'miner_dump_distances')
-                    ->withPivot(['distance_km', 'name_miner'])
-                    ->withTimestamps();
+        $this->increment('delivered_volume', $volume);
+        $this->increment('trips_count');
+        $this->last_updated_at = now();
+        $this->save();
     }
-
-
 }

@@ -53,7 +53,7 @@
                                 </div>
                                 <div class="md-form">
                                 <label for="role" id="roles"></label>
-                                <select name="role" id="role" class="form-control @error('role') is-invalid @enderror"">
+                                <select name="role" id="role" class="form-control @error('role') is-invalid @enderror"" onchange="togglePositionField()">
                                         <option value="" selected class="option">Категория персонала</option>
                                         <option value="эксплуатационный">эксплуатационный</option>
                                         <option value="обслуживающий">обслуживающий</option>
@@ -61,6 +61,62 @@
                                     @error('role')
                                         <div class="alert alert-danger">{{ $message }}</div>
                                     @enderror
+                                </div>
+                                <div class="md-form" id="position-field" style="display: none;">
+                                    <label for="position">Должность</label>
+                                    <select name="position" id="position" class="form-control">
+                                        <option value="">Выберите должность</option>
+                                        <!-- Options will be dynamically populated -->
+                                    </select>
+                                    @error('position')
+                                        <div class="alert alert-danger">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                
+                                <script>
+                                    function togglePositionField() {
+                                        const roleSelect = document.getElementById('role');
+                                        const positionField = document.getElementById('position-field');
+                                        const positionSelect = document.getElementById('position');
+                                        
+                                        if (roleSelect.value === 'эксплуатационный') {
+                                            positionField.style.display = 'block';
+                                            // Define exploitation positions
+                                            const positions = {
+                                                'driver': 'Водитель самосвала',
+                                                'excavator_operator': 'Машинист экскаватора',
+                                                'dispatcher': 'Диспетчер',
+                                                'master': 'Мастер'
+                                            };
+                                            populatePositions(positions);
+                                        } else if (roleSelect.value === 'обслуживающий') {
+                                            positionField.style.display = 'block';
+                                            // Define maintenance positions
+                                            const positions = {
+                                                'mechanic': 'Механик',
+                                                'electric': 'Электрик',
+                                                'dispather_top': 'Диспечер ТОиР'
+                                            };
+                                            populatePositions(positions);
+                                        } else {
+                                            positionField.style.display = 'none';
+                                        }
+                                    }
+                                    
+                                    function populatePositions(positions) {
+                                        const positionSelect = document.getElementById('position');
+                                        // Clear existing options
+                                        positionSelect.innerHTML = '<option value="">Выберите должность</option>';
+                                        
+                                        // Add new options
+                                        for (const [value, text] of Object.entries(positions)) {
+                                            const option = document.createElement('option');
+                                            option.value = value;
+                                            option.textContent = text;
+                                            positionSelect.appendChild(option);
+                                        }
+                                    }
+                                </script>
                                 </div>
                                 <div class="md-form">
                                   <i class="fas fa-lock prefix text-light active"></i>

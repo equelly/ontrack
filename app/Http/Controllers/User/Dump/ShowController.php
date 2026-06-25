@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers\User\Dump;
 
+use App\Http\Controllers\Controller;
 use App\Models\Dump;
-use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Http\Request;
 
-class ShowController extends BaseController
+class ShowController extends Controller
 {
-    public function __invoke(Dump $dump){
-    
-        $dump = Dump::FindOrFail($dump->id);
-        
-        
-     
+    /**
+     * Показать детали отвала
+     */
+    public function __invoke(Dump $dump)
+    {
+        $dump->load(['zones.rocks', 'orders.miner', 'orders.dump']);
+
         return view('dump.show', compact('dump'));
     }
 }

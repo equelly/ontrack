@@ -1,130 +1,149 @@
 @extends('layouts.app')
 
+@section('title', 'Управление забоями')
+
 @section('content')
-@php
-    $map = [
-       'вскрыша' => 'V',
-       'руда' => 'R',
-       'песчаник' => 'Kvp',
-       'руда_S' => 'Rs',
-        ];
-@endphp
-<div class="container mt-5">
-    
-    <div class="card-header d-flex justify-content-between align-items-center mb-2">
-        <h3>Забои на авто-</h3>
-        <a href="{{ route('miners.create') }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Добавить забой
-        </a>
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4><i class="fas fa-mountain me-2"></i>Управление забоями и породами</h4>
+                <a href="{{ route('miners.create') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus"></i> Добавить забой
+                </a>
+            </div>
+        </div>
     </div>
 
-<div class="card-body">
-    <div class="table-responsive">
-    <table class="table table-striped table-hover">
-        <thead class="table-dark">
-            <tr class="mobile-table td">
-                
-                <th>Номер</th>
-                <th class="border-left">Маршруты</th>
-                <th class="hide-on-mobile border-left">Обновлен</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($miners as $miner)
-                <tr class="mobile-table td">
-                    
-                    <td class="name-column" style="vertical-align: bottom; padding-bottom: 8px;">
-                        {{-- Контент (верх) --}}
-                        <div style="margin-bottom: 40px;">  <!-- Отступ для кнопок -->
-                            <div class="d-flex align-items-start justify-content-between mb-2">
-                                <div>
-                                    <h6 class="mb-0">{{ $miner->name_miner }}</h6>
-                                </div>
-                                <span class="badge bg-{{ $miner->active? 'success': 'secondary' }} rounded-pill mt-2">
-                                    {{ $miner->active? 'В работе': 'Не в работе' }}
-                                </span>
-                            </div>
-                        </div>
-
-                        {{-- Кнопки (низ) --}}
-                        <div style="border-top: 1px solid #dee2e6; padding-top: 8px;">
-                            <div class="btn-group btn-group-sm w-100" role="group">
-                                <a href="{{ route('miners.show', $miner) }}" 
-                                class="btn btn-outline-primary btn-icon btn-action" 
-                                title="Просмотр">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-
-                                <a href="{{ route('miners.edit', $miner) }}" 
-                                class="btn btn-outline-warning btn-icon btn-action" 
-                                title="Редактировать">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-
-                                <form action="{{ route('miners.destroy', $miner) }}" method="POST" class="d-inline">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" 
-                                            class="btn btn-outline-danger btn-icon btn-action" 
-                                            title="Удалить"
-                                            onclick="return confirm(`Удалить оборудование {{ $miner->name_miner }} из системы?`)">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </td>             
-                    <td class="text-end border-left">
-                        @if($miner->dumps->count() > 0)
-                            <ol class="list-unstyled mb-0">
-                               
-                                @foreach($miner->dumps as $dump)
-                                    <li class="small">
-                                        <span>
-                                            @if($dump->hasActiveZones)
-                                            @foreach($dump->zones as $zone)
-                                            {{ $map[$zone->rocks->first()->name_rock ]?? $zone->rocks->first()->name_rock  }}
-                                            <small class="text-muted">{{ $zone->name_zone }}</small>
-                                            @endforeach
-                                        @endif
-                                        </span>
-                                        <span class="badge {{ $dump->hasActiveZones? 'bg-success': 'bg-secondary' }}">
-                                            {{ $dump->name_dump }} ({{ $dump->distance_km?? 'нет данных' }} км)
-                                        </span>
-                                        
-                                    </li>
-                                @endforeach
-                            </ol>
-                        @else
-                            <span class="text-muted">не установлены!</span>
-                        @endif
-                    </td>
-                    <td class="hide-on-mobile border-left">{{ $miner->last_updated_at? $miner->last_updated_at->format('d.m в H:i'): 'Неизвестно' }}</td>
-                    
-                </tr>
-            @empty
-                <tr>
-                    <td colspan="6" class="text-center py-4 text-muted">
-                        <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
-                        <p>Забои не найдены</p>
-                        <a href="{{ route('miners.create') }}" class="btn btn-primary">
-                            Добавить первый забой
-                        </a>
-                    </td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
-            {{-- Пагинация --}}
-        <div class="d-flex justify-content-center mt-4">
-            {{ $miners->appends(request()->query())->links() }}
+    <!-- Информационная панель -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Как работает система</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">
+                        <strong>1. Породы в забое:</strong> Экскаваторщик выбирает текущую породу при погрузке из общего списка
+                    </p>
+                    <p class="mb-2">
+                        <strong>2. Породы в зоне:</strong> Диспетчер настраивает какие породы принимает каждая зона
+                    </p>
+                    <p class="mb-0 text-muted small">
+                        <i class="fas fa-exchange-alt me-1"></i>
+                        При смене породы система автоматически находит подходящую зону для разгрузки
+                    </p>
+                </div>
+            </div>
         </div>
-
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-cubes me-2"></i>Управление породами</h5>
+                </div>
+                <div class="card-body">
+                    <a href="{{ route('rocks.index') }}" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-list"></i> Список всех пород
+                    </a>
+                    <a href="{{ route('rocks.create') }}" class="btn btn-success btn-sm ms-2">
+                        <i class="fas fa-plus"></i> Добавить породу
+                    </a>
+                </div>
+            </div>
         </div>
-    </div> {{-- card-body --}}
+    </div>
 
-</div> {{-- container --}}
+    <!-- Таблица забоев -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Список забоев</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Забой</th>
+                            <th>Текущая порода</th>
+                            <th>Маршруты</th>
+                            <th>Производительность</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($miners as $miner)
+                            <tr class="{{ $miner->active ? '' : 'table-secondary' }}">
+                                <td>
+                                    <strong>{{ $miner->name_miner }}</strong>
+                                    @if($miner->description)
+                                        <br><small class="text-muted">{{ $miner->description }}</small>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($miner->currentRock)
+                                        <span class="badge bg-success">{{ $miner->currentRock->name_rock }}</span>
+                                    @elseif($miner->rocks->count() > 0)
+                                        <small class="text-muted">
+                                            Были: {{ $miner->rocks->pluck('name_rock')->join(', ') }}
+                                        </small>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ $miner->orders_count }}</span>
+                                </td>
+                                <td>
+                                    @if($miner->capacity_per_trip)
+                                        <small>{{ $miner->capacity_per_trip }} т/рейс</small>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($miner->active)
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check me-1"></i>Активен
+                                        </span>
+                                    @else
+                                        <span class="badge bg-secondary">
+                                            <i class="fas fa-times me-1"></i>Неактивен
+                                        </span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ route('miners.edit', $miner->id) }}" class="btn btn-outline-primary" title="Редактировать">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <form action="{{ route('miners.destroy', $miner->id) }}" method="POST" style="display:inline;">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="btn btn-outline-danger" title="Удалить" onclick="return confirm('Удалить забой?')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
+    @if($miners->count() === 0)
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-mountain fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Забои не найдены</h5>
+                <a href="{{ route('miners.create') }}" class="btn btn-primary mt-2">
+                    <i class="fas fa-plus"></i> Добавить первый забой
+                </a>
+            </div>
+        </div>
+    @endif
+</div>
 @endsection
-
-

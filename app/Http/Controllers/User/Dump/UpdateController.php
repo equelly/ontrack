@@ -2,166 +2,170 @@
 
 namespace App\Http\Controllers\User\Dump;
 
-use App\Http\Requests\Dump\UpdateRequest;
-use App\Models\Dump;
+use App\Http\Controllers\Controller;
 use App\Models\Zone;
-use Illuminate\Routing\Controller as BaseController;
+use App\Models\Dump;
+use App\Services\RouteSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class UpdateController extends BaseController
+class UpdateController extends Controller
 {
-    public function __invoke(Request $request, Dump $dump)
-{
-    // ✅ ВАЛИДАЦИЯ В КОНТРОЛЛЕРЕ
-   
-    $request->validate([
-        'name_dump' => 'required|string|max:255',
-        'loader_zone_id' => 'nullable|integer',
-    ], [
-        'name_dump.required' => 'Название дампа обязательно!',
-    ]);
+    protected RouteSyncService $routeSync;
 
-    // ✅ УДАЛЕНИЕ ПОМЕЧЕННЫХ ЗОН
-    $deletedZones = 0;
-    if ($request->has('delete_zones')) {
-        $deleteZoneIds = $request->input('delete_zones', []);
-        $deletedZones = $dump->zones()->whereIn('id', $deleteZoneIds)->delete();
-
+    public function __construct(RouteSyncService $routeSync)
+    {
+        $this->routeSync = $routeSync;
     }
 
+    /**
+     * Обновить отвал (основные данные)
+     */
+    public function __invoke(Request $request, Dump $dump)
+    {
+        $data = $request->validate([
+            'name_dump' => 'sometimes|string|max:255',
+            'delivered_volume' => 'sometimes|numeric|min:0',
+        ]);
 
-    $validated = $request->all();
+        $dump->update($data);
 
-    // ✅ ВАЛИДАЦИЯ НОВЫХ ЗОН В КОНТРОЛЛЕРЕ
-    $newZonesCreated = 0;
-   
-    if (isset($validated['zones'])) {
-        foreach ($validated['zones'] as $index => $zoneData) {
+        return redirect()->route('dump.index')
+            ->with('success', 'Отвал обновлён');
+    }
 
-                   // ✅ ПРОВЕРКА: СУЩЕСТВУЮЩАЯ ЗОНА (ИМЕЕТ ID)
-        if (isset($zoneData['id']) &&!empty($zoneData['id']) && $zoneData['id']!= 'null') {
-                    // ✅ Валидация name_zone (required)
-        if (empty($zoneData['name_zone'])) {
-            return back()->withErrors(['zones' => 'Название зоны обязательно!']);
+    /**
+     * Обновить зону (породы, приём, вместимость)
+     */
+    public function zone(Request $request, Zone $zone)
+    {
+        Log::info('=== UpdateController@zone START ===');
+        Log::info('Request method: ' . $request->method());
+        Log::info('Request body: ' . $request->getContent());
+        Log::info('Zone data: ', $zone->toArray());
+
+        try {
+            // Прямое получение данных из JSON
+            $rawContent = $request->getContent();
+            $jsonData = json_decode($rawContent, true);
+            Log::info('Parsed JSON data: ', $jsonData ?? ['error' => 'Failed to parse JSON']);
+
+            $data = $request->validate([
+                'delivery' => 'sometimes|boolean',
+                'rock_ids' => 'sometimes|array',
+                'rock_ids.*' => 'exists:rocks,id',
+                'capacity' => 'sometimes|numeric|min:0',
+            ]);
+
+            Log::info('Validated data: ', $data);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('VALIDATION ERROR: ', $e->errors());
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка валидации',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('EXCEPTION: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка: ' . $e->getMessage()
+            ], 500);
         }
 
-        // ✅ Валидация volume 
-        if (!isset($zoneData['volume'])) {
-            return back()->withErrors(['zones' => 'Объем зоны не указан!']);
+        try {
+            $result = DB::transaction(function () use ($zone, $data, $request) {
+                // Запоминаем старые значения для синхронизации
+                $oldDelivery = $zone->delivery;
+                $oldRockIds = $zone->rocks()->pluck('rocks.id')->toArray();
+
+                // Обновляем delivery если передан
+                if ($request->has('delivery')) {
+                    $deliveryValue = filter_var($request->input('delivery'), FILTER_VALIDATE_BOOLEAN);
+                    Log::info("Setting delivery from {$oldDelivery} to {$deliveryValue}");
+                    $zone->delivery = $deliveryValue;
+                }
+
+                // Обновляем capacity если передан
+                if (isset($data['capacity'])) {
+                    $zone->capacity = $data['capacity'];
+                }
+
+                $zone->save();
+                Log::info('Zone saved');
+
+                // Обновляем породы если переданы
+                if (isset($data['rock_ids'])) {
+                    $zone->rocks()->sync($data['rock_ids']);
+                    Log::info('Rocks synced: ' . count($data['rock_ids']));
+                }
+
+                return $zone;
+            });
+
+            // СИНХРОНИЗАЦИЯ МАРШРУТОВ (после транзакции)
+            // Обновляем модель зоны, чтобы видеть изменения пород
+            $zone->refresh();
+            $syncResult = $this->syncRoutes($zone, $data, $request);
+
+            Log::info('=== UpdateController@zone SUCCESS ===');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Зона обновлена',
+                'zone' => $result->fresh(['rocks']),
+                'sync' => $syncResult,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('DB TRANSACTION ERROR: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Ошибка базы данных: ' . $e->getMessage()
+            ], 500);
         }
-        if ($zoneData['volume'] === '' || $zoneData['volume'] === null) {
-            return back()->withErrors(['zones' => 'Объем зоны не может быть пустым!']);
-        }
-        if (!is_numeric($zoneData['volume'])) {
-            return back()->withErrors(['zones' => 'Объем зоны должен быть числом!']);
-        }
-        if ((float)$zoneData['volume'] < 0) {
-            return back()->withErrors(['zones' => 'Объем зоны не может быть отрицательным!']);
-        }
+    }
 
-        // ✅  delivery
-        if (isset($zoneData['delivery']) &&!in_array($zoneData['delivery'], [0, 1, '0', '1'])) {
-            return back()->withErrors(['zones' => 'Завозка должен быть в формате да/нет!']);
-        }
-            // ✅ ОБНОВЛЯЕМ СУЩЕСТВУЮЩУЮ ЗОНУ
-            $zone = $dump->zones()->find($zoneData['id']);
-            if ($zone) {
-                $zone->update([
-                    'name_zone' => $zoneData['name_zone'],
-                    'volume' => (float)$zoneData['volume'],
-                    'delivery' => isset($zoneData['delivery'])? 1: 0,
-                    'ship' => isset($zoneData['loader_zone_id'])? 1: 0,
-                ]);
+    /**
+     * Синхронизация маршрутов при изменении зоны
+     */
+    protected function syncRoutes(Zone $zone, array $data, Request $request): array
+    {
+        $syncResult = [
+            'synced' => false,
+            'created' => 0,
+            'deleted' => 0,
+        ];
 
-                // ✅ ОБНОВЛЯЕМ ПОРОДЫ
-                $rocks = $zoneData['rocks']?? [];
-                $zone->rocks()->sync($rocks);
+        // Если изменился delivery
+        if ($request->has('delivery')) {
+            $newDelivery = filter_var($request->input('delivery'), FILTER_VALIDATE_BOOLEAN);
 
-                }
-        }
-        // ✅ КОД ДЛЯ НОВЫХ ЗОН 
-        elseif (strpos($index, 'new_') === 0) {
-                // Проверяем обязательные поля
-                if (empty($zoneData['name_zone'])) {
-                    return back()->withErrors(['zones' => 'Название зоны обязательно!']);
-                }
-                // ✅ ШАГ 1: ПРОВЕРКА НА СУЩЕСТВОВАНИЕ
-                if (!isset($zoneData['volume'])) {
-                    return back()->withErrors(['zones' => 'Объем зоны не указан!']);
-                }
-
-                // ✅ ШАГ 2: ПРОВЕРКА НА ПУСТОТУ
-                if ($zoneData['volume'] === '' || $zoneData['volume'] === null) {
-                    return back()->withErrors(['zones' => 'Объем зоны не может быть пустым!']);
-                }
-
-                // ✅ ШАГ 3: ПРОВЕРКА НА ЧИСЛО
-                if (!is_numeric($zoneData['volume'])) {
-                    return back()->withErrors(['zones' => 'Объем зоны должен быть числом!']);
-                }
-
-                // ✅ ШАГ 4: ПРОВЕРКА НА ≥ 0
-                if ((float)$zoneData['volume'] < 0) {
-                    return back()->withErrors(['zones' => 'Объем зоны не может быть отрицательным!']);
-                }
-
-
-                // Создаем зону
-                $newZone = $dump->zones()->create([
-                    'name_zone' => $zoneData['name_zone'],
-                    'volume' => $zoneData['volume'],
-                    'delivery' => isset($zoneData['delivery'])? 1: 0,
-                    'ship' => isset($zoneData['loader_zone_id'])? 1: 0,
-                ]);
-
-                // Породы
-                $rocks = [];
-                if (isset($zoneData['rocks']) && is_array($zoneData['rocks'])) {
-                    foreach ($zoneData['rocks'] as $rockId) {
-                        if ($rockId) {
-                            $rocks[] = $rockId;
-                        }
-                    }
-                }
-                $newZone->rocks()->attach($rocks);
-
-                $newZonesCreated++;
+            if (!$newDelivery) {
+                // Зона закрылась - удаляем маршруты
+                $result = $this->routeSync->syncOnZoneClose($zone);
+                $syncResult['deleted'] = $result['deleted'];
+                $syncResult['synced'] = true;
+                Log::info("Zone closed, deleted {$result['deleted']} routes");
+            }
+            // Если зона открылась - создаём маршруты (породы уже обновлены)
+            elseif ($newDelivery) {
+                $result = $this->routeSync->syncOnZoneOpen($zone);
+                $syncResult['created'] = $result['created'];
+                $syncResult['synced'] = true;
+                Log::info("Zone opened, created {$result['created']} routes");
             }
         }
+        // Если изменились породы (и зона открыта)
+        elseif (isset($data['rock_ids']) && $zone->delivery) {
+            $result = $this->routeSync->fullSyncForZone($zone, $data['rock_ids']);
+            $syncResult['created'] = $result['created'];
+            $syncResult['deleted'] = $result['deleted'];
+            $syncResult['synced'] = true;
+            Log::info("Rocks updated, created {$result['created']}, deleted {$result['deleted']} routes");
+        }
+
+        return $syncResult;
     }
-
-    // Обновляем дамп
-    $dump->update([
-        'name_dump' => $validated['name_dump']?? $dump->name_dump,
-        'loader_zone_id' => $validated['loader_zone_id']?? $dump->loader_zone_id,
-    ]);
-
-    $message = "Информация по перегрузочному пункту №{$dump->name_dump} обновлена! ";
-    
-    if ($newZonesCreated > 0) $message.= "➕ Добавлено зон: {$newZonesCreated} . ";
-    if ($deletedZones > 0) $message.= "🗑️ Удалено: {$deletedZones} зону(ы). ";
- 
-    // ✅ ЧИТАЕМ ИЗ SESSION на какую страницу перейти после сохранения
-    $returnTo = session('dump_return_to', 'distribution'); // по умолчанию distribution
-
-    switch ($returnTo) {
-        case 'index':
-            return redirect()->route('dump.index')
-                ->with('success', $message);
-
-        case 'distribution':
-            return redirect()->route('distribution.index')
-                ->with('success', $message);
-
-        default:
-            return redirect()->back()
-                ->with('success', $message);
-    }
-
-    return redirect()->back()
-        ->with('success', $message);
-}
-
-
 }

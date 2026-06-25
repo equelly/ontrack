@@ -15,7 +15,7 @@ html,
 body,
 header,
 .view {
-  height: 100%;
+  height: auto;
 }
 
 @media (max-width: 740px) {
@@ -23,7 +23,7 @@ header,
   body,
   header,
   .view {
-    height: 1500px;
+    height: auto;
   }
 }
 @media (min-width: 800px) and (max-width: 850px) {
@@ -31,7 +31,7 @@ header,
   body,
   header,
   .view {
-    height: 1500px;
+    height: auto;
   }
   .card{
     width: 80%;

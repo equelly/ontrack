@@ -1,5 +1,11 @@
 <?php
 
+if (class_exists(\Doctrine\DBAL\Types\Type::class)) {
+    if (!\Doctrine\DBAL\Types\Type::hasType('enum')) {
+        \Doctrine\DBAL\Types\Type::addType('enum', \Doctrine\DBAL\Types\StringType::class);
+    }
+}
+
 use Illuminate\Support\Str;
 
 return [

@@ -5,22 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
   <meta http-equiv="x-ua-compatible" content="ie=edge">
-  <title>SMS</title>
+  <title>SiMqa</title>
   
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.11.2/css/all.css">
   <!-- Google Fonts Roboto -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
   @vite(['resources/sass/app.scss', 'resources/js/app.js', 'resources/css/app.css'])
+  @livewireStyles
+  <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="mt-3">
+        <!-- Глобальный контейнер для toast уведомлений (вне Livewire компонентов) -->
+        <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
         <header>
           <!-- Navbar -->
           <nav class="navbar navbar-dark fixed-top scrolling-navbar">
             <div class="container">
               <a class="navbar-brand" href="/">
-                <strong>SMS</strong>
+                <strong>SMQ</strong>
               </a>
              
                 <ul class="navbar-nav ms-auto">
@@ -52,6 +56,19 @@
                       <input class="nav-link hover:bg-violet-400" type="submit" value="{{ __('Выйти') }}">  
                   </form>
                   </li>
+                  @if(auth()->user())
+                  <li class="nav-item active">
+                      @php
+                          $position = auth()->user()->position ?? null;
+                          $redirectRoute = '/home';
+                          if ($position === 'driver') $redirectRoute = route('driver.panel');
+                          elseif ($position === 'dispatcher') $redirectRoute = route('dispatcher.index');
+                          elseif ($position === 'excavator_operator') $redirectRoute = route('excavator.index');
+                          elseif ($position === 'master') $redirectRoute = '/master';
+                      @endphp
+                      <a href="{{ $redirectRoute }}" class="nav-link hover:bg-violet-400">Вернуться в рабочую зону</a>
+                  </li>
+                  @endif
                 </ul> 
                 <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
                 <li class="nav-item ml-3">
@@ -69,6 +86,10 @@
                 <li class="nav-item item ml-3">
                     <a href="{{route('miners.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
                         Забои 
+                    </a></li>
+                <li class="nav-item item ml-3">
+                    <a href="{{route('rocks.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                        Породы 
                     </a></li>
                 <li class="nav-item item ml-3">
                     <a href="{{route('dump.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
@@ -97,7 +118,7 @@
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show mt-4" role="alert">
             {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-dismiss="alert"></button>
         </div>
     @endif
                     @yield('content')
@@ -392,5 +413,46 @@ function markZoneForDeletion(zoneId) {
 
 }
 </script>
+
+<!-- Глобальный обработчик Livewire уведомлений -->
+<script>
+// Глобальная функция показа toast уведомлений
+window.showNotification = function(message, type = 'success') {
+    const container = document.getElementById('global-toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'alert-success' :
+                   type === 'error' ? 'alert-danger' :
+                   type === 'warning' ? 'alert-warning' :
+                   'alert-info';
+
+    toast.className = `alert ${bgClass} alert-dismissible fade show`;
+    toast.style.minWidth = '250px';
+    toast.innerHTML = `
+        ${message}
+        <button type='button' class='btn-close' data-bs-dismiss='alert' onclick="this.parentElement.remove()"></button>
+    `;
+    container.appendChild(toast);
+
+    // Автоудаление через 5 секунд
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+};
+
+// Обработчик Livewire событий
+document.addEventListener('livewire:init', () => {
+    Livewire.on('notify', (data) => {
+        const event = Array.isArray(data) ? data[0] : data;
+        if (event && event.message) {
+            window.showNotification(event.message, event.type || 'success');
+        }
+    });
+});
+</script>
+@yield('scripts')
+@livewireScripts
 </body>
-</html>                
+</html>

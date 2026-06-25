@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers\User\Dump;
 
-use Illuminate\Routing\Controller as BaseController;
-use App\Models\Mashine;
-use App\Models\Set;
+use App\Http\Controllers\Controller;
+use App\Models\Rock;
+use Illuminate\Http\Request;
 
-class CreateController extends BaseController
+class CreateController extends Controller
 {
-    public function __invoke(){
+    /**
+     * Показать форму создания отвала
+     */
+    public function __invoke()
+    {
+        $rocks = Rock::all();
 
-        $sets = Set::all();
-        $mashines = Mashine::all();
-          return view('dump.create', compact('sets', 'mashines'));
-        
+        return view('dump.create', compact('rocks'));
     }
 }

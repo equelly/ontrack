@@ -26,7 +26,18 @@ class LoginController extends Controller
      *
      * @var string
      */
-    protected $redirectTo = RouteServiceProvider::HOME;
+    protected function redirectTo()
+    {
+        $user = auth()->user();
+        
+        return match($user->position) {
+            'driver' => '/driver',
+            'dispatcher' => '/dispatcher',
+            'excavator_operator' => '/excavator',
+            'master' => '/master',
+            default => '/home'
+        };
+    }
 
     /**
      * Create a new controller instance.

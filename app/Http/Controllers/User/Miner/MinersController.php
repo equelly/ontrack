@@ -1,292 +1,117 @@
 <?php
 
-namespace App\Http\Controllers\User\Miner;  // ← Твоё единственное число
+namespace App\Http\Controllers\User\Miner;
 
 use App\Http\Controllers\Controller;
 use App\Models\Miner;
-use App\Models\Dump;
-use App\Models\User;
+use App\Models\Rock;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-
 
 class MinersController extends Controller
 {
     /**
-     * Отображение списка майнеров с расстояниями до дампов
+     * Список всех забоев
      */
-public function index()
-{
-    $miners = Miner::with('lastUpdater')
-                   ->orderBy('last_updated_at', 'desc')
-                   ->orderBy('created_at', 'desc')
-                   ->paginate(15);
-
-    $minerIds = $miners->getCollection()->pluck('id');
-
-    // Один запрос: dumps с distance для всех майнеров
-    $dumpsData = DB::table('dumps')
-        ->leftJoin('miner_dump_distances', 'dumps.id', '=', 'miner_dump_distances.dump_id')
-        ->whereIn('miner_dump_distances.miner_id', $minerIds)
-        ->select('dumps.*', 'miner_dump_distances.miner_id', 'miner_dump_distances.distance_km')
-        ->orderBy('miner_dump_distances.miner_id')
-        ->orderBy('miner_dump_distances.distance_km', 'asc')
-        ->get()
-        ->groupBy('miner_id');
-
-    // Все dump IDs
-    $allDumpIds = $dumpsData->flatten()->pluck('id');
-
-    // Один запрос: active zones (delivery=1)
-    $zonesData = DB::table('zones')
-        ->whereIn('dump_id', $allDumpIds)
-        ->where('delivery', 1)
-        ->select('zones.*')
-        ->get()
-        ->groupBy('dump_id');
-
-       // 3. Zone IDs для rocks
-    $allZoneIds = $zonesData->flatten()->pluck('id');
-
-    // Один запрос: rocks через pivot rock_zone (без quantity)
-    $rocksData = DB::table('rocks')
-        ->join('rock_zone', 'rocks.id', '=', 'rock_zone.rock_id')
-        ->whereIn('rock_zone.zone_id', $allZoneIds)  // Только active zones
-        ->select('rocks.*', 'rock_zone.zone_id')
-        ->orderBy('rock_zone.zone_id')
-        ->orderBy('rocks.id')
-        ->get()
-        ->groupBy('zone_id');  // ['zone_id' => Collection rocks]
-
-
-
-
-    // Присвой данные майнерам
-    $miners->getCollection()->each(function ($miner) use ($dumpsData, $zonesData, $rocksData) {
-        $dumps = $dumpsData->get($miner->id, collect());
-
-        $dumps->each(function ($dump) use ($zonesData, $rocksData) {
-        $dump->zones = $zonesData->get($dump->id, collect());
-
-            $dump->zones->each(function ($zone) use ($rocksData) {
-                $zone->rocks = $rocksData->get((string) $zone->id, collect());
-
-                // Нет pivot — просто флаг
-                $zone->hasRocks = $zone->rocks->isNotEmpty();
-            });
-
-            $dump->hasActiveZones = $dump->zones->isNotEmpty();
-        });
-
-
-        
-
-        $miner->dumps = $dumps->sortBy('distance_km')->values();
-    });
-    return view('miners.index', compact('miners'));
-}
-
-    
-  public function create()
+    public function index()
     {
-        return view('miners.create');
+        $miners = Miner::with(['currentRock', 'rocks'])
+            ->withCount('orders')
+            ->orderBy('name_miner')
+            ->get();
+
+        return view('miners.index', compact('miners'));
     }
 
+    /**
+     * Форма создания забоя
+     */
+    public function create()
+    {
+        $rocks = Rock::orderBy('name_rock')->get();
+        return view('miners.create', compact('rocks'));
+    }
+
+    /**
+     * Создать забой
+     */
     public function store(Request $request)
     {
-        
-        $validated = $request->validate([
-            'name_miner' => 'required|string|max:255',
-            'active' => 'boolean',
-
+        $data = $request->validate([
+            'name_miner' => 'required|string|max:255|unique:miners,name_miner',
+            'capacity_per_trip' => 'nullable|numeric|min:0',
+            'description' => 'nullable|string',
         ]);
-        Miner::firstOrCreate($validated);
+
+        $miner = Miner::create([
+            'name_miner' => $data['name_miner'],
+            'capacity_per_trip' => $data['capacity_per_trip'] ?? null,
+            'description' => $data['description'] ?? null,
+            'active' => true,
+        ]);
 
         return redirect()->route('miners.index')
-            ->with('success', "Оборудование '{$validated['name_miner']}' добавлено!Установите маршруты для работы в системе распределения");
+            ->with('success', "Забой '{$miner->name_miner}' создан");
     }
+
+    /**
+     * Показать забой
+     */
     public function show(Miner $miner)
     {
-              
-        // Сортируем дампы по расстоянию после загрузки
-        $miner->dumps = $miner->dumps->sortBy('pivot.distance_km');
-
-        // 🆗 ШАГ 2: Ищем пользователя по last_updated_by (отдельно!)
-        $lastUpdater = null;
-        if ($miner->last_updated_by) {
-            // Ищем в таблице users по ID
-            $lastUpdater = User::select('id', 'name', 'email', 'role')
-                               ->find($miner->last_updated_by);
-
-            // Если у тебя другая модель пользователей:
-            // $lastUpdater = Admin::find($miner->last_updated_by);
-        }
-
-        // 🆗 ШАГ 3: Подсчитываем статистику (опционально)
-        $stats = [
-            'total_dumps' => $miner->dumps->count(),
-            'dumps_with_distance' => $miner->dumps->whereNotNull('pivot.distance_km')->count(),
-            'closest_distance' => $miner->dumps->whereNotNull('pivot.distance_km')->min('pivot.distance_km'),
-        ];
-
-        // 🆗 ШАГ 4: Передаём ВСЕ данные в представление
-        return view('miners.show', compact('miner', 'lastUpdater', 'stats'));
+        $miner->load(['rocks', 'orders.dump', 'distances.dump']);
+        return view('miners.show', compact('miner'));
     }
-    
 
+    /**
+     * Форма редактирования забоя (с породами!)
+     */
     public function edit(Miner $miner)
-{
-    // Загружаем все дампы с расстояниями для этого майнера
-    $miner->load('dumps');
+    {
+        $miner->load('rocks');
+        $rocks = Rock::orderBy('name_rock')->get();
+        return view('miners.edit', compact('miner', 'rocks'));
+    }
 
-    // Или передаём все дампы для выбора
-    $allDumps = Dump::all();
-
-    return view('miners.edit', compact('miner', 'allDumps'));
-}
-
-
-    //     public function update(Request $request, Miner $miner)
-    // {
-    //     $validated = $request->validate([
-    //         'name_miner' => 'required|string|max:255',
-    //         'active' => 'boolean',
-    //         'dump_distances' => 'array',
-    //         'dump_distances.*' => 'nullable|numeric|min:0|max:1000',
-    //     ]);
-
-    //         // Обновляем ВСЕ расстояния одной формой
-    //     if (isset($validated['dump_distances'])) {
-    //         foreach ($validated['dump_distances'] as $dumpId => $distance) {
-    //             if ($distance > 0) {
-    //                 $miner->dumps()->syncWithoutDetaching([
-    //                     $dumpId => ['distance_km' => $distance]
-    //                 ]);
-    //             } else {
-    //                 $miner->dumps()->detach($dumpId);
-    //             }
-    //         }
-    //     }
-
-    //     $oldName = $miner->name_miner;  // Сохраняем старое имя для вывода в сообщении
-
-    //         // Проверяем, изменилось ли имя
-    //     if ($oldName!== $validated['name_miner']) {
-    //         $message = "Забой '{$oldName}' изменен на '{$validated['name_miner']}'!";
-    //     } else {
-    //         $message = "Данные забоя '{$validated['name_miner']}' обновлёны!";
-    //     }
-
-    //     $miner->update([
-    //         'name_miner' => $validated['name_miner'],
-    //         'active' => $validated['active']?? false,
-    //     ]);
-
-    //     // Сохраняем/обновляем расстояния
-    //     if (isset($validated['dump_distances'])) {
-    //         foreach ($validated['dump_distances'] as $dumpId => $distance) {
-    //             if ($distance > 0) {
-    //                 $miner->dumps()->syncWithoutDetaching([
-    //                     $dumpId => ['distance_km' => $distance]
-    //                 ]);
-    //             } else {
-    //                 $miner->dumps()->detach($dumpId);
-    //             }
-    //         }
-    //     }
-
-    //         // Используем новое имя для сообщения
-    
-    //     return redirect()->route('miners.index')->with('success', $message);
-    // }
+    /**
+     * Обновить забой
+     */
     public function update(Request $request, Miner $miner)
-{
-    $validated = $request->validate([
-        'name_miner' => 'required|string|max:255',
-        'active' => 'boolean',
-        'dump_distances' => 'array',
-        'dump_distances.*' => 'nullable|numeric|min:0|max:1000',
-    ]);
+    {
+        $data = $request->validate([
+            'name_miner' => 'required|string|max:255',
+            'capacity_per_trip' => 'nullable|numeric|min:0',
+            'description' => 'nullable|string',
+            'active' => 'boolean',
+        ]);
 
-    $oldName = $miner->name_miner;
-    $oldActive = $miner->active;
-    $distanceChanges = 0;
+        $miner->update([
+            'name_miner' => $data['name_miner'],
+            'capacity_per_trip' => $data['capacity_per_trip'] ?? null,
+            'description' => $data['description'] ?? null,
+            'active' => $data['active'] ?? $miner->active,
+        ]);
 
-    // Обновляем майнера (аудит сработает автоматически через boot()!)
-    $miner->update([
-        'name_miner' => $validated['name_miner'],
-        'active' => $validated['active']?? false,
-    ]);
+        // Породы обновляются автоматически через syncWithoutDetaching при работе экскаваторщика
 
-    // 🆗 Считаем изменения расстояний
-    if (isset($validated['dump_distances'])) {
-        foreach ($validated['dump_distances'] as $dumpId => $distance) {
-            $existing = $miner->distances()->where('dump_id', $dumpId)->first();
-            $oldDistance = $existing?->distance_km?? 0;
-
-            if ($distance > 0) {
-                // Добавляем/обновляем расстояние
-                if ($oldDistance!= $distance) {
-                    $miner->dumps()->syncWithoutDetaching([
-                        $dumpId => ['distance_km' => $distance]
-                    ]);
-                    $distanceChanges++;
-                }
-            } else {
-                // Удаляем расстояние, если было
-                if ($oldDistance > 0) {
-                    $miner->dumps()->detach($dumpId);
-                    $distanceChanges++;
-                }
-            }
-        }
+        return redirect()->route('miners.index')
+            ->with('success', "Забой '{$miner->name_miner}' обновлён");
     }
 
-    //  Формируем информативное сообщение с аудитом
-    $newName = $validated['name_miner'];
-    $newActive = $validated['active']?? false;
-    $user = auth()->user()?->name?? 'Система';
-    $time = now()->format('H:i');
-
-    $changes = [];
-
-    // Проверяем изменение имени
-    if ($oldName!== $newName) {
-        $changes[] = "название: '{$oldName}' → '{$newName}'";
-    }
-
-    // Проверяем изменение статуса
-    if ($oldActive!== $newActive) {
-        $status = $newActive? 'в работе': 'не в работе';
-        $changes[] = "статус изменен: теперь → {$status}";
-    }
-
-    // Проверяем изменения расстояний
-    if ($distanceChanges > 0) {
-        $changes[] = "обновлены расстояния для {$distanceChanges} маршрутов";
-    }
-
-    // Формируем финальное сообщение
-    if (empty($changes)) {
-        $message = "Изменены данные забоя '{$newName}'";
-    } else {
-        $changesList = implode(', ', $changes);
-        $message = "Забой '{$newName}' обновлён: {$changesList}";
-    }
-
-    $message.= " 👤 изменения внесены: {$user} • в {$time}";
-
-    return redirect()->route('miners.index')->with('success', $message);
-}
-
-
+    /**
+     * Удалить забой
+     */
     public function destroy(Miner $miner)
     {
+        if ($miner->orders()->count() > 0) {
+            return redirect()->route('miners.index')
+                ->with('error', "Нельзя удалить забой с привязанными маршрутами");
+        }
+
+        $name = $miner->name_miner;
+        $miner->rocks()->detach();
         $miner->delete();
 
         return redirect()->route('miners.index')
-            ->with('success', 'информация удалёна!');
+            ->with('success', "Забой '{$name}' удалён");
     }
 }
-
-   

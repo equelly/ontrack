@@ -1,39 +1,131 @@
-/**
- * First we will load all of this project's JavaScript dependencies which
- * includes Vue and other libraries. It is a great starting point when
- * building robust, powerful web applications using Vue and Laravel.
- */
-
 import './bootstrap';
-import { createApp } from 'vue';
 
-/**
- * Next, we will create a fresh Vue application instance. You may then begin
- * registering components with the application instance so they are ready
- * to use in your application's views. An example is included for you.
- */
+document.addEventListener('DOMContentLoaded', () => {
+    // =========================================
+    // ДИСПЕТЧЕР
+    // =========================================
+    if (window.location.pathname === '/dispatcher') {
+        // Livewire 3 сам слушает Echo через #[On('echo:channel,.event')]
 
-const app = createApp({});
+        const STATUS_LABELS = {
+            to_miner: 'в пути к забою',
+            loading: 'идет загрузка',
+            transporting: 'движение к месту выгрузки',
+            unloading: 'разгрузка',
+            completed: 'рейс завершен',
+            free: 'готов к работе',
+            maintenance: 'обслуживание',
+            fueling: 'заправка',
+            breakdown: 'неисправность',
+        };
 
-import ExampleComponent from './components/ExampleComponent.vue';
-app.component('example-component', ExampleComponent);
+        function humanStatus(status) {
+            return STATUS_LABELS[status] ?? status;
+        }
 
-/**
- * The following block of code may be used to automatically register your
- * Vue components. It will recursively scan this directory for the Vue
- * components and automatically register them with their "basename".
- *
- * Eg. ./components/ExampleComponent.vue -> <example-component></example-component>
- */
+        document.querySelectorAll('.status').forEach(cell => {
+            const rawStatus = cell.textContent.trim();
+            cell.textContent = humanStatus(rawStatus);
+        });
+    }
+    
+    // =========================================
+    // ЭКСКАВАТОРЩИК - Livewire сам обрабатывает Echo
+    // =========================================
+    // #[On('echo-private:miner.{miner.id},.truck.arrived')]
+    // #[On('echo-private:miner.{miner.id},.loading.started')]
+    
+    // =========================================
+    // ВОДИТЕЛЬ - Livewire сам обрабатывает Echo
+    // =========================================
+    // #[On('echo-private:driver.{truck.id},DriverRouteUpdated')]
+    // #[On('echo-private:truck.{truck.id},.loading.completed')]
 
-// Object.entries(import.meta.glob('./**/*.vue', { eager: true })).forEach(([path, definition]) => {
-//     app.component(path.split('/').pop().replace(/\.\w+$/, ''), definition.default);
-// });
+    // Цвета статусов для таблиц
+    function statusColor(status) {
+        const colors = {
+            'free': '#d4edda',
+            'to_miner': '#fff3cd',
+            'loading': '#cce5ff',
+            'transporting': '#ffe5b4',
+            'unloading': '#f8d7da',
+            'completed': '#e2e3e5',
+            'breakdown': '#f5c6cb',
+            'maintenance': '#d6d8d9',
+            'fueling': '#d1ecf1',
+        };
+        return colors[status] || '#ffffff';
+    }
 
-/**
- * Finally, we will attach the application instance to a HTML element with
- * an "id" attribute of "app". This element is included with the "auth"
- * scaffolding. Otherwise, you will need to add an element yourself.
- */
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const statusCell = row.querySelector('.status');
+        if(statusCell) {
+            row.style.backgroundColor = statusColor(statusCell.textContent.trim());
+        }
+    });
 
-app.mount('#app');
+    // Подтверждение маршрута водителем
+    if (window.driverId && document.getElementById('ackRoute')) {
+        document.getElementById('ackRoute').addEventListener('click', () => {
+            fetch('/driver/route/ack', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    truck_id: window.truckId
+                })
+            })
+            .then(r => r.json())
+        });
+    }
+});
+
+// Toast уведомления
+function showToast(status, data) {
+    const toast = document.createElement('div');
+    toast.className = 'alert alert-info alert-dismissible fade show position-fixed';
+    toast.style.cssText = 'top: 70px; right: 20px; z-index: 9999; min-width: 300px;';
+    
+    let message = '';
+    switch(status) {
+        case 'route_assigned':
+            message = `✅ Маршрут назначен`;
+            break;
+        case 'breakdown':
+            message = `🚨 Поломка`;
+            break;
+        case 'transporting':
+            message = `🚛 В пути`;
+            break;
+        case 'unloading':
+            message = `📦 Разгрузка`;
+            break;
+        case 'loading':
+            message = `⏳ Загрузка`;
+            break;
+        case 'loading_completed':
+            message = data?.message || '✅ Погрузка завершена';
+            break;
+        case 'completed':
+            message = `✅ Рейс завершён`;
+            break;
+        default:
+            message = `📢 ${data?.message || status}`;
+    }
+    
+    toast.innerHTML = `
+        <strong>${message}</strong>
+        <button type="button" class="close" data-dismiss="alert">
+            <span>&times;</span>
+        </button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}

@@ -4,24 +4,30 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use App\Console\Commands\InitMiningOrders;
+use App\Console\Commands\CleanMiningOrders;
+use App\Console\Commands\OptimizeRoutes;
+use App\Console\Commands\AssignRocksToMiners;
+use App\Console\Commands\RouteMode;
 
 class Kernel extends ConsoleKernel
 {
-    /**
-     * Define the application's command schedule.
-     */
+    protected $commands = [
+        InitMiningOrders::class,
+        CleanMiningOrders::class,
+        OptimizeRoutes::class,
+        AssignRocksToMiners::class,
+        RouteMode::class,
+    ];
+
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('inspire')->hourly();
     }
 
-    /**
-     * Register the commands for the application.
-     */
     protected function commands(): void
     {
-        $this->load(__DIR__.'/Commands');
-
+        $this->load(__DIR__ . '/Commands');
         require base_path('routes/console.php');
     }
 }
