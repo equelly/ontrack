@@ -17,7 +17,7 @@ use App\Livewire\ExcavatorPanel;
 use Illuminate\Support\Facades\Log;
 
 
-Route::middleware(['auth', 'role:driver'])->group(function () {
+Route::middleware(['auth', 'roles:driver'])->group(function () {
     Route::post('/driver/route/ack', [DriverRouteController::class, 'ack']);
     Route::post('/driver/status', [DriverController::class, 'updateStatus']);
     Route::post('/driver/assign', [DriverController::class, 'assignForTruck']);
@@ -27,7 +27,7 @@ Route::middleware(['auth', 'role:driver'])->group(function () {
     Route::post('/driver/reassign-zone', [DriverController::class, 'reassignZone']);
     
     // Livewire панель водителя
-    Route::get('/driver/{truck}', \App\Livewire\DriverPanel::class)->name('driver.panel');
+    Route::get('/driver', \App\Livewire\DriverPanel::class)->name('driver.panel');
 });
 
 
@@ -40,11 +40,11 @@ Route::resource('drivers', DriverController::class)->parameters(['drivers' => 't
 
 Route::get('/excavator', ExcavatorPanel::class)
     ->name('excavator.index')
-    ->middleware(['auth', 'role:excavator_operator,admin']);
+    ->middleware(['auth', 'roles:excavator_operator,admin']);
 
 
 // Старые API маршруты (оставляем для совместимости, если нужны)
-Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excavator_operator,admin'])->group(function () {
+Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'roles:excavator_operator,admin'])->group(function () {
     // API для внешних запросов, если понадобятся
     // Route::post('/set-miner', [ExcavatorController::class, 'setMiner'])->name('set-miner');
     // Route::post('/set-rock', [ExcavatorController::class, 'setRock'])->name('set-rock');
@@ -57,7 +57,6 @@ Route::prefix('excavator')->name('excavator.')->middleware(['auth', 'role:excava
 
 //Route::get('/dispatcher', DispatcherPanel::class)->name('dispatcher');
 Route::get('/test', TestComponent::class)->name('test'); 
-Route::get('/driver', DriverPanel::class)->name('driver.panel');
 
 
 // базовый в приложении не применяю
@@ -78,6 +77,7 @@ Route::get('/dump/distribution', [DistributionController::class, 'index']);
 Route::get('/main', function () {
     return view('main');
 });
+
 
 Route::group(['namespace'=>'App\Http\Controllers\User', 'prefix'=>'user', 'middleware'=>'auth'], function (){
     Route::group(['namespace'=>'Order'], function(){
@@ -179,10 +179,11 @@ Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name
     // =========================================
     // МАРШРУТЫ ДИСПЕТЧЕРА
     // =========================================
-        Route::middleware(['auth', 'role:dispatcher,admin'])->group(function () {
+        Route::middleware(['auth', 'roles:dispatcher,admin'])->group(function () {
             // Указываем класс компонента напрямую, без функции и view()
-            Route::get('/dispatcher', \App\Livewire\MainDispatcherPanel::class)
-                ->name('dispatcher.index');
+            Route::get('/dispatcher', function () {
+    return view('dispatcher.index');
+})->name('dispatcher.index');
 
 
 

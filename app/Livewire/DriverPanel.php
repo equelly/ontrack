@@ -17,6 +17,7 @@ use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Locked; // для сохранения объектов в Livewire без превращения в массивы 
 
 
 #[Layout('components.layouts.app')]
@@ -24,6 +25,7 @@ use Livewire\Attributes\Title;
 
 class DriverPanel extends Component
 {
+    #[Locked] // Блокирует внутреннюю магию и защищает объект от превращения в массив
     public ?Truck $truck = null;
     public ?int $selectedTruckId = null;
     public array $trucks = [];
@@ -73,10 +75,14 @@ class DriverPanel extends Component
     {
         $this->loadTrucks();
         
-        // Пробуем восстановить выбранный грузовик из cookie
-        $savedTruckId = request()->cookie('selected_truck_id');
+        // Try to get truck from session first
+        $savedTruckId = session('selected_truck_id');
         if ($savedTruckId) {
             $this->selectedTruckId = (int) $savedTruckId;
+            $this->selectTruck();
+        } elseif (auth()->user()->truck_id) {
+            // If no cookie, use the truck assigned to the user
+            $this->selectedTruckId = auth()->user()->truck_id;
             $this->selectTruck();
         }
     }
@@ -112,24 +118,17 @@ class DriverPanel extends Component
         }
 
         $this->truck = Truck::find($this->selectedTruckId);
-        
         if ($this->truck) {
             // Привязываем грузовик к водителю если нужно
             if ($this->truck->driver_id !== auth()->id()) {
                 $this->truck->update(['driver_id' => auth()->id()]);
             }
-            
             $this->loadData();
-            
             // Временно отключено - проверка запланированного обслуживания
             // $this->checkScheduledService();
             
-            // Сохраняем в cookie
-            $this->dispatch('set-cookie', [
-                'name' => 'selected_truck_id',
-                'value' => $this->selectedTruckId,
-                'days' => 30,
-            ]);
+            // Сохраняем в сессию
+            session()->put('selected_truck_id', $this->selectedTruckId);
 
             $this->dispatch('truck-selected', ['truck_id' => $this->truck->id]);
         }

@@ -60,8 +60,8 @@ class ExcavatorPanel extends Component
         $this->stats = [];
         $this->productivityStats = [];
 
-        // Восстанавливаем выбранный экскаватор из cookie или пользователя
-        $minerId = request()->cookie('selected_miner') ?? Auth::user()?->miner_id;
+        // Восстанавливаем выбранный экскаватор из сессии или пользователя
+        $minerId = session('selected_miner') ?? Auth::user()?->miner_id;
 
         if ($minerId) {
             $this->selectedMinerId = (int) $minerId;
@@ -173,12 +173,8 @@ class ExcavatorPanel extends Component
             'message' => 'Экскаватор выбран: ' . $miner->name_miner,
         ]);
 
-        // Устанавливаем cookie через JS
-        $this->dispatch('set-cookie', [
-            'name' => 'selected_miner',
-            'value' => $miner->id,
-            'days' => 30,
-        ]);
+        // Сохраняем в сессию
+        session()->put('selected_miner', $miner->id);
 
         // Отправляем событие для повторной инициализации Echo
         $this->dispatch('miner-selected', [
@@ -778,7 +774,7 @@ class ExcavatorPanel extends Component
      * Слушаем событие начала погрузки от водителя через Echo
      * TruckStartedLoading отправляется на private-miner.{minerId} с broadcastAs '.loading.started'
      */
-    #[On('echo-private:miner.{miner.id},.loading.started')]
+    //#[On('echo-private:miner.{miner.id},.loading.started')]
     public function onLoadingStarted(array $data): void
     {
         Log::info('LoadingStarted event received via Echo', $data);
@@ -793,7 +789,7 @@ class ExcavatorPanel extends Component
     /**
      * Слушаем уведомления для экскаваторщика (новый грузовик назначен и т.д.)
      */
-    #[On('echo-private:miner.{miner.id},.excavator.notification')]
+    //#[On('echo-private:miner.{miner.id},.excavator.notification')]
     public function onExcavatorNotification(array $data): void
     {
         Log::info('ExcavatorNotification received', $data);
@@ -820,6 +816,21 @@ class ExcavatorPanel extends Component
         Log::info('refresh-miner-data triggered');
         $this->loadMinerData();
     }
+    protected function getListeners()
+    {
+    // Получаем ID текущего экскаватора/майнера, который открыт на панели
+    $minerId = $this->miner?->id ?? 0;
+
+    return [
+        // Динамические приватные каналы для конкретного экскаватора (Livewire v3 синтаксис)
+        "echo-private:miner.{$minerId},.loading.started" => 'onLoadingStarted',
+        "echo-private:miner.{$minerId},.excavator.notification" => 'onExcavatorNotification',
+        
+        // Статические события (как у диспетчера) можно оставлять прямо здесь:
+        'refresh-miner-data' => 'onRefreshData',
+    ];
+    }
+
 
     public function render()
     {

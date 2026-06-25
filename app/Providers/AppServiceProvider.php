@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Carbon\Carbon;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\DB;
 use App\Models\Miner;
 use App\Models\Dump;
 use App\Models\MinerDumpDistance;
@@ -26,6 +27,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Проверяем, используется ли связь с пакетом Doctrine
+        if (class_exists(\Doctrine\DBAL\Connection::class)) {
+            $platform = DB::connection()->getDoctrineSchemaManager()->getDatabasePlatform();
+            // Говорим Doctrine воспринимать enum как обычную строку
+            $platform->registerDoctrineTypeMapping('enum', 'string');
+        }
                 // Установка московского часового пояса
         date_default_timezone_set('Europe/Moscow');
 

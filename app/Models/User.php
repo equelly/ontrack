@@ -62,7 +62,8 @@ class User extends Authenticatable
         'role',
         'email',
         'password',
-        'miner_id'
+        'miner_id',
+        'position'
     ];
 
     /**

@@ -1,4 +1,4 @@
-<div class="excavator-panel-wrapper">
+    <div class="excavator-panel-wrapper">
         <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
   
@@ -23,9 +23,9 @@
                                 <option value="{{ $m->id }}">{{ $m->name_miner }}</option>
                             @endforeach
                         </select>
-                        <button wire:click="selectMiner" wire:loading.attr="disabled" class="btn btn-primary btn-sm">
-                            <span wire:loading.remove>OK</span>
-                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                        <button wire:click="selectMiner" wire:loading.attr="disabled" class="btn btn-primary btn-sm" style="min-width: 70px;">
+                            <span>OK</span>
+                            <span wire:loading class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-spinner bi-spin"></i></span>
                         </button>
                     </div>
 
@@ -44,9 +44,9 @@
                                 <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
                             @endforeach
                         </select>
-                        <button wire:click="setRock" wire:loading.attr="disabled" class="btn btn-success btn-sm">
-                            <span wire:loading.remove>OK</span>
-                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                        <button wire:click="setRock" wire:loading.attr="disabled" class="btn btn-success btn-sm" style="min-width: 70px;">
+                            <span>OK</span>
+                            <span wire:loading class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-spinner bi-spin"></i></span>
                         </button>
                     </div>
 
@@ -55,9 +55,9 @@
                         <span class="text-muted text-nowrap">Норма:</span>
                         <input type="number" wire:model.defer="targetLoadTime" class="form-control form-control-sm" style="width: 80px;" min="25" max="3600">
                         <span class="text-muted">сек</span>
-                        <button wire:click="setTargetLoadTime" wire:loading.attr="disabled" class="btn btn-outline-primary btn-sm">
-                            <span wire:loading.remove>OK</span>
-                            <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                        <button wire:click="setTargetLoadTime" wire:loading.attr="disabled" class="btn btn-outline-primary btn-sm" style="min-width: 70px;">
+                            <span>OK</span>
+                            <span wire:loading class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-spinner bi-spin"></i></span>
                         </button>
                     </div>
                     @endif
@@ -287,7 +287,7 @@
         <!-- Статистика за смену (скрыта по умолчанию) -->
         <div class="row">
             <div class="col-12">
-                <div class="accordion" id="statsAccordion">
+                <div class="accordion" id="statsAccordion" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
                     <div class="accordion-item border-0">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed py-2 px-3" type="button"
@@ -319,6 +319,12 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="d-flex justify-content-center mt-4 mb-4">
+                    <a href="{{ route('order.index') }}" class="accordion-button collapsed py-2 px-3" style="text-decoration: none; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                        <i class="bi bi-tools me-2"></i>
+                        Заявки
+                    </a>
                 </div>
             </div>
         </div>

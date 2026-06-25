@@ -202,6 +202,11 @@
                 <i class="fas fa-cog me-1"></i> Настройки
             </button>
         </li>
+        <li class="nav-item">
+            <a href="{{ route('order.index') }}" class="nav-link" type="button">
+                <i class="fas fa-tools me-1"></i> Заявки
+            </a>
+        </li>
     </ul>
 
     <div class="tab-content">

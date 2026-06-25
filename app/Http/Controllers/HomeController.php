@@ -23,7 +23,23 @@ class HomeController extends Controller
      */
     public function index()
     {
-        //dd('home');
-        return view('home');
+        if (!auth()->check()) {
+            return redirect()->route('login');
+        }
+
+        $position = auth()->user()->position;
+
+        switch ($position) {
+            case 'driver':
+                return redirect()->route('driver.panel');
+            case 'dispatcher':
+                return redirect()->route('dispatcher.index');
+            case 'excavator_operator':
+                return redirect()->route('excavator.index');
+            case 'master':
+                return redirect()->route('master');
+            default:
+                return redirect('/dashboard');
+        }
     }
 }

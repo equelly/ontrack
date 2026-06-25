@@ -56,6 +56,19 @@
                       <input class="nav-link hover:bg-violet-400" type="submit" value="{{ __('Выйти') }}">  
                   </form>
                   </li>
+                  @if(auth()->user())
+                  <li class="nav-item active">
+                      @php
+                          $position = auth()->user()->position ?? null;
+                          $redirectRoute = '/home';
+                          if ($position === 'driver') $redirectRoute = route('driver.panel');
+                          elseif ($position === 'dispatcher') $redirectRoute = route('dispatcher.index');
+                          elseif ($position === 'excavator_operator') $redirectRoute = route('excavator.index');
+                          elseif ($position === 'master') $redirectRoute = '/master';
+                      @endphp
+                      <a href="{{ $redirectRoute }}" class="nav-link hover:bg-violet-400">Вернуться в рабочую зону</a>
+                  </li>
+                  @endif
                 </ul> 
                 <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
                 <li class="nav-item ml-3">

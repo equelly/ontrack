@@ -1,4 +1,4 @@
-<div class="driver-panel-wrapper">
+    <div class="driver-panel-wrapper">
     <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -32,9 +32,9 @@
                             </option>
                         @endforeach
                     </select>
-                    <button wire:click="selectTruck" wire:loading.attr="disabled" class="btn btn-primary">
-                        <span wire:loading.remove>Выбрать</span>
-                        <span wire:loading><i class="bi bi-spinner bi-spin"></i></span>
+                    <button wire:click="selectTruck" wire:loading.attr="disabled" class="btn btn-primary" style="min-width: 120px;">
+                        <span>Выбрать</span>
+                        <span wire:loading class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-spinner bi-spin"></i></span>
                     </button>
                 </div>
             </div>
@@ -391,7 +391,7 @@
         <!-- Статистика (скрыта по умолчанию) -->
         <div class="row">
             <div class="col-12">
-                <div class="accordion" id="statsAccordion">
+                <div class="accordion" id="statsAccordion" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
                     <div class="accordion-item border-0">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#statsCollapse">
@@ -429,7 +429,7 @@
         <!-- Секция обслуживания -->
         <div class="row mt-3">
             <div class="col-12">
-                <div class="accordion" id="serviceAccordion">
+                <div class="accordion" id="serviceAccordion" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
                     <div class="accordion-item border-0">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#serviceCollapse">
@@ -513,6 +513,12 @@
                         </div>
                     </div>
                 </div>
+                <div class="d-flex justify-content-center mt-4 mb-4">
+                    <a href="{{ route('order.index') }}" class="accordion-button collapsed py-2 px-3" style="text-decoration: none; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                        <i class="bi bi-tools me-2"></i>
+                        Заявки
+                    </a>
+                </div>                
             </div>
         </div>
         @else

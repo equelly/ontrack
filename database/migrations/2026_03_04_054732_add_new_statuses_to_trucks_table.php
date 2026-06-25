@@ -1,45 +1,32 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        // Получаем текущий enum
-        $enumValues = DB::selectOne("SHOW COLUMNS FROM trucks WHERE Field = 'status'");
-        
-        // Добавляем новые значения
-        DB::statement("ALTER TABLE trucks MODIFY COLUMN status ENUM(
-            'free',
-            'to_miner',
-            'loading',
-            'transporting',
-            'unloading',
-            'completed',
-            'breakdown',
-            'maintenance',
-            'fueling',
-            'waiting_loading',
-            'waiting_unloading',
-            'delayed'
-        ) DEFAULT 'free'");
+        Schema::table('trucks', function (Blueprint $table) {
+            // Универсальный метод Laravel для изменения колонки
+            $table->enum('status', [
+                'free', 'to_miner', 'loading', 'transporting',
+                'unloading', 'completed', 'breakdown', 'maintenance',
+                'fueling', 'waiting_loading', 'waiting_unloading', 'delayed'
+            ])->default('free')->change();
+        });
     }
 
     public function down(): void
     {
-        DB::statement("ALTER TABLE trucks MODIFY COLUMN status ENUM(
-            'free',
-            'to_miner',
-            'loading',
-            'transporting',
-            'unloading',
-            'completed',
-            'breakdown',
-            'maintenance',
-            'fueling'
-        ) DEFAULT 'free'");
+        Schema::table('trucks', function (Blueprint $table) {
+            // Возвращаем старый список статусов
+            $table->enum('status', [
+                'free', 'to_miner', 'loading', 'transporting',
+                'unloading', 'completed', 'breakdown', 'maintenance',
+                'fueling'
+            ])->default('free')->change();
+        });
     }
 };

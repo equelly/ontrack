@@ -25,11 +25,22 @@ class RegisterController extends Controller
     use RegistersUsers;
 
     /**
-     * Where to redirect users after registration.
+     * Get the post register redirect path.
      *
-     * @var string
+     * @return string
      */
-    protected $redirectTo = RouteServiceProvider::HOME;
+    protected function redirectTo()
+    {
+        $user = auth()->user();
+        
+        return match($user->position) {
+            'driver' => '/driver',
+            'dispatcher' => '/dispatcher',
+            'excavator_operator' => '/excavator-operator',
+            'master' => '/master',
+            default => '/home'
+        };
+    }
 
     /**
      * Create a new controller instance.
@@ -49,13 +60,18 @@ class RegisterController extends Controller
      */
     protected function validator(array $data)
     {
-        //dd($data['role']);
-        return Validator::make($data, [
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
             'role' => ['required'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
+        ];
+
+        if($data['role'] === 'эксплуатационный') {
+            $rules['position'] = ['required'];
+        }
+        
+        return Validator::make($data, $rules);
     }
 
     /**
@@ -66,12 +82,17 @@ class RegisterController extends Controller
      */
     protected function create(array $data)
     {
-        
-        return User::create([
+        $userData = [
             'name' => $data['name'],
             'role' => $data['role'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
-        ]);
+        ];
+
+        if(isset($data['position'])) {
+            $userData['position'] = $data['position'];
+        }
+        
+        return User::create($userData);
     }
 }

@@ -18,6 +18,10 @@ class Truck extends Model
     ];
 
     protected $casts = [
+        // Жестко приводим ID к числам, чтобы Livewire не превращал модель в массив
+        'id' => 'integer',
+        'driver_id' => 'integer',
+        'truck_model_id' => 'integer',        
         'load_capacity' => 'decimal:2',
         'current_load' => 'decimal:2',
         'fuel_level' => 'decimal:1',  // литры топлива
