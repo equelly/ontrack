@@ -39,7 +39,7 @@ class HomeController extends Controller
             case 'master':
                 return redirect()->route('master');
             default:
-                return redirect('/dashboard');
+                return redirect()->route('dump.index');
         }
     }
 }
