@@ -102,6 +102,11 @@ class Miner extends Model
         return $this->belongsTo(User::class, 'last_updated_by');
     }
 
+    public function dumpDistances()
+    {
+        return $this->hasMany(\App\Models\MinerDumpDistance::class, 'miner_id', 'id');
+    }
+
     public function distances()
     {
         return $this->hasMany(MinerDumpDistance::class, 'miner_id');

@@ -28,7 +28,8 @@ class MinersController extends Controller
     public function create()
     {
         $rocks = Rock::orderBy('name_rock')->get();
-        return view('miners.create', compact('rocks'));
+        $dumps = \App\Models\Dump::orderBy('name')->get();
+        return view('miners.create', compact('rocks', 'dumps'));
     }
 
     /**
@@ -39,7 +40,10 @@ class MinersController extends Controller
         $data = $request->validate([
             'name_miner' => 'required|string|max:255|unique:miners,name_miner',
             'capacity_per_trip' => 'nullable|numeric|min:0',
+            'productivity' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
+            'distances' => 'nullable|array',
+            'distances.*' => 'nullable|numeric|min:0',
         ]);
 
         $miner = Miner::create([
@@ -48,6 +52,18 @@ class MinersController extends Controller
             'description' => $data['description'] ?? null,
             'active' => true,
         ]);
+
+        // Сохраняем расстояния до мест разгрузки
+        if (!empty($data['distances'])) {
+            foreach ($data['distances'] as $dumpId => $distance) {
+                if ($distance !== null) {
+                    $miner->dumpDistances()->create([
+                        'dump_id' => $dumpId,
+                        'distance_km' => $distance,
+                    ]);
+                }
+            }
+        }
 
         return redirect()->route('miners.index')
             ->with('success', "Забой '{$miner->name_miner}' создан");

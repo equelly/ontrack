@@ -14,10 +14,16 @@
                 <h4>Управление отвалами и породами</h4>
                 @if(auth()->user()->role === 'admin' || auth()->user()->role === 'dispatcher')
                     <a href="{{ route('dispatcher.index') }}" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-arrow-left"></i> Назад к диспетчеру
+                        <i class="fas fa-arrow-left"></i>Панель диспетчера
                     </a>
                 @endif
             </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <h4><i class="fas fa-mountain me-2"></i>Управление точками разгрузки автомобилей</h4>
+                <a href="{{ route('dump.create') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus"></i> Добавить место разгрузки
+                </a>
+            </div>           
         </div>
     </div>
 

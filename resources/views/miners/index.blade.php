@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="container-fluid">
-    <div class="row mb-4">
+    <div class="row mt-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
                 <h4><i class="fas fa-mountain me-2"></i>Управление забоями и породами</h4>

@@ -40,6 +40,20 @@
                             <textarea name="description" class="form-control" rows="2" placeholder="Опционально">{{ old('description') }}</textarea>
                         </div>
 
+                        <div class="mb-3">
+                            <h5>Расстояния до мест разгрузки</h5>
+                            @foreach($dumps as $dump)
+                                <div class="row mb-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label"> {{ $dump->name_dump }}</label>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <input type="number" step="0.1" name="distances[{{ $dump->id }}]" class="form-control" placeholder="км">
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle me-2"></i>
                             Порода для забоя выбирается экскаваторщиком при погрузке из общего списка пород.
