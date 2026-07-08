@@ -1,8 +1,2 @@
-@use "sass:color"; // Добавьте это первой строкой
-@use "./variables";         /* твои переменные */
-@import "bootstrap/scss/bootstrap";
-
-// Fonts
-@import url('https://fonts.bunny.net/css?family=Nunito');
-
+@import 'variables';
 

@@ -7,7 +7,7 @@
 @endphp
 
 @section('content')
-<div class="container-fluid mt-4">
+<div class="container-fluid px-1 px-md-4 mt-2 mt-md-4">
     <div class="row mb-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
@@ -28,8 +28,8 @@
     </div>
 
     @foreach($dumps as $dump)
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
+        <div class="card industrial-card mb-4">
+            <div class="card-header industrial-header text-white bg-primary">
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
                         <a href="{{ route('dump.show', $dump->id) }}" class="text-white text-decoration-none">

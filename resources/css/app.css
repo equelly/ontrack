@@ -331,3 +331,136 @@ form-check-label {
     }
 }*/
 
+
+
+/* Промышленный дизайн v4 (Compact Mobile - No Margins) */
+.industrial-card {
+    margin: 0 !important; /* Жестко убираем все внешние отступы */
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background-color: #f8fafc;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+.industrial-header {
+    background-color: #90b4bb;
+    color: #f1f5f9;
+    border-radius: 4px 4px 0 0;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    border-top: 1px solid #f59e0b;
+    border-bottom: 3px solid #f59e0b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0.5rem 0.75rem;
+}
+.industrial-label {
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #475569;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.industrial-input {
+    border-radius: 4px;
+    border: 1px solid #94a3b8;
+    background-color: #ffffff;
+    font-weight: 500;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    padding: 0.375rem 0.5rem;
+}
+.industrial-input:focus {
+    border-color: #475569;
+    box-shadow: 0 0 0 2px rgba(71, 85, 105, 0.2);
+}
+
+/* Кнопки */
+.btn-industrial-primary {
+    background-color: #f59e0b;
+    outline: 2px solid #cbd5e1;
+    border-radius: 4px;
+    color: #1f2937;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    white-space: nowrap;
+}
+.btn-industrial-primary:hover {
+    background-color: #d97706;
+    border-color: #d97706;
+    color: #1f2937;
+}
+.btn-industrial-secondary {
+    background-color: #e2e8f0;
+    outline: 2px solid #cbd5e1; 
+    border-radius: 4px;
+    color: #475569;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease;
+    white-space: nowrap;
+}
+.btn-industrial-secondary:hover {
+    background-color: #cbd5e1;
+    color: #1e293b;
+}
+.btn-add-zone {
+    background-color: transparent;
+    /* Вместо этого добавляем внешнюю линию нужной толщины */
+    outline: 2px solid #94a3b8;
+    border-radius: 4px;
+    color: #475569;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    white-space: nowrap;
+}
+.btn-add-zone:hover {
+    background-color: #475569;
+    color: #ffffff;
+}
+.zone-entry {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1 !important;
+    border-left: 4px solid #f59e0b !important;
+    border-radius: 4px !important;
+    padding: 0.5rem;
+}
+@media (min-width: 768px) {
+    .zone-entry {
+        padding: 1rem;
+    }
+}
+.btn-remove-zone {
+    background: transparent;
+    outline: 2px solid #ef4444;
+    border-radius: 4px;
+    color: #ef4444;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    white-space: nowrap;
+}
+.btn-remove-zone:hover {
+    background-color: #ef4444;
+    color: #ffffff;
+}
+.zone-placeholder {
+    border: 2px dashed #cbd5e1;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    border-radius: 4px;
+    padding: 1rem;
+}

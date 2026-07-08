@@ -8,7 +8,7 @@
 @endphp
 
 @section('content')
-<div class="row mb-3 mt-4">
+<div class="row mb-3 mt-4 px-1 px-md-4">
     <div class="col-12">
         <a href="{{ route('dump.show', $dump->id) }}" class="btn btn-outline-info btn-sm me-2">
             <i class="fas fa-eye"></i> Детали зон
@@ -27,8 +27,8 @@
 
 <div class="row">
     <div class="col-lg-10">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
+        <div class="card industrial-card">
+            <div class="card-header industrial-header text-white bg-primary">
                 <h4 class="mb-0">
                     <i class="fas fa-building me-2"></i> {{ $dump->name_dump }} - Управление породами в зонах
                 </h4>
@@ -40,8 +40,8 @@
                         $volumeVertushki = $zone->volume / $VERTUSHKA;
                         $capacityVertushki = $zone->capacity / $VERTUSHKA;
                     @endphp
-                    <div class="card mb-3 {{ $zone->delivery ? 'border-success' : 'border-secondary' }}" id="zone-card-{{ $zone->id }}">
-                        <div class="card-header d-flex justify-content-between align-items-center {{ $zone->delivery ? 'bg-success text-white' : 'bg-secondary text-white' }}">
+                    <div class="card industrial-card mb-3 {{ $zone->delivery ? 'border-success' : 'border-secondary' }}" id="zone-card-{{ $zone->id }}">
+                        <div class="card-header d-flex justify-content-between align-items-center {{ $zone->delivery ? 'bg-success text-white industrial-header' : 'bg-secondary text-white industrial-header' }}">
                             <h5 class="mb-0">
                                 <i class="fas fa-layer-group me-2"></i>{{ $zone->name_zone }}
                             </h5>

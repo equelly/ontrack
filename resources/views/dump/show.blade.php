@@ -7,7 +7,7 @@
 @endphp
 
 @section('content')
-<div class="container-fluid">
+<div class="container-fluid px-1 px-md-4 mt-2 mt-md-4">
     <div class="row mb-4 mt-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
@@ -26,8 +26,8 @@
 
     <div class="row">
         <div class="col-md-6">
-            <div class="card mb-4">
-                <div class="card-header">
+            <div class="card industrial-card mb-4">
+                <div class="card-header industrial-header">
                     <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Статистика</h5>
                 </div>
                 <div class="card-body">
