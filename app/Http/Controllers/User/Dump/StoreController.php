@@ -17,6 +17,13 @@ class StoreController extends Controller
             'name_dump' => 'required|string|max:255',
             'zones' => 'required|array|min:1',
             'zones.*.name_zone' => 'required|string',
+            'zones.*.capacity' => 'required|numeric|min:0.1',
+            'zones.*.rock_id' => 'required|exists:rocks,id',
+        ], [
+            'zones.*.capacity.required' => 'Емкость зоны должна быть установлена больше 0',
+            'zones.*.capacity.min' => 'Емкость зоны должна быть установлена больше 0',
+            'zones.*.capacity.numeric' => 'Емкость зоны должна быть числом',
+            'zones.*.rock_id.required' => 'Выберите породу для зоны',
         ]);
 
         $dump = Dump::create($data);
@@ -27,6 +34,7 @@ class StoreController extends Controller
                     'name_zone' => $zoneData['name_zone'],
                     'volume' => $zoneData['capacity'] ?? null,
                     'delivery' => $zoneData['delivery'] ?? false,
+                    'rock_id' => $zoneData['rock_id'],
                 ]);
             }
         }
