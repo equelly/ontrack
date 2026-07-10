@@ -331,8 +331,6 @@ form-check-label {
     }
 }*/
 
-
-
 /* Промышленный дизайн v4 (Compact Mobile - No Margins) */
 .industrial-card {
     margin: 0 !important; /* Жестко убираем все внешние отступы */
@@ -453,6 +451,21 @@ form-check-label {
 }
 .btn-remove-zone:hover {
     background-color: #ef4444;
+    color: #ffffff;
+}
+.btn-add-zone {
+    background: transparent;
+    outline: 2px solid #8df32d;
+    border-radius: 4px;
+    color: #8df32d;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    white-space: nowrap;
+}
+.btn-add-zone:hover {
+    background-color: #8df32d;
     color: #ffffff;
 }
 .zone-placeholder {

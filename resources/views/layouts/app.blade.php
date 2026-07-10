@@ -15,11 +15,12 @@
   @livewireStyles
   <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
-<body class="mt-3">
+<body @class(['mt-3' => !$hideNav])>
         <!-- Глобальный контейнер для toast уведомлений (вне Livewire компонентов) -->
         <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
-        <header>
+          @if(!isset($hideNav))
+          <header>
           <!-- Navbar -->
           <nav class="navbar navbar-dark fixed-top scrolling-navbar">
             <div class="container">
@@ -62,7 +63,7 @@
                           $position = auth()->user()->position ?? null;
                           $redirectRoute = '/home';
                           if ($position === 'driver') $redirectRoute = route('driver.panel');
-                          elseif ($position === 'dispatcher') $redirectRoute = route('dispatcher.index');
+                          elseif ($position === 'dispatcher'|| auth()->user()->role === 'admin') $redirectRoute = route('dispatcher.index');
                           elseif ($position === 'excavator_operator') $redirectRoute = route('excavator.index');
                           elseif ($position === 'master') $redirectRoute = '/master';
                       @endphp
@@ -114,6 +115,7 @@
             </div>
           </nav>
           <!-- Navbar -->
+          @endif
 <br>
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show mt-4" role="alert">

@@ -11,7 +11,6 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
-                <h4>Управление отвалами и породами</h4>
                 @if(auth()->user()->role === 'admin' || auth()->user()->role === 'dispatcher')
                     <a href="{{ route('dispatcher.index') }}" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-arrow-left"></i>Панель диспетчера
@@ -20,8 +19,8 @@
             </div>
             <div class="d-flex justify-content-between align-items-center">
                 <h4><i class="fas fa-mountain me-2"></i>Управление точками разгрузки автомобилей</h4>
-                <a href="{{ route('dump.create') }}" class="btn btn-primary btn-sm">
-                    <i class="fas fa-plus"></i> Добавить место разгрузки
+                <a href="{{ route('dump.create') }}" class="btn btn-sm btn-add-zone w-100 w-md-auto mt-1 mt-md-0">
+                    <i class="fas fa-plus"></i> Добавить точку разгрузки
                 </a>
             </div>           
         </div>

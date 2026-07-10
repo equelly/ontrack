@@ -1,6 +1,6 @@
-<x-layouts.app>
-    <x-slot:title>Панель диспетчера</x-slot:title>
+@extends('layouts.app', ['hideNav' => true])
+@section('title', 'Панель диспетчера')
 
-
+@section('content')
     @livewire('main-dispatcher-panel')
-</x-layouts.app>
+@endsection

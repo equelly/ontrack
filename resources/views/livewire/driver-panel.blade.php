@@ -1,6 +1,8 @@
+    <x-layouts.app :hideNav="true">
     <div class="driver-panel-wrapper">
     <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+</x-layouts.app>
     
     <style>
         .bi-spin { animation: spin 1s linear infinite; }

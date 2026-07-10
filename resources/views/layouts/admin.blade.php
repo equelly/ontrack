@@ -29,7 +29,7 @@
   <link href="https://fonts.bunny.net/css?family=Nunito" rel="stylesheet">
     <!-- font awesome cdn link  -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-  @vite(['resources/sass/app.scss', 'resources/js/app.js', 'resources/css/app.css'])
+  @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
