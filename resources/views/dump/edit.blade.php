@@ -10,17 +10,14 @@
 @section('content')
 <div class="row mb-3 mt-4 px-1 px-md-4">
     <div class="col-12">
-        <a href="{{ route('dump.show', $dump->id) }}" class="btn btn-outline-info btn-sm me-2">
-            <i class="fas fa-eye"></i> Детали зон
-        </a>
-        <a href="{{ route('dump.index') }}" class="btn btn-outline-secondary btn-sm">
+        <a href="{{ route('dump.index') }}" class="btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left"></i> Назад к зонам разгрузки
         </a>
     </div>
 </div>
 
 {{-- Информация о единицах измерения --}}
-<div class="alert alert-info mb-3 py-2">
+<div class="alert alert-info py-2">
     <i class="fas fa-info-circle"></i> 
     <strong>Единица измерения:</strong> вертушка = 380 м³ (железнодорожный состав)
 </div>

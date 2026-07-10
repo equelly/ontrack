@@ -88,32 +88,45 @@
             const zoneDiv = document.createElement('div');
             zoneDiv.className = 'zone-entry mb-2 mb-md-3';
             zoneDiv.innerHTML = `
-                <div class="row align-items-center">
-                <h6 class="industrial-label mb-1 mb-md-0 text-dark" style="font-size: 0.9rem;">Данные зоны разгрузки</h6>        
-                    <div class="col-12 col-md-4 mb-1 mb-md-0">
+                <div class="row align-items-center g-md-2">
+                    <!-- Скрываем общий заголовок на десктопе, чтобы не дублировался в строке -->
+                    <h6 class="industrial-label mb-1 mb-md-0 text-dark col-12 d-md-none" style="font-size: 0.9rem;">Данные зоны разгрузки</h6>      
+                    
+                    <!-- Идентификатор (col-md-3) -->
+                    <div class="col-12 col-md-3 mb-1 mb-md-0">
                         <label class="industrial-label d-block d-md-none">Идентификатор</label>
                         <input type="text" name="zones[${zoneIndex}][name_zone]" class="form-control industrial-input" placeholder="Напр: Зона-А" required>
                     </div>
-                    <div class="col-7 col-md-3 mb-1 mb-md-0">
-                        <label class="industrial-label d-block d-md-none">Вместимость (м³)</label>
-                        <input type="number" name="zones[${zoneIndex}][capacity]" class="form-control industrial-input" placeholder="емкость" step="0.1">
-                    </div>
-                    м<sup>3</sup>
-                    <div class="col-5 col-md-3 d-flex align-items-center mb-1 mb-md-0">
-                        <div class="form-check ml-auto ml-md-0">
-                            <input type="checkbox" name="zones[${zoneIndex}][delivery]" class="form-check-input" id="check_${zoneIndex}">
-                            <label class="form-check-label industrial-label" for="check_${zoneIndex}" style="margin-bottom: 0; font-size: 0.65rem;">Прием г/м</label>
+                    
+                    <!-- Вместимость с красивой плашкой м³ (col-md-3) -->
+                    <div class="col-12 col-md-3 mb-1 mb-md-0">
+                        <label class="industrial-label d-block d-md-none">Вместимость</label>
+                        <div class="input-group">
+                            <input type="number" name="zones[${zoneIndex}][capacity]" class="form-control industrial-input" placeholder="Емкость" step="0.1">
+                            <span class="input-group-text industrial-input-addon" style="font-size: 0.85rem; padding: 0.375rem 0.5rem;">м³</span>
                         </div>
                     </div>
+                    
+                    <!-- Порода (col-md-2) -->
                     <div class="col-12 col-md-2 mb-1 mb-md-0">
                         <label class="industrial-label d-block d-md-none">Порода</label>
                         <select name="zones[${zoneIndex}][rock_id]" class="form-control industrial-input" required>
                             ${Array.from(document.getElementById('rock-options-template').options).map(opt => opt.outerHTML).join('')}
                         </select>
                     </div>
-                    <div class="col-12 col-md-2 text-right">
-                        <button type="button" class="btn-sm btn-remove-zone w-100 w-auto" onclick="this.closest('.zone-entry').remove(); updatePlaceholder();">
-                            <i class="fas fa-trash-alt"></i> Удалить
+                    
+                    <!-- Чекбокс: выровнен по центру на десктопе (col-md-2) -->
+                    <div class="col-12 col-md-2 d-flex align-items-center mb-1 mb-md-0 justify-content-md-center">
+                        <div class="form-check">
+                            <input type="checkbox" name="zones[${zoneIndex}][delivery]" class="form-check-input" id="check_${zoneIndex}">
+                            <label class="form-check-label industrial-label" for="check_${zoneIndex}" style="margin-bottom: 0; font-size: 0.75rem; user-select: none;">Прием г/м</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Кнопка удаления (col-md-2) -->
+                    <div class="col-12 col-md-2 text-md-right">
+                        <button type="button" class="btn btn-outline-danger btn-sm btn-remove-zone w-100" onclick="this.closest('.zone-entry').remove(); updatePlaceholder();">
+                            <i class="fas fa-trash-alt"></i> <span class="d-md-none d-lg-inline">Удалить</span>
                         </button>
                     </div>
                 </div>
@@ -122,6 +135,7 @@
             zoneIndex++;
             updatePlaceholder();
         });
+
     });
 </script>
 @endsection

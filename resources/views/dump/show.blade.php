@@ -10,16 +10,13 @@
 <div class="container-fluid px-1 px-md-4 mt-2 mt-md-4">
     <div class="row mb-4 mt-4">
         <div class="col-12">
+            <div>
+                <a href="{{ route('dump.index') }}" class="btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Назад к зонам разгрузки
+                </a>
+            </div>
             <div class="d-flex justify-content-between align-items-center">
-                <h4><i class="">данные по п.разгрузки №</i>{{ $dump->name_dump }}</h4>
-                <div>
-                    <a href="{{ route('dump.edit', $dump->id) }}" class="btn btn-outline-primary btn-sm me-2">
-                        <i class="fas fa-cog"></i> Настроить породы
-                    </a>
-                    <a href="{{ route('dump.index') }}" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-arrow-left"></i> Назад к списку
-                    </a>
-                </div>
+                <h3> {{ $dump->name_dump }}</h3>
             </div>
         </div>
     </div>

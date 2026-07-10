@@ -21,7 +21,7 @@
 
     @foreach($dumps as $dump)
         <div class="card industrial-card mb-4">
-            <div class="card-header industrial-header text-white bg-primary">
+            <div class="card-header industrial-header text-white bg-gray-500">
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
                         <a href="{{ route('dump.show', $dump->id) }}" class="text-white text-decoration-none">
