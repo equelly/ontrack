@@ -56,6 +56,7 @@ class UpdateController extends Controller
                 'rock_ids' => 'sometimes|array',
                 'rock_ids.*' => 'exists:rocks,id',
                 'capacity' => 'sometimes|numeric|min:0',
+                'volume' => 'sometimes|numeric|min:0',
             ]);
 
             Log::info('Validated data: ', $data);
@@ -90,6 +91,11 @@ class UpdateController extends Controller
                 // Обновляем capacity если передан
                 if (isset($data['capacity'])) {
                     $zone->capacity = $data['capacity'];
+                }
+                
+                // Обновляем volume если передан
+                if (isset($data['volume'])) {
+                    $zone->volume = $data['volume'];
                 }
 
                 $zone->save();

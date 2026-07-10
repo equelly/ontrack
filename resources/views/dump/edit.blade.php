@@ -27,13 +27,10 @@
 
 <div class="row">
     <div class="col-lg-10">
-        <div class="card industrial-card">
-            <div class="card-header industrial-header text-white bg-primary">
-                <h4 class="mb-0">
-                    <i class="fas fa-building me-2"></i> {{ $dump->name_dump }} - Управление породами в зонах
-                </h4>
-            </div>
-            <div class="card-body">
+        <h3 class="mb-0">
+            {{ $dump->name_dump }} - Управление данными зон
+        </h3>
+    <div class="card-body">
                 @foreach($dump->zones as $zone)
                     @php
                         $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0;
@@ -63,22 +60,14 @@
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-cubes me-1"></i>Породы в зоне:
                                     </label>
-                                    <div class="border rounded p-3 bg-light" style="max-height: 250px; overflow-y: auto;">
+                                    <select class="form-select" id="rock-select-{{ $zone->id }}" onchange="updateRocks({{ $zone->id }})">
+                                        <option value="">-- Выберите породу --</option>
                                         @foreach($allRocks as $rock)
-                                            <div class="form-check">
-                                                <input type="checkbox"
-                                                       class="form-check-input rock-checkbox"
-                                                       data-zone-id="{{ $zone->id }}"
-                                                       id="rock_{{ $zone->id }}_{{ $rock->id }}"
-                                                       value="{{ $rock->id }}"
-                                                       {{ $zone->rocks->contains($rock->id) ? 'checked' : '' }}
-                                                       onchange="updateRocks({{ $zone->id }})">
-                                                <label class="form-check-label {{ $zone->rocks->contains($rock->id) ? 'fw-bold text-success' : '' }}" for="rock_{{ $zone->id }}_{{ $rock->id }}">
-                                                    {{ $rock->name_rock }}
-                                                </label>
-                                            </div>
+                                            <option value="{{ $rock->id }}" {{ $zone->rocks->contains($rock->id) ? 'selected' : '' }}>
+                                                {{ $rock->name_rock }}
+                                            </option>
                                         @endforeach
-                                    </div>
+                                    </select>
                                     <small class="text-muted mt-2 d-block">
                                         <i class="fas fa-info-circle"></i> Выберите породы для разгрузки
                                     </small>
@@ -117,7 +106,7 @@
                                     
                                     <!-- Редактирование вместимости -->
                                     <div class="row">
-                                        <div class="col-6">
+                                        <div class="col-12">
                                             <label class="form-label small">Вместимость (вертушек):</label>
                                             <div class="input-group input-group-sm">
                                                 <input type="number"
@@ -130,12 +119,18 @@
                                                 </button>
                                             </div>
                                         </div>
-                                        <div class="col-6">
+                                        <div class="col-12">
                                             <label class="form-label small">Текущий объём (вертушек):</label>
-                                            <input type="text"
-                                                   class="form-control form-control-sm bg-light"
-                                                   value="{{ number_format($volumeVertushki, 1) }} вертушек"
-                                                   disabled>
+                                            <div class="input-group input-group-sm">
+                                                <input type="number"
+                                                       class="form-control"
+                                                       id="volume-input-{{ $zone->id }}"
+                                                       value="{{ number_format($volumeVertushki, 1) }}"
+                                                       min="0" step="0.5">
+                                                <button class="btn btn-outline-primary" type="button" onclick="updateVolume({{ $zone->id }})">
+                                                    <i class="fas fa-save"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                     
@@ -157,7 +152,7 @@
                     </div>
                 @endif
             </div>
-        </div>
+        
     </div>
 </div>
 
@@ -220,8 +215,8 @@ function toggleDelivery(zoneId, enabled) {
 }
 
 function updateRocks(zoneId) {
-    const checkboxes = document.querySelectorAll(`[id^="rock_${zoneId}_"]:checked`);
-    const rockIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    const select = document.getElementById(`rock-select-${zoneId}`);
+    const rockId = select.value ? [parseInt(select.value)] : [];
 
     fetch(`/user/dump/zone/${zoneId}`, {
         method: 'PUT',
@@ -230,23 +225,62 @@ function updateRocks(zoneId) {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         },
-        body: JSON.stringify({ rock_ids: rockIds })
+        body: JSON.stringify({ rock_ids: rockId })
     })
     .then(response => response.json())
     .then(data => {
-        showToast(`Породы обновлены (${rockIds.length} шт.)`, 'success');
-        // Обновляем выделение
-        document.querySelectorAll(`[id^="rock_${zoneId}_"]`).forEach(cb => {
-            const label = cb.nextElementSibling;
-            if (cb.checked) {
-                label.classList.add('fw-bold', 'text-success');
-            } else {
-                label.classList.remove('fw-bold', 'text-success');
-            }
-        });
+        showToast(rockId.length ? 'Порода обновлена' : 'Порода сброшена', 'success');
     })
     .catch(error => {
-        showToast('Ошибка обновления пород', 'error');
+        showToast('Ошибка обновления породы', 'error');
+        console.error(error);
+    });
+}
+
+function updateVolume(zoneId) {
+    const input = document.getElementById('volume-input-' + zoneId);
+    const volumeVertushki = parseFloat(input.value) || 0;
+    const volumeM3 = volumeVertushki * VERTUSHKA; // Конвертируем в м³ для базы
+    
+    fetch(`/user/dump/zone/${zoneId}`, {
+        method: 'PUT',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ volume: volumeM3 })
+    })
+    .then(response => response.json())
+    .then(data => {
+        showToast('Текущий объём обновлён', 'success');
+        
+        // Обновляем отображение
+        const volumeEl = document.getElementById('volume-' + zoneId);
+        const progressBar = document.getElementById('progress-bar-' + zoneId);
+        const progressText = document.getElementById('progress-text-' + zoneId);
+        const capacityDisplay = document.getElementById('capacity-display-' + zoneId);
+        
+        const capacityM3 = parseFloat(capacityDisplay.dataset.capacityM3) || 0;
+        const fillPercent = capacityM3 > 0 ? Math.min(volumeM3 / capacityM3 * 100, 100) : 0;
+        
+        volumeEl.textContent = volumeVertushki.toFixed(1);
+        volumeEl.dataset.volumeM3 = volumeM3;
+        progressBar.style.width = fillPercent + '%';
+        progressText.textContent = fillPercent.toFixed(1) + '%';
+        
+        // Обновляем цвет
+        progressBar.classList.remove('bg-success', 'bg-warning', 'bg-danger');
+        if (fillPercent > 90) {
+            progressBar.classList.add('bg-danger');
+        } else if (fillPercent > 70) {
+            progressBar.classList.add('bg-warning');
+        } else {
+            progressBar.classList.add('bg-success');
+        }
+    })
+    .catch(error => {
+        showToast('Ошибка обновления объёма', 'error');
         console.error(error);
     });
 }

@@ -455,9 +455,9 @@ form-check-label {
 }
 .btn-add-zone {
     background: transparent;
-    outline: 2px solid #8df32d;
+    outline: 2px solid #28a745;
     border-radius: 4px;
-    color: #8df32d;
+    color: #28a745;
     font-size: 0.75rem;
     text-transform: uppercase;
     font-weight: 700;
@@ -465,7 +465,7 @@ form-check-label {
     white-space: nowrap;
 }
 .btn-add-zone:hover {
-    background-color: #8df32d;
+    background-color: #28a745;
     color: #ffffff;
 }
 .zone-placeholder {

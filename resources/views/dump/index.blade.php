@@ -11,16 +11,9 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
-                @if(auth()->user()->role === 'admin' || auth()->user()->role === 'dispatcher')
-                    <a href="{{ route('dispatcher.index') }}" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-arrow-left"></i>Панель диспетчера
-                    </a>
-                @endif
-            </div>
-            <div class="d-flex justify-content-between align-items-center">
                 <h4><i class="fas fa-mountain me-2"></i>Управление точками разгрузки автомобилей</h4>
-                <a href="{{ route('dump.create') }}" class="btn btn-sm btn-add-zone w-100 w-md-auto mt-1 mt-md-0">
-                    <i class="fas fa-plus"></i> Добавить точку разгрузки
+                <a href="{{ route('dump.create') }}" class="btn btn-sm btn-add-zone w-md-auto mt-1 mt-md-0">
+                    <i class="fas fa-plus"></i> Добавить п.разгрузки
                 </a>
             </div>           
         </div>
@@ -32,12 +25,12 @@
                 <div class="d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
                         <a href="{{ route('dump.show', $dump->id) }}" class="text-white text-decoration-none">
-                            <i class="fas fa-warehouse me-2"></i>{{ $dump->name_dump }}
+                            {{ $dump->name_dump }}
                         </a>
                     </h5>
                     <div>
                         <span class="badge bg-light text-dark me-2">
-                            {{ $dump->zones_count }} зон
+                             зон:{{ $dump->zones_count }}
                         </span>
                         <a href="{{ route('dump.show', $dump->id) }}" class="btn btn-sm btn-outline-light me-1" title="Детали">
                             <i class="fas fa-eye"></i>
@@ -56,7 +49,7 @@
                                 <tr>
                                     <th>Зона</th>
                                     <th>Породы</th>
-                                    <th style="width: 200px;">Заполнение</th>
+                                    <th style="width: 200px;">Объем</th>
                                     <th style="width: 100px;">Статус</th>
                                 </tr>
                             </thead>
@@ -84,13 +77,13 @@
                                         </td>
                                         <td>
                                             <div class="d-flex align-items-center">
-                                                <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress flex-grow-1" style="height: 18px;">
                                                     <div class="progress-bar {{ $fillPercent > 90 ? 'bg-danger' : ($fillPercent > 70 ? 'bg-warning' : 'bg-success') }}"
                                                          style="width: {{ $fillPercent }}%">
                                                     </div>
                                                 </div>
                                                 <small class="ms-2 text-nowrap" title="{{ number_format($zone->volume, 0) }}/{{ number_format($zone->capacity, 0) }} м³">
-                                                    {{ number_format($volumeVertushki, 1) }}/{{ number_format($capacityVertushki, 1) }} верт.
+                                                    {{ number_format($volumeVertushki, 1) }}</br>{{ number_format($capacityVertushki, 1) }} верт.
                                                 </small>
                                             </div>
                                         </td>
@@ -118,8 +111,9 @@
                 @endif
             </div>
         </div>
+        </br>
     @endforeach
-
+    
     @if($dumps->count() === 0)
         <div class="card">
             <div class="card-body text-center py-5">
