@@ -19,103 +19,103 @@
         <!-- Глобальный контейнер для toast уведомлений (вне Livewire компонентов) -->
         <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
-          @if(!isset($hideNav))
-          <header>
-          <!-- Navbar -->
-          <nav class="navbar navbar-dark fixed-top scrolling-navbar">
-            <div class="container">
-              <a class="navbar-brand" href="/">
-                <strong>SMQ</strong>
-              </a>
-             
-                <ul class="navbar-nav ms-auto">
-                    <li style="color: #ffffff;">
-                        @if(isset(Auth::user()->name)) 
-                          {{Auth::user()->name}}
-                         @else <a class="nav-link mt-2" href="{{route('register')}}">{{ __('Регистрация') }}</a>
-                         @endif
-                    </li>      
-                </ul>
-                <button class="navbar-toggler m-1" type="button" data-toggle="collapse" data-target="#navbarSupportedContent-7" aria-controls="navbarSupportedContent-7" aria-expanded="false" aria-label="Toggle navigation">
-                menu
-                </button>
-              <div class="collapse navbar-collapse" id="navbarSupportedContent-7">
-                <ul class="flex justify-around m-2 navbar-nav mr-auto ">
-                  <li class="nav-item active mt-2">
-                  @if(!(auth()->user()) and Route::has('login'))
-                      
-                          
-                              <a class="nav-link  hover:bg-violet-400" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
-                        
-                      @endif
-                  </li>
-                  
-                  @if((auth()->user() !== null))  
-                  <li class="nav-item active">
-                  <form action="{{ route('logout') }}" method="POST">    
-                      @csrf
-                      <input class="nav-link hover:bg-violet-400" type="submit" value="{{ __('Выйти') }}">  
-                  </form>
-                  </li>
-                  @if(auth()->user())
-                  <li class="nav-item active">
-                      @php
-                          $position = auth()->user()->position ?? null;
-                          $redirectRoute = '/home';
-                          if ($position === 'driver') $redirectRoute = route('driver.panel');
-                          elseif ($position === 'dispatcher'|| auth()->user()->role === 'admin') $redirectRoute = route('dispatcher.index');
-                          elseif ($position === 'excavator_operator') $redirectRoute = route('excavator.index');
-                          elseif ($position === 'master') $redirectRoute = '/master';
-                      @endphp
-                      <a href="{{ $redirectRoute }}" class="nav-link hover:bg-violet-400">Вернуться в рабочую зону</a>
-                  </li>
-                  @endif
-                </ul> 
-                <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
-                <li class="nav-item ml-3">
-                    <a href="{{route('order.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        К заявкам
-                    </a></li>
-                <li class="nav-item item ml-3">
-                    <a href="{{route('order.create')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Сформировать заявку
-                    </a></li>
-                <li class="nav-item item ml-3">
-                    <a href="{{route('order.search')}}" class="nav-link  hover:bg-sky-600/50 pl-2">
-                        Поиск 
-                    </a></li>
-                <li class="nav-item item ml-3">
-                    <a href="{{route('miners.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Забои 
-                    </a></li>
-                <li class="nav-item item ml-3">
-                    <a href="{{route('rocks.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Породы 
-                    </a></li>
-                <li class="nav-item item ml-3">
-                    <a href="{{route('dump.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Перегрузки 
-                    </a></li>
-                <li class="nav-item item ml-3">
-                    <a href="{{route('distribution.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Грузопотоки
-                    </a></li>
-                
-                    @if(auth()->user()->role == 'admin')
-                <li class="nav-item item ml-3">   
+        @if(!isset($hideNav))
+        <header>
+        <!-- Navbar -->
+        <nav class="navbar navbar-dark fixed-top scrolling-navbar">
+          <div class="container">
+            <a class="navbar-brand" href="/">
+              <strong>SMQ</strong>
+            </a>
+           
+              <ul class="navbar-nav ms-auto">
+                  <li style="color: #ffffff;">
+                      @if(isset(Auth::user()->name)) 
+                        {{Auth::user()->name}}
+                       @else <a class="nav-link mt-2" href="{{route('register')}}">{{ __('Регистрация') }}</a>
+                       @endif
+                  </li>      
+              </ul>
+              <button class="navbar-toggler m-1" type="button" data-toggle="collapse" data-target="#navbarSupportedContent-7" aria-controls="navbarSupportedContent-7" aria-expanded="false" aria-label="Toggle navigation">
+              menu
+              </button>
+            <div class="collapse navbar-collapse" id="navbarSupportedContent-7">
+              <ul class="flex justify-around m-2 navbar-nav mr-auto ">
+                <li class="nav-item active mt-2">
+                @if(!(auth()->user()) and Route::has('login'))
                     
-                    <a href="{{route('admin.order.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
-                        Admin 
-                    </a></li>
+                        
+                            <a class="nav-link  hover:bg-violet-400" href="{{ route('login') }}">{{ __('Вход в систему') }}</a>
+                      
                     @endif
-                    @endif
+                </li>
                 
-                </ul>
-              </div>
+                @if((auth()->user() !== null))  
+                <li class="nav-item active">
+                <form action="{{ route('logout') }}" method="POST">    
+                    @csrf
+                    <input class="nav-link hover:bg-violet-400" type="submit" value="{{ __('Выйти') }}">  
+                </form>
+                </li>
+                @if(auth()->user())
+                <li class="nav-item active">
+                    @php
+                        $position = auth()->user()->position ?? null;
+                        $redirectRoute = '/home';
+                        if ($position === 'driver') $redirectRoute = route('driver.panel');
+                        elseif ($position === 'dispatcher'|| auth()->user()->role === 'admin') $redirectRoute = route('dispatcher.index');
+                        elseif ($position === 'excavator_operator') $redirectRoute = route('excavator.index');
+                        elseif ($position === 'master') $redirectRoute = '/master';
+                    @endphp
+                    <a href="{{ $redirectRoute }}" class="nav-link hover:bg-violet-400">Вернуться в рабочую зону</a>
+                </li>
+                @endif
+              </ul> 
+              <ul  class="flex justify-around m-2 navbar-nav mr-auto ">
+              <li class="nav-item ml-3">
+                  <a href="{{route('order.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      К заявкам
+                  </a></li>
+              <li class="nav-item item ml-3">
+                  <a href="{{route('order.create')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      Сформировать заявку
+                  </a></li>
+              <li class="nav-item item ml-3">
+                  <a href="{{route('order.search')}}" class="nav-link  hover:bg-sky-600/50 pl-2">
+                      Поиск 
+                  </a></li>
+              <li class="nav-item item ml-3">
+                  <a href="{{route('miners.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      Забои 
+                  </a></li>
+              <li class="nav-item item ml-3">
+                  <a href="{{route('rocks.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      Породы 
+                  </a></li>
+              <li class="nav-item item ml-3">
+                  <a href="{{route('dump.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      Перегрузки 
+                  </a></li>
+              <li class="nav-item item ml-3">
+                  <a href="{{route('distribution.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      Грузопотоки
+                  </a></li>
+              
+                  @if(auth()->user()->role == 'admin')
+              <li class="nav-item item ml-3">   
+                  
+                  <a href="{{route('admin.order.index')}}" class="nav-link hover:bg-sky-600/50 pl-2">
+                      Admin 
+                  </a></li>
+                  @endif
+                  @endif
+              
+              </ul>
             </div>
-          </nav>
-          <!-- Navbar -->
-          @endif
+          </div>
+        </nav>
+        <!-- Navbar -->
+        @endif
 <br>
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show mt-4" role="alert">
@@ -455,6 +455,5 @@ document.addEventListener('livewire:init', () => {
 });
 </script>
 @yield('scripts')
-@livewireScripts
 </body>
 </html>

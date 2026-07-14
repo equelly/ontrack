@@ -1,27 +1,13 @@
-    <x-layouts.app :hideNav="true">
-    <div class="driver-panel-wrapper">
+<div class="driver-panel-wrapper">
     <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-</x-layouts.app>
-    
-    <style>
-        .bi-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .route-arrow { font-size: 1.5rem; color: #6c757d; }
-        .route-point { text-align: center; padding: 0.75rem; }
-        .route-point-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
-        .route-point-value { font-size: 1.1rem; font-weight: 600; }
-        .timer-display { font-family: 'Courier New', monospace; font-size: 1.25rem; font-weight: bold; }
-        .action-row { display: flex; gap: 0.5rem; }
-        .action-row .btn { flex: 1; }
-    </style>
 
-    <div class="container-fluid py-3 bg-gray-100">
+    <div class="container-fluid p-2 p-md-4">
         <!-- Выбор грузовика -->
         <div class="row mb-3">
             <div class="col-12">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <select wire:model.live="selectedTruckId" class="form-select" style="max-width: 300px;">
+                    <select wire:model.live="selectedTruckId" class="form-control industrial-input" style="max-width: 300px;">
                         <option value="">-- Выберите грузовик --</option>
                         @foreach($trucks as $t)
                             <option value="{{ $t['id'] }}" {{ $t['id'] == $selectedTruckId ? 'selected' : '' }}>
@@ -34,8 +20,8 @@
                             </option>
                         @endforeach
                     </select>
-                    <button wire:click="selectTruck" wire:loading.attr="disabled" class="btn btn-primary" style="min-width: 120px;">
-                        <span>Выбрать</span>
+                    <button wire:click="selectTruck" wire:loading.attr="disabled" class="btn btn-industrial-primary" style="min-width: 120px; position: relative;">
+                        <span wire:loading.remove>Выбрать</span>
                         <span wire:loading class="position-absolute top-50 start-50 translate-middle"><i class="bi bi-spinner bi-spin"></i></span>
                     </button>
                 </div>
@@ -48,14 +34,14 @@
             <div class="col-12">
                 <div class="d-flex align-items-center flex-wrap" style="gap: 0.5rem 2rem;">
                     <div>
-                        <span class="text-muted">Грузовик:</span>
+                        <span class="industrial-label d-inline">Грузовик:</span>
                         <strong class="ms-1">{{ $truck->number }}</strong>
                         @if($truck->brand)
                             <span class="text-muted ms-1">({{ $truck->brand }})</span>
                         @endif
                     </div>
                     <div>
-                        <span class="text-muted">Водитель:</span>
+                        <span class="industrial-label d-inline">Водитель:</span>
                         <strong class="ms-1">{{ auth()->user()->name }}</strong>
                     </div>
                 </div>
@@ -66,34 +52,27 @@
         <div class="row mb-3">
             <div class="col-12">
                 <div class="d-flex align-items-center" style="gap: 1rem;">
-                    <h5 class="mb-0 text-uppercase" style="letter-spacing: 1px;">Маршрут</h5>
-                    <span class="badge bg-{{ $statusColor }} fs-6">{{ $statusLabel }}</span>
+                    <h5 class="mb-0 industrial-label text-dark" style="font-size: 1rem;">Маршрут</h5>
+                    <span class="badge bg-{{ $statusColor }} fs-6" style="border-radius: 0;">{{ $statusLabel }}</span>
                 </div>
             </div>
         </div>
 
         @if($currentTrip)
         <!-- Информация о маршруте -->
-        <div class="row mb-3">
-            <div class="col-12">
+        <div class="card industrial-card">
+            <div class="card-body p-3">
                 <div class="d-flex align-items-center justify-content-start flex-wrap" style="gap: 0.5rem;">
-                    <!-- Забой -->
                     <div class="route-point">
                         <div class="route-point-label">Забой</div>
                         <div class="route-point-value">{{ $currentTrip->miner->name_miner ?? '-' }}</div>
                     </div>
-
                     <i class="bi bi-arrow-right route-arrow"></i>
-
-                    <!-- Перегрузка -->
                     <div class="route-point">
                         <div class="route-point-label">Перегрузка</div>
                         <div class="route-point-value">{{ $currentTrip->dump->name_dump ?? '-' }}</div>
                     </div>
-
                     <i class="bi bi-arrow-right route-arrow"></i>
-
-                    <!-- Зона -->
                     <div class="route-point">
                         <div class="route-point-label">Зона</div>
                         @if($currentTrip->zone)
@@ -102,10 +81,7 @@
                             <div class="route-point-value text-warning">Не назначена</div>
                         @endif
                     </div>
-
                     <i class="bi bi-arrow-right route-arrow"></i>
-
-                    <!-- Порода -->
                     <div class="route-point">
                         <div class="route-point-label">Порода</div>
                         @php
@@ -119,15 +95,15 @@
         </div>
 
         <!-- Показатели: Расстояние | Время | Скорость -->
-        <div class="row mb-4">
+        <div class="row mb-4 mt-3">
             <div class="col-12">
                 <div class="d-flex align-items-center flex-wrap" style="gap: 0.5rem 2rem;">
                     <div>
-                        <span class="text-muted">Расстояние:</span>
+                        <span class="industrial-label d-inline">Расстояние:</span>
                         <strong class="ms-1">{{ $currentTrip->miningOrder->distance_km ?? '-' }} км</strong>
                     </div>
                     <div>
-                        <span class="text-muted">Время в пути:</span>
+                        <span class="industrial-label d-inline">Время в пути:</span>
                         <strong class="ms-1 timer-display" id="trip-time"
                                data-started="{{ $tripStartedAt ?? '' }}"
                                data-pause-started="{{ $pauseStartedAt ?? '' }}"
@@ -136,7 +112,7 @@
                                data-truck-status="{{ $truck->status }}">-</strong>
                     </div>
                     <div>
-                        <span class="text-muted">Объём:</span>
+                        <span class="industrial-label d-inline">Объём:</span>
                         <strong class="ms-1">{{ $currentTrip->load_volume ?? $truck->load_capacity ?? '-' }} т</strong>
                     </div>
                 </div>
@@ -145,7 +121,7 @@
         @else
         <div class="row mb-4">
             <div class="col-12">
-                <div class="alert alert-info py-2 mb-0">
+                <div class="industrial-alert border-info text-info">
                     Нет активного маршрута
                 </div>
             </div>
@@ -160,7 +136,7 @@
                 {{-- Свободен --}}
                 @if($status === 'free')
                     @if(!$currentTrip)
-                        <button wire:click="assignRoute" wire:loading.attr="disabled" class="btn btn-success btn-lg w-100 mb-2">
+                        <button wire:click="assignRoute" wire:loading.attr="disabled" style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items-center justify-content-center gap: 0.5rem; padding: 0.5rem 1rem;" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                             <span wire:loading.remove>Получить маршрут</span>
                             <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
                         </button>
@@ -169,27 +145,27 @@
 
                 {{-- Рейс завершён --}}
                 @if($status === 'completed')
-                    <div class="alert alert-success py-2 mb-2">
+                    <div class="industrial-alert border-success text-success">
                         Рейс завершён. Запросите новый маршрут или уйдите в отстой.
                     </div>
-                    <button wire:click="assignRoute" class="btn btn-primary btn-lg w-100 mb-2">
+                    <button wire:click="assignRoute" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         Запросить маршрут
                     </button>
-                    <button wire:click="goToStandby" class="btn btn-outline-secondary w-100">
+                    <button wire:click="goToStandby" class="btn btn-industrial-secondary w-100">
                         Уйти в отстой
                     </button>
                 @endif
 
                 {{-- В пути к забою --}}
                 @if($status === 'to_miner')
-                    <button wire:click="startLoading" class="btn btn-warning btn-lg w-100 mb-2">
+                    <button wire:click="startLoading" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         Прибыл на погрузку
                     </button>
                     <div class="action-row">
-                        <button wire:click="openDelayModal" class="btn btn-outline-secondary">
+                        <button wire:click="openDelayModal" class="btn btn-industrial-secondary">
                             <i class="bi bi-clock"></i> Задержка
                         </button>
-                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger">
+                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-remove-zone">
                             <i class="bi bi-exclamation-triangle"></i> Поломка
                         </button>
                     </div>
@@ -197,14 +173,14 @@
 
                 {{-- На погрузке --}}
                 @if($status === 'loading')
-                    <div class="alert alert-warning py-3 text-center mb-2">
+                    <div class="industrial-alert border-warning text-warning text-center mb-2">
                         <strong>Ожидание завершения погрузки...</strong>
                     </div>
                     <div class="action-row">
-                        <button wire:click="openDelayModal" class="btn btn-outline-secondary">
+                        <button wire:click="openDelayModal" class="btn btn-industrial-secondary">
                             <i class="bi bi-clock"></i> Задержка
                         </button>
-                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger">
+                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-remove-zone">
                             <i class="bi bi-exclamation-triangle"></i> Поломка
                         </button>
                     </div>
@@ -212,24 +188,24 @@
 
                 {{-- Ожидание назначения зоны --}}
                 @if($status === 'waiting_unloading')
-                    <div class="alert alert-warning py-3 text-center mb-2">
+                    <div class="industrial-alert border-warning text-warning text-center mb-2">
                         <strong>Ожидание назначения зоны разгрузки</strong>
                     </div>
-                    <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger w-100">
+                    <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-remove-zone w-100">
                         <i class="bi bi-exclamation-triangle"></i> Поломка
                     </button>
                 @endif
 
                 {{-- Везём груз --}}
                 @if($status === 'transporting')
-                    <button wire:click="startUnloading" class="btn btn-info btn-lg w-100 mb-2">
+                    <button wire:click="startUnloading" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         Прибыл на выгрузку
                     </button>
                     <div class="action-row">
-                        <button wire:click="openDelayModal" class="btn btn-outline-secondary">
+                        <button wire:click="openDelayModal" class="btn btn-industrial-secondary">
                             <i class="bi bi-clock"></i> Задержка
                         </button>
-                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger">
+                        <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-remove-zone">
                             <i class="bi bi-exclamation-triangle"></i> Поломка
                         </button>
                     </div>
@@ -237,41 +213,41 @@
 
                 {{-- Разгрузка --}}
                 @if($status === 'unloading')
-                    <button wire:click="completeTrip" class="btn btn-success btn-lg w-100 mb-2">
+                    <button wire:click="completeTrip" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         Завершить рейс
                     </button>
-                    <button wire:click="openZoneModal" class="btn btn-outline-primary w-100">
+                    <button wire:click="openZoneModal" class="btn btn-industrial-secondary w-100">
                         Сменить зону
                     </button>
                 @endif
 
                 {{-- Задержка --}}
                 @if($status === 'delayed')
-                    <div class="alert alert-warning py-2 mb-2">
+                    <div class="industrial-alert border-warning text-warning">
                         Маршрут приостановлен: {{ \App\Models\TripPause::typeLabel($pauseType ?? 'other') }}
                     </div>
-                    <button wire:click="resumeFromDelay" class="btn btn-success btn-lg w-100 mb-2">
+                    <button wire:click="resumeFromDelay" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         Задержка окончена
                     </button>
-                    <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-outline-danger w-100">
+                    <button wire:click="reportBreakdown" wire:confirm="Сообщить о поломке?" class="btn btn-remove-zone w-100">
                         <i class="bi bi-exclamation-triangle"></i> Поломка
                     </button>
                 @endif
 
                 {{-- Поломка --}}
                 @if($status === 'breakdown')
-                    <div class="alert alert-danger py-2 mb-2">
+                    <div class="industrial-alert border-danger text-danger">
                         Поломка. После ремонта выберите действие.
                     </div>
                     @if($currentTrip)
-                        <button wire:click="resolveBreakdownContinue" class="btn btn-success btn-lg w-100 mb-2">
+                        <button wire:click="resolveBreakdownContinue" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                             Продолжить рейс
                         </button>
-                        <button wire:click="resolveBreakdownCancel" wire:confirm="Отменить рейс?" class="btn btn-outline-danger w-100">
+                        <button wire:click="resolveBreakdownCancel" wire:confirm="Отменить рейс?" class="btn btn-remove-zone w-100">
                             Отменить рейс
                         </button>
                     @else
-                        <button wire:click="resolveBreakdownContinue" class="btn btn-success btn-lg w-100">
+                        <button wire:click="resolveBreakdownContinue" class="btn btn-industrial-primary btn-lg w-100">
                             Поломка устранена
                         </button>
                     @endif
@@ -279,7 +255,7 @@
 
                 {{-- Обслуживание (подкачка шин, обтяжка колёс) --}}
                 @if($status === 'service')
-                    <div class="alert alert-warning py-3 text-center mb-2">
+                    <div class="industrial-alert border-warning text-warning text-center mb-2">
                         <strong>{{ $currentServiceTask['type'] ?? 'Обслуживание' }}</strong>
                         @if(!empty($currentServiceTask['post_name']))
                             <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
@@ -288,14 +264,14 @@
                             <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
                         @endif
                     </div>
-                    <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
+                    <button wire:click="completeService" style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items-center justify-content-center gap: 0.5rem; padding: 0.5rem 1rem;" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         <i class="bi bi-check-lg me-1"></i> Завершить обслуживание
                     </button>
                 @endif
 
                 {{-- Заправка --}}
                 @if($status === 'fueling')
-                    <div class="alert alert-info py-3 text-center mb-2">
+                    <div class="industrial-alert border-info text-info text-center mb-2">
                         <strong>Заправка</strong>
                         @if(!empty($currentServiceTask['post_name']))
                             <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
@@ -304,14 +280,14 @@
                             <div class="text-muted small">Начало: {{ $currentServiceTask['started_at'] }}</div>
                         @endif
                     </div>
-                    <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
+                    <button wire:click="completeService" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         <i class="bi bi-check-lg me-1"></i> Завершить заправку
                     </button>
                 @endif
 
                 {{-- Техническое обслуживание (ТО) --}}
                 @if($status === 'maintenance')
-                    <div class="alert alert-warning py-3 text-center mb-2">
+                    <div class="industrial-alert border-warning text-warning text-center mb-2">
                         <strong>{{ $currentServiceTask['type'] ?? 'Техническое обслуживание' }}</strong>
                         @if(!empty($currentServiceTask['post_name']))
                             <div class="mt-1">Пост: {{ $currentServiceTask['post_name'] }}</div>
@@ -323,7 +299,7 @@
                             <div class="text-muted small">Плановая длительность: {{ $currentServiceTask['duration'] }} мин</div>
                         @endif
                     </div>
-                    <button wire:click="completeService" class="btn btn-success btn-lg w-100 mb-2">
+                    <button wire:click="completeService" class="btn btn-industrial-primary btn-lg w-100 mb-2">
                         <i class="bi bi-check-lg me-1"></i> Завершить ТО
                     </button>
                 @endif
@@ -334,56 +310,49 @@
         @if(count($plannedShiftServices) > 0)
         <div class="row mb-3">
             <div class="col-12">
-                <div class="card border-warning">
-                    <div class="card-header bg-warning text-dark py-2">
+                <div class="card industrial-card border-warning">
+                    <div class="card-header industrial-header" style="color: #1f2937;">
                         <i class="bi bi-calendar-check me-2"></i>
-                        <strong>Запланировано на смену</strong>
+                        Запланировано ТО
                     </div>
                     <div class="card-body py-2">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Тип обслуживания</th>
-                                        <th>Позиция в очереди</th>
-                                        <th>Прогноз времени</th>
-                                        <th>Статус</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($plannedShiftServices as $task)
-                                        <tr class="{{ $task['started'] ? 'table-success' : '' }}">
-                                            <td>
-                                                <strong>{{ $task['type'] }}</strong>
-                                            </td>
-                                            <td>
-                                                @if($task['started'])
-                                                    <span class="badge bg-success">В работе</span>
-                                                @elseif($task['queue_position'] > 0)
-                                                    <span class="badge bg-secondary">{{ $task['queue_position'] }}</span>
-                                                @else
-                                                    <span class="badge bg-info">Ожидает</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @if($task['forecast'])
-                                                    <span class="text-muted">{{ $task['forecast'] }}</span>
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                @if($task['started'])
-                                                    <span class="text-success"><i class="bi bi-check-circle"></i> Выполняется</span>
-                                                @else
-                                                    <span class="text-warning"><i class="bi bi-clock"></i> В очереди</span>
-                                                @endif
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
+<!-- width: 100% заставляет растягиваться, а flex-shrink разрешает сжиматься в flex-родителях -->
+<div class="table-responsive" style="width: 100%; flex-shrink: 1; overflow-x: auto;">
+    <table class="table table-sm table-hover mb-0" style="width: 100%; table-layout: auto;">
+        <thead>
+            <tr>
+                <th class="industrial-label">Тип</th>
+                <th class="industrial-label">Позиция</th>
+                <th class="industrial-label">Время</th>
+                <th class="industrial-label">Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!--[if BLOCK]><![endif]-->                                        
+            <tr class="table-success">
+                <!-- Ограничиваем только максимальную ширину ячейки с текстом для узких экранов -->
+                <td style="max-width: 150px; white-space: normal;"><strong>Подкачка шин</strong></td>
+                <td>
+                    <!--[if BLOCK]><![endif]-->                                                    
+                    <span class="badge bg-success" style="border-radius: 0;">В работе</span>
+                    <!--[if ENDBLOCK]><![endif]-->                                            
+                </td>
+                <td>
+                    <!--[if BLOCK]><![endif]-->                                                    
+                    <span class="text-muted">0 мин</span>
+                    <!--[if ENDBLOCK]><![endif]-->                                            
+                </td>
+                <td>
+                    <!--[if BLOCK]><![endif]-->                                                    
+                    <span class="text-success" style="white-space: nowrap;"><i class="bi bi-check-circle"></i> Выполняется</span>
+                    <!--[if ENDBLOCK]><![endif]-->                                            
+                </td>
+            </tr>
+            <!--[if ENDBLOCK]><![endif]-->                                
+        </tbody>
+    </table>
+</div>
+
                     </div>
                 </div>
             </div>
@@ -393,10 +362,10 @@
         <!-- Статистика (скрыта по умолчанию) -->
         <div class="row">
             <div class="col-12">
-                <div class="accordion" id="statsAccordion" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                <div class="accordion industrial-accordion" id="statsAccordion">
                     <div class="accordion-item border-0">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#statsCollapse">
+                            <button class="accordion-button collapsed industrial-accordion-button py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#statsCollapse">
                                 <i class="bi bi-bar-chart me-2"></i>
                                 Статистика за смену ({{ $stats['shift_name'] ?? '-' }})
                             </button>
@@ -405,19 +374,19 @@
                             <div class="accordion-body py-2">
                                 <div class="d-flex flex-wrap" style="gap: 0.5rem 2rem;">
                                     <div>
-                                        <span class="text-muted">Рейсов:</span>
+                                        <span class="industrial-label d-inline">Рейсов:</span>
                                         <strong class="ms-1">{{ $stats['today_trips'] ?? 0 }}</strong>
                                     </div>
                                     <div>
-                                        <span class="text-muted">Объём:</span>
+                                        <span class="industrial-label d-inline">Объём:</span>
                                         <strong class="ms-1">{{ number_format($stats['today_volume'] ?? 0, 1) }} т</strong>
                                     </div>
                                     <div>
-                                        <span class="text-muted">Ср. скорость:</span>
+                                        <span class="industrial-label d-inline">Ср. скорость:</span>
                                         <strong class="ms-1">{{ $stats['avg_speed'] ?? '-' }} @if($stats['avg_speed']) км/ч @endif</strong>
                                     </div>
                                     <div>
-                                        <span class="text-muted">Всего рейсов:</span>
+                                        <span class="industrial-label d-inline">Всего рейсов:</span>
                                         <span class="ms-1">{{ $stats['total_trips'] ?? 0 }}</span>
                                     </div>
                                 </div>
@@ -431,14 +400,14 @@
         <!-- Секция обслуживания -->
         <div class="row mt-3">
             <div class="col-12">
-                <div class="accordion" id="serviceAccordion" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                <div class="accordion industrial-accordion" id="serviceAccordion">
                     <div class="accordion-item border-0">
                         <h2 class="accordion-header">
-                            <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#serviceCollapse">
+                            <button class="accordion-button collapsed industrial-accordion-button py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#serviceCollapse">
                                 <i class="bi bi-tools me-2"></i>
                                 Обслуживание
                                 @if(count($pendingServiceTasks) > 0)
-                                    <span class="badge bg-warning text-dark ms-2">{{ count($pendingServiceTasks) }}</span>
+                                    <span class="badge bg-warning text-dark ms-2" style="border-radius: 0;">{{ count($pendingServiceTasks) }}</span>
                                 @endif
                             </button>
                         </h2>
@@ -448,13 +417,13 @@
                                 <div class="mb-3">
                                     <div class="d-flex flex-wrap" style="gap: 0.5rem 2rem;">
                                         <div>
-                                            <span class="text-muted">Пробег с заправки:</span>
+                                            <span class="industrial-label d-inline">Пробег с заправки:</span>
                                             <strong class="ms-1 {{ $serviceStats['mileage_since_fuel'] >= $serviceStats['fueling_threshold'] ? 'text-danger' : '' }}">
                                                 {{ $serviceStats['mileage_since_fuel'] }} / {{ $serviceStats['fueling_threshold'] }} км
                                             </strong>
                                         </div>
                                         <div>
-                                            <span class="text-muted">Мото-часы с ТО:</span>
+                                            <span class="industrial-label d-inline">Мото-часы с ТО:</span>
                                             <strong class="ms-1">
                                                 {{ $serviceStats['moto_hours_since_to'] }} ч
                                             </strong>
@@ -463,27 +432,26 @@
                                     </div>
                                 </div>
 
-                                <!-- Запланированные задачи -->
                                 @if(count($pendingServiceTasks) > 0)
                                     <div class="mb-3">
-                                        <h6 class="text-muted mb-2">Запланировано:</h6>
+                                        <h6 class="industrial-label mb-2">Запланировано:</h6>
                                         @foreach($pendingServiceTasks as $task)
-                                            <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-1">
+                                            <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-1" style="border-color: #cbd5e1 !important; border-radius: 4px !important;">
                                                 <div>
                                                     <strong>{{ $task['type'] }}</strong>
                                                     @if($task['post_name'])
-                                                        <span class="badge bg-primary ms-1">{{ $task['post_name'] }}</span>
+                                                        <span class="badge bg-primary ms-1" style="border-radius: 0;">{{ $task['post_name'] }}</span>
                                                     @elseif($task['queue_position'])
-                                                        <span class="badge bg-secondary ms-1">Очередь: {{ $task['queue_position'] }}</span>
+                                                        <span class="badge bg-secondary ms-1" style="border-radius: 0;">Очередь: {{ $task['queue_position'] }}</span>
                                                     @endif
                                                     @if($task['started_at'])
-                                                        <span class="badge bg-success ms-1">Начато: {{ $task['started_at'] }}</span>
+                                                        <span class="badge bg-success ms-1" style="border-radius: 0;">Начато: {{ $task['started_at'] }}</span>
                                                     @endif
                                                 </div>
                                                 @if(!$task['started_at'])
                                                     <button wire:click="cancelServiceTask({{ $task['id'] }})"
                                                             wire:confirm="Отменить заявку?"
-                                                            class="btn btn-sm btn-outline-danger">
+                                                            class="btn btn-sm btn-remove-zone">
                                                         <i class="bi bi-x"></i>
                                                     </button>
                                                 @endif
@@ -492,39 +460,47 @@
                                     </div>
                                 @endif
 
-                                <!-- Кнопки запроса обслуживания -->
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <button wire:click="requestTireInflation"
-                                                class="btn btn-outline-primary w-100"
-                                                @if(in_array($truck->status, ['loading', 'unloading', 'maintenance', 'fueling'])) disabled @endif>
-                                            <i class="bi bi-disc me-1"></i>
-                                            Подкачка шин
-                                        </button>
-                                    </div>
-                                    <div class="col-6">
-                                        <button wire:click="requestWheelTightening"
-                                                class="btn btn-outline-primary w-100"
-                                                @if(in_array($truck->status, ['loading', 'unloading', 'maintenance', 'fueling'])) disabled @endif>
-                                            <i class="bi bi-nut me-1"></i>
-                                            Обтяжка колёс
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <!-- style="..." здесь полностью заменяет row/col сетку и гарантирует перенос -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
+                        
+                        <!-- Кнопка 1 -->
+                        <button wire:click="requestTireInflation" 
+                                style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items-center justify-content-center gap: 0.5rem; padding: 0.5rem 1rem;" 
+                                class="btn btn-industrial-secondary text-wrap">
+                            <svg xmlns="http://w3.org" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="flex-shrink: 0;">
+                                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                                <path d="M8 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4m0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
+                            </svg>
+                            <span style="white-space: normal;">Подкачка шин</span>
+                        </button>
+                        <!-- Кнопка 2 -->
+                        <button wire:click="requestWheelTightening" 
+                            style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items-center justify-content-center gap: 0.5rem; padding: 0.5rem 1rem;" 
+                            class="btn btn-industrial-secondary text-wrap">
+                                <svg xmlns="http://w3.org" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="flex-shrink: 0;">
+                                    <path d="M11.42 16a3 3 0 0 0 2.29-1.05l1.72-2.06a3 3 0 0 0 .57-2.39l-.65-3.67a3 3 0 0 0-1.57-2.18L10.51.57a3 3 0 0 0-2.42 0L4.82 2.65a3 3 0 0 0-1.57 2.18l-.65 3.67a3 3 0 0 0 .57 2.39l1.72 2.06A3 3 0 0 0 7.18 16zM8 1a2 2 0 0 1 1.21.38l3.27 2.08a2 2 0 0 1 .79 1.09l.65 3.67a2 2 0 0 1-.29 1.2l-1.73 2.06a2 2 0 0 1-1.52.7H7.18a2 2 0 0 1-1.52-.7l-1.73-2.06a2 2 0 0 1-.29-1.2l.65-3.67a2 2 0 0 1 .79-1.09L6.79 1.38A2 2 0 0 1 8 1"/>
+                                    <path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/>
+                                </svg>
+                                    <span style="white-space: normal;">Обтяжка колёс</span>
+                        </button>
+                        <button style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items-center justify-content-center gap: 0.5rem; padding: 0.5rem 1rem;" 
+                            class="btn btn-industrial-secondary text-wrap">
+                            <a href="{{ route('order.index') }}" style="text-decoration: none;">
+                                <i class="bi bi-tools me-2"></i>
+                                Заявки
+                            </a>
+                        </button> 
+                                    
+                    </div>
+
                     </div>
                 </div>
-                <div class="d-flex justify-content-center mt-4 mb-4">
-                    <a href="{{ route('order.index') }}" class="accordion-button collapsed py-2 px-3" style="text-decoration: none; background-color: #f8f9fa; border: 1px solid #dee2e6;">
-                        <i class="bi bi-tools me-2"></i>
-                        Заявки
-                    </a>
-                </div>                
             </div>
+        </div>               
+        </div>
         </div>
         @else
-        <div class="alert alert-info text-center py-4">
+        <div class="industrial-alert border-info text-info text-center py-4">
             Выберите грузовик для начала работы
         </div>
         @endif
@@ -533,19 +509,19 @@
         @if($showZoneModal)
         <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
             <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
+                <div class="modal-content industrial-card">
+                    <div class="modal-header industrial-header">
                         <h5 class="modal-title">Выбор зоны разгрузки</h5>
-                        <button type="button" class="btn-close" wire:click="closeZoneModal"></button>
+                        <button type="button" class="btn-close btn-close-white" wire:click="closeZoneModal"></button>
                     </div>
                     <div class="modal-body">
                         @forelse($availableZones as $zone)
-                            <div class="border rounded p-2 mb-2" style="cursor: pointer;" wire:click="selectZone({{ $zone['id'] }})">
+                            <div class="border rounded p-2 mb-2" style="cursor: pointer; border-color: #cbd5e1 !important; border-radius: 4px !important;" wire:click="selectZone({{ $zone['id'] }})">
                                 <strong>{{ $zone['name'] }}</strong>
                                 <small class="text-muted d-block">{{ $zone['dump_name'] }} | Свободно: {{ $zone['available_capacity'] }} м³</small>
                             </div>
                         @empty
-                            <div class="alert alert-warning mb-0">Нет доступных зон</div>
+                            <div class="industrial-alert border-warning text-warning mb-0">Нет доступных зон</div>
                         @endforelse
                     </div>
                 </div>
@@ -556,15 +532,15 @@
         @if($showDelayModal)
         <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
             <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
+                <div class="modal-content industrial-card">
+                    <div class="modal-header industrial-header">
                         <h5 class="modal-title">Задержка</h5>
-                        <button type="button" class="btn-close" wire:click="closeDelayModal"></button>
+                        <button type="button" class="btn-close btn-close-white" wire:click="closeDelayModal"></button>
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
-                            <label class="form-label">Причина:</label>
-                            <select class="form-select" wire:model="delayReason">
+                            <label class="industrial-label">Причина:</label>
+                            <select class="form-control industrial-input" wire:model="delayReason">
                                 <option value="traffic">Пробки</option>
                                 <option value="road_works">Дорожные работы</option>
                                 <option value="waiting_loading">Ожидание погрузки</option>
@@ -574,13 +550,13 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Ожидаемое время (мин):</label>
-                            <input type="number" class="form-control" wire:model="delayMinutes" min="1" max="120">
+                            <label class="industrial-label">Ожидаемое время (мин):</label>
+                            <input type="number" class="form-control industrial-input" wire:model="delayMinutes" min="1" max="120">
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" wire:click="closeDelayModal">Отмена</button>
-                        <button type="button" class="btn btn-warning" wire:click="confirmDelay">Подтвердить</button>
+                    <div class="modal-footer border-0">
+                        <button type="button" class="btn btn-industrial-secondary" wire:click="closeDelayModal">Отмена</button>
+                        <button type="button" class="btn btn-industrial-primary" wire:click="confirmDelay">Подтвердить</button>
                     </div>
                 </div>
             </div>
@@ -733,6 +709,7 @@
                                'alert-info';
 
                 toast.className = `alert ${bgClass} alert-dismissible fade show`;
+                toast.style.borderRadius = '0';
                 toast.innerHTML = `
                     ${event.message}
                     <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
@@ -759,4 +736,4 @@
             });
         });
     </script>
-</div>
+</div> 

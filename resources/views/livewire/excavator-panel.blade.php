@@ -1,16 +1,4 @@
-    <x-layouts.app :hideNav="true">
-    <div class="excavator-panel-wrapper">
-        <!-- Toast контейнер для уведомлений -->
-    <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-</x-layouts.app>
-  
-    <style>
-        .bi-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .stat-value { font-size: 1.5rem; font-weight: bold; }
-        .stat-label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
-    </style>
-
+<div class="excavator-panel-wrapper">
     <div class="container-fluid py-3 bg-gray-100">
         <!-- Строка 1: Выбор экскаватора + Порода -->
         <div class="row mb-3">
@@ -63,8 +51,8 @@
                         </button>
                     </div>
                     @endif
-                </div>
-            </div>
+    </div>
+</div>
         </div>
 
         @if($miner)

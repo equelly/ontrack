@@ -106,7 +106,6 @@ h6 {
 }
 .btn:hover {
   background-color: rgba(124, 126, 128, 0.438);
-  border: 3px solid rgb(14 165 233);
 }
 .collapse {
   visibility: visible;
@@ -332,6 +331,9 @@ form-check-label {
 }*/
 
 /* Промышленный дизайн v4 (Compact Mobile - No Margins) */
+.table-responsive{  
+    min-width: 0; 
+}
 .industrial-card {
     margin: 0 !important; /* Жестко убираем все внешние отступы */
     border: 1px solid #cbd5e1;
@@ -360,7 +362,6 @@ form-check-label {
     color: #475569;
     letter-spacing: 0.5px;
     margin-bottom: 0.2rem;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -408,23 +409,6 @@ form-check-label {
 .btn-industrial-secondary:hover {
     background-color: #cbd5e1;
     color: #1e293b;
-}
-.btn-add-zone {
-    background-color: transparent;
-    /* Вместо этого добавляем внешнюю линию нужной толщины */
-    outline: 2px solid #94a3b8;
-    border-radius: 4px;
-    color: #475569;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    transition: background-color 0.2s ease, color 0.2s ease;
-    white-space: nowrap;
-}
-.btn-add-zone:hover {
-    background-color: #475569;
-    color: #ffffff;
 }
 .zone-entry {
     background-color: #ffffff;
@@ -476,4 +460,35 @@ form-check-label {
     letter-spacing: 0.5px;
     border-radius: 4px;
     padding: 1rem;
+}
+/* Специфичные стили для панелей */
+.bi-spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.industrial-alert { border-radius: 0; border-left: 4px solid; background-color: #e8ebee; padding: 0.75rem 1rem; margin-bottom: 0.5rem; }
+
+/* Стили маршрута (Водитель) */
+.route-arrow { font-size: 1.5rem; color: #6c757d; }
+.route-point { text-align: center; padding: 0.75rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; min-width: 120px; }
+.route-point-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+.route-point-value { font-size: 1.1rem; font-weight: 600; color: #1e293b; margin-top: 0.25rem; }
+.timer-display { font-family: 'Courier New', monospace; font-size: 1.25rem; font-weight: bold; color: #1e293b; }
+.action-row { display: flex; gap: 0.5rem; }
+.action-row .btn { flex: 1; }
+
+/* Таблицы и статистика (Экскаваторщик) */
+.industrial-table { background-color: #ffffff; border: 1px solid #cbd5e1; }
+.industrial-table thead th { background-color: #e2e8f0; color: #1e293b; text-transform: uppercase; font-size: 0.75rem; font-weight: 700; border-bottom: 2px solid #94a3b8; padding: 0.5rem; }
+.industrial-table tbody tr { border-bottom: 1px solid #e2e8f0; }
+.stat-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 0.75rem; text-align: center; flex: 1; min-width: 100px; }
+.status-btn { border-radius: 0 !important; font-weight: 700 !important; text-transform: uppercase; font-size: 0.75rem !important; border: none !important; }
+
+/* Аккордеоны */
+.industrial-accordion { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; }
+.industrial-accordion-button { background-color: #f1f5f9; font-weight: 700; text-transform: uppercase; font-size: 0.85rem; color: #475569; }
+.industrial-accordion-button:not(.collapsed) { background-color: #e2e8f0; color: #1e293b; box-shadow: none; }
+@media (max-width: 750px) {
+  .w-md-custom {
+    width: 100% !important; /* На экранах меньше 750px колонка займет всю ширину */
+  }
 }
