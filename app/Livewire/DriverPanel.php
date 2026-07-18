@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Domain\TruckStatus;
+use App\Models\MiningOrder;
 use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Models\TripPause;
@@ -48,6 +49,10 @@ class DriverPanel extends Component
     public ?string $pauseStartedAt = null;
     public ?string $pauseType = null;
     public int $totalPauseSeconds = 0;
+
+    // Топливо
+    public $addedFuel;
+    protected $fuelStats = [];
 
     // Модальные окна
     public bool $showZoneModal = false;
@@ -935,12 +940,6 @@ class DriverPanel extends Component
 
     public function updateLoadCapacity()
     {
-        // убедимся, что метод вызывается
-        \Log::info('=== ПОПЫТКА ОБНОВИТЬ LOAD_CAPACITY ===', [
-            'truck_id' => $this->truck->id ?? null,
-            'new_value' => $this->newLoadCapacity
-        ]);
-
         $newCapacity = (float) $this->newLoadCapacity;
         $maxCapacity = $this->truck->truckModel->load_capacity ?? 9999;
 
@@ -995,8 +994,69 @@ class DriverPanel extends Component
         }
     }
 
+    public function getFuelStatsProperty()
+    {
+        if (!$this->truck) {
+            return [
+                'fuel_percent' => 0,
+                'avg_distance' => 0,
+                'total_trip_distance' => 0,
+                'estimated_trips' => 0
+            ];
+        }
+
+        // a) Расчет процента топлива
+        $fuel_percent = ($this->truck->fuel_level / $this->truck->truckModel->fuel_capacity) * 100;
+
+        // b) Среднее расстояние рейса
+        $avg_distance = MiningOrder::where('active', true)
+            ->whereNotNull('distance_km')
+            ->average('distance_km') ?? 0;
+
+        // c) Общее расстояние с учетом холостого хода
+        $total_trip_distance = $avg_distance * 1.5;
+
+        // d) Расчет количества рейсов
+        $estimated_trips = 0;
+        if ($avg_distance > 0 && $this->truck->truckModel->fuel_consumption > 0) {
+            $trip_fuel_consumption = ($total_trip_distance / 100) * $this->truck->truckModel->fuel_consumption;
+            $estimated_trips = $trip_fuel_consumption > 0 ? 
+                floor($this->truck->fuel_level / $trip_fuel_consumption) : 0;
+        }
+
+        return [
+            'fuel_percent' => $fuel_percent,
+            'avg_distance' => $avg_distance,
+            'total_trip_distance' => $total_trip_distance,
+            'estimated_trips' => $estimated_trips
+        ];
+    }
+
+    public function updateFuelLevel()
+    {
+        if (!$this->truck || $this->truck->status !== 'fueling') {
+            return;
+        }
+
+        $this->validate([
+            'addedFuel' => ['required', 'numeric', 'min:1', 
+                'max:' . ($this->truck->truckModel->fuel_capacity - $this->truck->fuel_level)]
+        ]);
+
+        $this->truck->fuel_level += $this->addedFuel;
+        $this->truck->save();
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Добавлено {$this->addedFuel} литров. Текущий уровень: {$this->truck->fuel_level} л"
+        ]);
+
+        $this->addedFuel = null;
+    }
+
     public function render()
     {
+        $this->fuelStats = $this->fuelStats ?: $this->getFuelStatsProperty();
         return view('livewire.driver-panel');
     }
 }

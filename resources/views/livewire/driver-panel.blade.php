@@ -358,7 +358,59 @@
             </div>
         </div>
         @endif
+        <!-- Вкладка Топливо -->
+        <div class="row">
+            <div class="col-12">
+                <div class="accordion industrial-accordion" id="fuelAccordion">
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed industrial-accordion-button py-2 px-3" 
+                                    style="width: 100%; display: flex; text-align: left;" 
+                                    type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#fuelCollapse">
+                                <i class="bi bi-fuel-pump me-2"></i>
+                                Топливо: @if($this->fuelStats['fuel_percent'] ?? null) {{ round($this->fuelStats['fuel_percent']) }}% @else - @endif
+                            </button>
+                        </h2>
+                        <div id="fuelCollapse" class="accordion-collapse collapse" data-bs-parent="#fuelAccordion">
+                            <div class="accordion-body py-2">
+                                <div class="mb-3">
+                                    <div class="d-flex flex-wrap" style="gap: 0.5rem 2rem;">
+                                        <div>
+                                            <span class="industrial-label d-inline">Текущий остаток:</span>
+                                            <strong class="ms-1">{{ $truck->fuel_level }} л / {{ $truck->truckModel->fuel_capacity }} л</strong>
+                                        </div>
+                                        <div>
+                                            <span class="industrial-label d-inline">Примерно рейсов:</span>
+                                            <strong class="ms-1">{{ $this->fuelStats['estimated_trips'] ?? 0 }} рейсов</strong>
+                                            <small class="text-muted">(ср. расстояние: {{ $this->fuelStats['avg_distance'] ?? '-' }} км)</small>
+                                        </div>
+                                    </div>
+                                </div>
 
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <input type="number" 
+                                        class="form-control industrial-input" 
+                                        style="width: 120px;"
+                                        wire:model.defer="addedFuel"
+                                        placeholder="Литры"
+                                        @if($truck->status !== 'fueling') disabled @endif>
+                                    <button class="btn btn-industrial-primary" 
+                                            wire:click="updateFuelLevel"
+                                            @if($truck->status !== 'fueling') disabled @endif>
+                                        Залить топливо
+                                    </button>
+                                    <small class="text-muted ms-2">
+                                        Доступно для заправки: {{ $truck->truckModel->fuel_capacity - $truck->fuel_level }} л
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- Ограничения для техники -->
         <div class="row">
             <div class="col-12">
