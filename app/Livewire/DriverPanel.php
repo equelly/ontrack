@@ -6,6 +6,7 @@ use App\Domain\TruckStatus;
 use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Models\TripPause;
+use App\Models\Rock;
 use App\Models\Zone;
 use App\Models\TruckPlannedTask;
 use App\Services\TruckStatusService;
@@ -38,6 +39,7 @@ class DriverPanel extends Component
         'today_volume' => 0,
         'avg_speed' => '-',
     ];
+    public $newLoadCapacity;
     public string $statusColor = 'secondary';
     public string $statusLabel = '';
 
@@ -73,6 +75,7 @@ class DriverPanel extends Component
 
     public function mount(): void
     {
+        $this->rocks = Rock::all()->toArray();
         $this->loadTrucks();
         
         // Try to get truck from session first
@@ -118,6 +121,7 @@ class DriverPanel extends Component
         }
 
         $this->truck = Truck::find($this->selectedTruckId);
+        $this->newLoadCapacity = $this->truck->load_capacity;
         if ($this->truck) {
             // Привязываем грузовик к водителю если нужно
             if ($this->truck->driver_id !== auth()->id()) {
@@ -920,6 +924,75 @@ class DriverPanel extends Component
 
         // Средняя скорость = расстояние / время
         return round($totalDistance / $totalTransportingHours, 1);
+    }
+
+    // =========================================
+    // TRUCK RESTRICTIONS
+    // =========================================
+
+    public array $rocks = [];
+
+
+    public function updateLoadCapacity()
+    {
+        // убедимся, что метод вызывается
+        \Log::info('=== ПОПЫТКА ОБНОВИТЬ LOAD_CAPACITY ===', [
+            'truck_id' => $this->truck->id ?? null,
+            'new_value' => $this->newLoadCapacity
+        ]);
+
+        $newCapacity = (float) $this->newLoadCapacity;
+        $maxCapacity = $this->truck->truckModel->load_capacity ?? 9999;
+
+        if ($newCapacity > $maxCapacity) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => "Превышен максимум: {$maxCapacity}"]);
+            return;
+        }
+
+        // Прямой SQL-запрос, обходим Eloquent
+        \DB::table('trucks')->where('id', $this->truck->id)->update(['load_capacity' => $newCapacity]);
+
+        // Обновляем модель в памяти Livewire
+        $this->truck->refresh();
+        $this->newLoadCapacity = $this->truck->load_capacity;
+
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Грузоподъемность обновлена']);
+    }
+
+    public function toggleRockRestriction($rockId): void
+    {
+        try {
+            $exists = $this->truck->restrictions()
+                ->where('rock_id', $rockId)
+                ->exists();
+                
+            if ($exists) {
+                $this->truck->restrictions()
+                    ->where('rock_id', $rockId)
+                    ->delete();
+                $message = 'Ограничение снято';
+            } else {
+                \App\Models\TruckRestriction::create([
+                    'truck_id' => $this->truck->id,
+                    'rock_id' => $rockId
+                ]);
+                $message = 'Ограничение добавлено';
+                $this->truck->refresh();
+            }
+            
+            $this->truck->refresh();
+            
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => $message,
+            ]);
+            
+        } catch (\Exception $e) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function render()

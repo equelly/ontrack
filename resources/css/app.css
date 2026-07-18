@@ -492,3 +492,10 @@ form-check-label {
     width: 100% !important; /* На экранах меньше 750px колонка займет всю ширину */
   }
 }
+/* Принудительно скрываем свернутые аккордеоны */
+.accordion-collapse:not(.show) {
+    display: none !important;
+}
+.accordion-button.collapsed::after {
+    transform: rotate(-90deg) !important;
+}

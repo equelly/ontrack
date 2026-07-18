@@ -359,6 +359,67 @@
         </div>
         @endif
 
+        <!-- Ограничения для техники -->
+        <div class="row">
+            <div class="col-12">
+                <div class="accordion industrial-accordion" id="restrictionsAccordion">
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed industrial-accordion-button py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#restrictionsCollapse">
+                                <i class="bi bi-slash-circle me-2"></i>
+                                Ограничения для автомобиля
+                            </button>
+                        </h2>
+                        <div id="restrictionsCollapse" class="accordion-collapse collapse" data-bs-parent="#restrictionsAccordion">
+                            <div class="accordion-body py-2">
+                                <!-- Текущая грузоподъемность -->
+                                <div class="mb-4">
+                                    <h6 class="industrial-label mb-2">Текущая грузоподъемность</h6>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div>
+                                            <span class="text-muted">Паспортная:</span>
+                                            <strong class="ms-2">{{ $truck->truckModel->load_capacity }} т</strong>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <input type="number" 
+                                                class="form-control industrial-input" 
+                                                style="width: 100px;"
+                                                wire:model.defer="newLoadCapacity" 
+                                                min="1" 
+                                                max="{{ $truck->truckModel->load_capacity }}">
+                                            <button class="btn btn-industrial-primary" 
+                                                    wire:click="updateLoadCapacity">
+                                                Сохранить
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Запрет на перевозку пород -->
+                                <div>
+                                    <h6 class="industrial-label mb-2">Запрет на перевозку пород</h6>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach($rocks as $rock)
+                                            <div class="form-check">
+                                                <input class="form-check-input" 
+                                                    type="checkbox" 
+                                                    id="rock-{{ $rock['id'] }}"
+                                                    wire:click="toggleRockRestriction({{ $rock['id'] }})"
+                                                    @if($truck->restrictions->contains('rock_id', $rock['id'])) checked @endif>
+                                                <label class="form-check-label" for="rock-{{ $rock['id'] }}">
+                                                    {{ $rock['name_rock'] }}
+                                                </label>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Статистика (скрыта по умолчанию) -->
         <div class="row">
             <div class="col-12">

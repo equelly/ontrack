@@ -15,4 +15,9 @@ class Rock extends Model
     public function zones() {
         return $this->belongsToMany(Zone::class, 'rock_zone');
     }
+
+    public function restrictedTrucks()
+    {
+        return $this->belongsToMany(Truck::class, 'truck_restrictions', 'rock_id', 'truck_id');
+    }
 }

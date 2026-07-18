@@ -144,6 +144,12 @@ class RouteAssignmentService
                 continue;
             }
 
+            // Проверяем, не запрещена ли порода для грузовика
+            if ($this->isRockRestricted($truck->id, $currentRock->id)) {
+                Log::info("Пропускаем маршрут с породой {$currentRock->id} - запрещена для грузовика {$truck->id}");
+                continue;
+            }
+
             // Ищем доступную зону для текущей породы
             $zone = $this->selectZoneForRock($order->dump_id, $currentRock->id);
 

@@ -162,6 +162,11 @@ class Truck extends Model
         return $this->hasMany(MiningOrder::class);
     }
 
+    public function restrictions()
+    {
+        return $this->hasMany(TruckRestriction::class);
+    }
+
     public function currentOrder()
     {
         return $this->hasOne(MiningOrder::class, 'truck_id')->where('active', true);
