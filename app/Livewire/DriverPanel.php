@@ -52,7 +52,6 @@ class DriverPanel extends Component
 
     // Топливо
     public $addedFuel;
-    protected $fuelStats = [];
 
     // Модальные окна
     public bool $showZoneModal = false;
@@ -588,6 +587,11 @@ class DriverPanel extends Component
         $this->requestService(TruckPlannedTask::TYPE_WHEEL_TIGHTENING);
     }
 
+    public function requestFueling(): void
+    {
+        $this->requestService(TruckPlannedTask::TYPE_FUELING);
+    }
+
     protected function requestService(string $taskType): void
     {
         try {
@@ -1004,6 +1008,16 @@ class DriverPanel extends Component
                 'estimated_trips' => 0
             ];
         }
+        // Подгружаем связь, если она была потеряна после refresh()
+        $this->truck->load('truckModel');
+        
+        $fuelCapacity = $this->truck->truckModel->fuel_capacity ?? 0;
+        
+        // Защита от деления на ноль
+        $fuel_percent = 0;
+        if ($fuelCapacity > 0) {
+            $fuel_percent = (($this->truck->fuel_level ?? 0) / $fuelCapacity) * 100;
+        }
 
         // a) Расчет процента топлива
         $fuel_percent = ($this->truck->fuel_level / $this->truck->truckModel->fuel_capacity) * 100;
@@ -1056,7 +1070,7 @@ class DriverPanel extends Component
 
     public function render()
     {
-        $this->fuelStats = $this->fuelStats ?: $this->getFuelStatsProperty();
+        
         return view('livewire.driver-panel');
     }
 }

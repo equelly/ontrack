@@ -84,7 +84,7 @@ class RouteAssignmentService
             }
 
             // Фильтруем маршруты с доступными зонами
-            $availableRoutes = $this->filterRoutesWithAvailableZones($activeOrders);
+            $availableRoutes = $this->filterRoutesWithAvailableZones($activeOrders, $truck);
 
             Log::info('Доступных маршрутов', ['count' => count($availableRoutes)]);
 
@@ -119,9 +119,19 @@ class RouteAssignmentService
     }
 
     /**
+     * Проверяет, запрещена ли порода для грузовика
+     */
+    protected function isRockRestricted(int $truckId, int $rockId): bool
+    {
+        return \App\Models\TruckRestriction::where('truck_id', $truckId)
+            ->where('rock_id', $rockId)
+            ->exists();
+    }
+
+    /**
      * Фильтруем маршруты с доступными зонами
      */
-    protected function filterRoutesWithAvailableZones($orders): array
+    protected function filterRoutesWithAvailableZones($orders, Truck $truck): array
     {
         $available = [];
 

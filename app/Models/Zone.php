@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use App\Services\MiningOrderSyncService;
 
 class Zone extends Model
 {
@@ -38,6 +39,16 @@ class Zone extends Model
                     'last_updated_by' => Auth::id()
                 ]);
             }
+
+            // Вызываем сервис для синхронизации статуса MiningOrder
+            $service = app(\App\Services\MiningOrderSyncService::class);
+            $service->syncActiveStatusForDump($zone->dump_id);
+        });
+
+        static::deleted(function ($zone) {
+            // Вызываем сервис для синхронизации статуса MiningOrder при удалении зоны
+            $service = app(MiningOrderSyncService::class);
+            $service->syncActiveStatusForDump($zone->dump_id);
         });
     }
 

@@ -370,7 +370,12 @@
                                     data-bs-toggle="collapse" 
                                     data-bs-target="#fuelCollapse">
                                 <i class="bi bi-fuel-pump me-2"></i>
-                                Топливо: @if($this->fuelStats['fuel_percent'] ?? null) {{ round($this->fuelStats['fuel_percent']) }}% @else - @endif
+                                Топливо: 
+                                @if(isset($this->fuelStats['fuel_percent']) && is_numeric($this->fuelStats['fuel_percent'])) 
+                                    {{ round($this->fuelStats['fuel_percent']) }}% 
+                                @else 
+                                    - 
+                                @endif
                             </button>
                         </h2>
                         <div id="fuelCollapse" class="accordion-collapse collapse" data-bs-parent="#fuelAccordion">
@@ -401,6 +406,9 @@
                                             @if($truck->status !== 'fueling') disabled @endif>
                                         Залить топливо
                                     </button>
+                                        <button class="btn btn-industrial-secondary" wire:click="requestFueling" style="width: 100%; margin: 10px 0 !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.5rem 1rem;">
+                                            Запросить заправку
+                                        </button>
                                     <small class="text-muted ms-2">
                                         Доступно для заправки: {{ $truck->truckModel->fuel_capacity - $truck->fuel_level }} л
                                     </small>
