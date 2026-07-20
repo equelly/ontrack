@@ -192,6 +192,11 @@ function toggleDelivery(zoneId, enabled) {
         showToast(enabled ? 'Зона открыта для приёма' : 'Зона закрыта', 'success');
         const card = document.getElementById('zone-card-' + zoneId);
         if (card) {
+            const statusLabel = card.querySelector('.form-check-label');
+            if (statusLabel) {
+                statusLabel.textContent = enabled ? 'Принимает' : 'Закрыта';
+            }
+            
             if (enabled) {
                 card.classList.remove('border-secondary');
                 card.classList.add('border-success');
