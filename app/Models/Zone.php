@@ -42,13 +42,13 @@ class Zone extends Model
 
             // Вызываем сервис для синхронизации статуса MiningOrder
             $service = app(\App\Services\MiningOrderSyncService::class);
-            $service->syncActiveStatusForDump($zone->dump_id);
+            $service->syncActiveStatusForZone($zone->id);
         });
 
         static::deleted(function ($zone) {
             // Вызываем сервис для синхронизации статуса MiningOrder при удалении зоны
             $service = app(MiningOrderSyncService::class);
-            $service->syncActiveStatusForDump($zone->dump_id);
+            $service->syncActiveStatusForZone($zone->id);
         });
     }
 

@@ -58,6 +58,21 @@
             </div>
         </div>
 
+        <!-- Управление статусами -->
+        <div class="row mb-4" data-truck-status="{{ $truck->status }}">
+            <div class="col-12">
+                @php $status = $truck->status; @endphp
+
+                {{-- Свободен --}}
+                @if($status === 'free')
+                    @if(!$currentTrip)
+                        <button wire:click="assignRoute" wire:loading.attr="disabled" style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.5rem 1rem;" class="btn btn-industrial-primary btn-lg w-100 mb-2">
+                            <span wire:loading.remove>Получить маршрут</span>
+                            <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
+                        </button>
+                    @endif
+                @endif
+
         @if($currentTrip)
         <!-- Информация о маршруте -->
         <div class="card industrial-card">
@@ -128,20 +143,7 @@
         </div>
         @endif
 
-        <!-- Управление статусами -->
-        <div class="row mb-4" data-truck-status="{{ $truck->status }}">
-            <div class="col-12">
-                @php $status = $truck->status; @endphp
-
-                {{-- Свободен --}}
-                @if($status === 'free')
-                    @if(!$currentTrip)
-                        <button wire:click="assignRoute" wire:loading.attr="disabled" style="flex: 1 1 300px; min-width: 0; width: 100%; display: flex; align-items-center justify-content-center gap: 0.5rem; padding: 0.5rem 1rem;" class="btn btn-industrial-primary btn-lg w-100 mb-2">
-                            <span wire:loading.remove>Получить маршрут</span>
-                            <span wire:loading><i class="bi bi-spinner bi-spin"></i> Получение...</span>
-                        </button>
-                    @endif
-                @endif
+                {{-- Other status conditions remain unchanged --}}
 
                 {{-- Рейс завершён --}}
                 @if($status === 'completed')

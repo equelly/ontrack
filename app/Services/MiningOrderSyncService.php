@@ -8,35 +8,37 @@ use App\Models\Zone;
 class MiningOrderSyncService
 {
     /**
-     * Синхронизирует статус active для всех MiningOrder, связанных с указанным dump_id.
+     * Синхронизирует статус active для всех MiningOrder, связанных с указанным zone_id.
      *
-     * @param int $dumpId
+     * @param int $zoneId
      */
-    public function syncActiveStatusForDump(int $dumpId): void
+    public function syncActiveStatusForZone(int $zoneId): void
     {
-        // Находим все маршруты для этого отвала
-        $orders = MiningOrder::where('dump_id', $dumpId)->get();
+        // Находим все маршруты для этой зоны
+        $zoneOrders = MiningOrder::where('zone_id', $zoneId)->get();
 
-        foreach ($orders as $order) {
-            if (!$order->rock_id) {
-                // Если у маршрута не указана порода, деактивируем его
+        // Также находим все маршруты без зоны (zone_id = null)
+        $nullZoneOrders = MiningOrder::whereNull('zone_id')->get();
+
+        // Получаем зону
+        $zone = Zone::find($zoneId);
+
+        // Обновляем маршруты для указанной зоны
+        foreach ($zoneOrders as $order) {
+            if (!$zone) {
+                // Если зона не существует, деактивируем маршрут
                 $order->update(['active' => false]);
                 continue;
             }
 
-            // Проверяем наличие подходящих зон для конкретного маршрута
-            $hasValidZone = Zone::where('dump_id', $dumpId)
-                ->where('delivery', true)
-                ->whereRaw('volume < capacity')
-                ->where(function ($query) use ($order) {
-                    // Проверяем прямое поле rock_id (если оно есть в таблице zones)
-                    $query->where('rock_id', $order->rock_id)
-                          // Или проверяем через связанную таблицу (если используется many-to-many)
-                          ->orWhereHas('rocks', fn($q) => $q->where('rocks.id', $order->rock_id));
-                })
-                ->exists();
+            // Проверяем условия активности: зона открыта и не переполнена
+            $isActive = $zone->delivery && $zone->volume < $zone->capacity;
+            $order->update(['active' => $isActive]);
+        }
 
-            $order->update(['active' => $hasValidZone]);
+        // Жестко деактивируем все маршруты без зоны
+        foreach ($nullZoneOrders as $order) {
+            $order->update(['active' => false]);
         }
     }
 
