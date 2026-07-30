@@ -10,8 +10,8 @@ import * as bootstrap from 'bootstrap';
 // ---------------------------
 // Alpine.js - НЕ ЗАПУСКАЕМ! Livewire v3 сам управляет Alpine
 // ---------------------------
-import Alpine from 'alpinejs';
-window.Alpine = Alpine;
+//import Alpine from 'alpinejs';
+//window.Alpine = Alpine;
 // Alpine.start(); // ← ЗАКОММЕНТИРОВАНО! Livewire v3 запускает Alpine автоматически
 
 // ---------------------------

@@ -386,12 +386,42 @@ class DriverPanel extends Component
     public function completeTrip(): void
     {
         try {
+            // 1. РАСЧЕТ И СПИСАНИЕ ТОПЛИВА ЗА РЕЙС
+            if ($this->currentTrip && $this->truck && $this->truck->truckModel) {
+                // Получаем расстояние из заявки (маршрута)
+                $distance = (float) ($this->currentTrip->miningOrder->distance_km ?? 0);
+                
+                // Учитываем холостой пробег (коэф 0.5, итого 1.5)
+                $totalDistance = $distance * 1.5;
+                
+                // Получаем расход топлива на 100 км (из модели грузовика)
+                $fuelConsumption = (float) ($this->truck->truckModel->fuel_consumption ?? 0);
+                
+                if ($totalDistance > 0 && $fuelConsumption > 0) {
+                    // Считаем израсходованные литры
+                    $fuelUsed = ($totalDistance / 100) * $fuelConsumption;
+                    
+                    // Вычитаем из текущего уровня, не опускаемся ниже нуля
+                    $this->truck->fuel_level = max(0, $this->truck->fuel_level - $fuelUsed);
+                    $this->truck->save();
+                }
+            }
+
+            // 2. СМЕНА СТАТУСА (Завершение рейса)
             $statusService = app(TruckStatusService::class);
             $statusService->changeStatus($this->truck, 'completed');
+            
+            // 3. ОБНОВЛЕНИЕ ДАННЫХ ПАНЕЛИ
             $this->loadData();
 
             // Проверяем, есть ли запланированные задачи обслуживания
             $this->checkPendingServiceTasks();
+
+            // Уведомляем водителя
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Рейс завершён. Топливо списано.',
+            ]);
 
         } catch (\Exception $e) {
             Log::error('Complete trip failed', ['error' => $e->getMessage()]);
@@ -1064,6 +1094,8 @@ class DriverPanel extends Component
             'type' => 'success',
             'message' => "Добавлено {$this->addedFuel} литров. Текущий уровень: {$this->truck->fuel_level} л"
         ]);
+            // Автоматически завершаем заправку и меняем статус грузовика
+        $this->completeService();
 
         $this->addedFuel = null;
     }
