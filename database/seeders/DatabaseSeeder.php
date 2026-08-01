@@ -130,15 +130,17 @@ class DatabaseSeeder extends Seeder
         User::create([
             'name' => 'Администратор',
             'email' => 'admin@mine.ru',
-            'password' => Hash::make('admin123'),
-            'role' => 'admin'
+            'password' => Hash::make('12345asdf'),
+            'role' => 'admin',
+            'position' => 'admin'
         ]);
 
         User::create([
             'name' => 'Диспетчер',
             'email' => 'dispatcher@mine.ru',
-            'password' => Hash::make('disp123'),
-            'role' => 'dispatcher'
+            'password' => Hash::make('12345asdf'),
+            'role' => 'эксплуатационный',
+            'position' => 'dispatcher'
         ]);
 
         // Водители
@@ -146,8 +148,9 @@ class DatabaseSeeder extends Seeder
             $user = User::create([
                 'name' => "Водитель {$trucks[$i]->number}",
                 'email' => "driver" . ($i + 1) . "@mine.ru",
-                'password' => Hash::make('driver123'),
-                'role' => 'driver'
+                'password' => Hash::make('12345asdf'),
+                'role' => 'эксплуатационный',
+                'position' => 'driver'
             ]);
             $trucks[$i]->update(['driver_id' => $user->id]);
         }
@@ -157,8 +160,9 @@ class DatabaseSeeder extends Seeder
             User::create([
                 'name' => "Машинист {$miners[$i]->name_miner}",
                 'email' => "operator" . ($i + 1) . "@mine.ru",
-                'password' => Hash::make('oper123'),
-                'role' => 'excavator_operator'
+                'password' => Hash::make('12345asdf'),
+                'role' => 'эксплуатационный',
+                'position' => 'excavator_operator'
             ]);
         }
 

@@ -77,7 +77,7 @@ class RouteAssignmentService
                 ->with(['miner.currentRock', 'dump.zones.rocks', 'zone'])
                 ->get();
 
-            Log::info('Активных маршрутов', ['count' => $activeOrders->count()]);
+            Log::info('Route search before filtering', ['active_orders' => $activeOrders->count()]);
 
             if ($activeOrders->isEmpty()) {
                 throw new \RuntimeException("Нет активных маршрутов");
@@ -86,7 +86,7 @@ class RouteAssignmentService
             // Фильтруем маршруты с доступными зонами
             $availableRoutes = $this->filterRoutesWithAvailableZones($activeOrders, $truck);
 
-            Log::info('Доступных маршрутов', ['count' => count($availableRoutes)]);
+            Log::info('Route search after filtering', ['filtered' => count($availableRoutes)]);
 
             if (empty($availableRoutes)) {
                 throw new \RuntimeException("Нет маршрутов с доступными зонами");
@@ -160,20 +160,20 @@ class RouteAssignmentService
                 continue;
             }
 
-            // Ищем доступную зону для текущей породы
-            $zone = $this->selectZoneForRock($order->dump_id, $currentRock->id);
-
-            if ($zone) {
+            // Проверяем, что зона указана и открыта
+            if ($order->zone_id && $order->zone && $order->zone->delivery && $order->zone->volume < $order->zone->capacity) {
                 // Получаем время погрузки для этого забоя
                 $loadingTime = $this->getLoadingTimeForMiner($miner);
 
                 $available[] = [
                     'order' => $order,
-                    'zone' => $zone,
+                    'zone' => $order->zone,
                     'rock_id' => $currentRock->id,
                     'weight' => $order->weight ?? 100,
                     'loading_time' => $loadingTime,
                 ];
+            } else {
+                Log::info("Маршрут {$order->id} пропущен: зона не указана или недоступна");
             }
         }
 
@@ -233,14 +233,8 @@ class RouteAssignmentService
      */
     public function selectZoneForRock(int $dumpId, int $rockId): ?Zone
     {
-        return Zone::where('dump_id', $dumpId)
-            ->where('delivery', true)
-            ->whereHas('rocks', function($q) use ($rockId) {
-                $q->where('rocks.id', $rockId);
-            })
-            ->whereRaw('volume < capacity')
-            ->orderBy('volume', 'asc') // Менее заполненные сначала
-            ->first();
+        // Этот метод больше не используется для поиска зон, так как zone_id теперь хранится в MiningOrder
+        return null;
     }
 
     /**
