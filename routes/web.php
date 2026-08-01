@@ -29,7 +29,8 @@ Route::middleware(['auth', 'roles:driver'])->group(function () {
     // Livewire панель водителя
     Route::get('/driver', \App\Livewire\DriverPanel::class)->name('driver.panel');
 });
-
+// Панель мастера (Livewire)
+Route::get('/master', \App\Livewire\MasterPanel::class)->name('master.panel')->middleware(['auth', 'roles:master,admin']);
 
 Route::resource('drivers', DriverController::class)->parameters(['drivers' => 'truck']);
 /*

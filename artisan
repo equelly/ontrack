@@ -1,7 +1,25 @@
-#!/usr/bin/env php
 <?php
 
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Http\Request;
+
 define('LARAVEL_START', microtime(true));
+
+/*
+|--------------------------------------------------------------------------
+| Check If The Application Is Under Maintenance
+|--------------------------------------------------------------------------
+|
+| If the application is in maintenance mode via the "down" command we
+| will load this file so that any pre-rendered views can be shown
+| instead of starting the framework, which could cause an exception.
+|
+|
+*/
+
+if (file_exists($maintenance = __DIR__.'/storage/framework/maintenance.php')) {
+    require $maintenance;
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -9,28 +27,28 @@ define('LARAVEL_START', microtime(true));
 |--------------------------------------------------------------------------
 |
 | Composer provides a convenient, automatically generated class loader
-| for our application. We just need to utilize it! We'll require it
-| into the script here so that we do not have to worry about the
-| loading of any of our classes manually. It's great to relax.
+| for our application. We just need to utilize it! We'll simply require
+| it into the script here so that we don't have to worry about manual
+| loading.
 |
 */
 
 require __DIR__.'/vendor/autoload.php';
 
-$app = require_once __DIR__.'/bootstrap/app.php';
-
 /*
 |--------------------------------------------------------------------------
-| Run The Artisan Application
+| Run The Application
 |--------------------------------------------------------------------------
 |
-| When we run the console application, the current CLI command will be
-| executed in this console and the response sent back to a terminal
-| or another output device for the developers. Here goes nothing!
+| Once we have the application, we can handle the incoming request via
+| the kernel, and send the associated response back to the client's
+| browser allowing them to enjoy the creative and wonderful application.
 |
 */
 
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+$app = require_once __DIR__.'/bootstrap/app.php';
+
+$kernel = $app->make(Kernel::class);
 
 $status = $kernel->handle(
     $input = new Symfony\Component\Console\Input\ArgvInput,
@@ -42,9 +60,8 @@ $status = $kernel->handle(
 | Shutdown The Application
 |--------------------------------------------------------------------------
 |
-| Once Artisan has finished running, we will fire off the shutdown events
-| so that any final work may be done by the application before we shut
-| down the process. This is the last thing to happen to the request.
+| Once the script has finished running, we should gracefully terminate
+| the application and release any resources that were held by it.
 |
 */
 
