@@ -23,6 +23,15 @@ class MasterPanel extends Component
     public $zoneVolumes;
     public $haulsSummary;
     public $activeHauls;
+    public $trucks;
+    public $miners;
+    public $activeServiceTasks;
+    public $pendingServiceTasks;
+    public $categoryId = '';
+    public $userId = '';
+    public $mashineId = '';
+    public $createdAt = '';
+    public $contentSearch = '';
 
     public function mount(ShiftService $shiftService)
     {
@@ -90,13 +99,64 @@ class MasterPanel extends Component
         $this->activeHauls = TruckTrip::whereNull('completed_at')
             ->with(['truck', 'miner', 'zone.dump', 'rock'])
             ->get();
+
+        // 7. Оборудование (Самосвалы и Экскаваторы)
+        $this->trucks = \App\Models\Truck::with('truckModel')->get();
+        
+        $this->miners = \App\Models\Miner::with('currentRock')->get()->map(function ($miner) {
+            $miner->active_trucks_count = \App\Models\TruckTrip::where('miner_id', $miner->id)
+                ->whereNull('completed_at')
+                ->count();
+            return $miner;
+        });
+        // 8. Обслуживание: активные (в работе) и запланированные (в очереди)
+        $this->activeServiceTasks = \App\Models\TruckPlannedTask::where('completed', false)
+            ->whereNotNull('started_at')
+            ->with(['truck', 'servicePost'])
+            ->get();
+
+        $this->pendingServiceTasks = \App\Models\TruckPlannedTask::where('completed', false)
+            ->whereNull('started_at')
+            ->with('truck')
+            ->orderBy('queue_position')
+            ->get();
     }
 
     public function render()
     {
-        // Передаем $dumps в вид
-        return view('livewire.master-panel', [
-            'dumps' => \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get()
-        ]);
+        // 1. Данные для выпадающих списков фильтра
+        $categories = \App\Models\Category::all();
+        $users = \App\Models\User::orderBy('name')->get();
+        $allMashines = \App\Models\Mashine::orderBy('number')->get();
+        $dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+
+        // 2. Заявки с применением фильтров
+        $mashines = \App\Models\Mashine::with(['orders' => function($q) {
+            $q->where('content', '!=', '')
+              ->when($this->contentSearch, function($q) {
+                  $q->where('content', 'like', '%' . $this->contentSearch . '%');
+              })
+              ->when($this->categoryId, function($q) {
+                  $q->where('category_id', $this->categoryId);
+              })
+              ->when($this->userId, function($q) {
+                  $q->where('user_id', $this->userId);
+              })
+              ->when($this->createdAt, function($q) {
+                  $q->whereDate('created_at', $this->createdAt);
+              });
+        }, 'sets'])
+        ->when($this->mashineId, function($query) {
+            $query->where('id', $this->mashineId);
+        })
+        ->get()
+        ->filter(function($mashine) {
+            // Оставляем только ту технику, у которой есть комплектация или отфильтрованные заявки
+            return $mashine->sets->isNotEmpty() || $mashine->orders->isNotEmpty();
+        });
+
+        $ordersCount = \App\Models\Order::where('content', '!=', '')->count();
+
+        return view('livewire.master-panel', compact('dumps', 'mashines', 'ordersCount', 'categories', 'users', 'allMashines'));
     }
 }
