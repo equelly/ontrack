@@ -46,55 +46,113 @@
         </div>
     </div>
 
-    <!-- Dashboard Tab -->
-    <div class="container mx-auto p-4" x-show="tab === 'dashboard'" x-cloak>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div class="bg-white rounded-xl border shadow-sm p-4">
-                <h3 class="font-semibold text-gray-700 mb-2">Общий объем</h3>
-                <p class="text-2xl font-bold text-emerald-600">{{ $tripMetrics['total_volume'] ?? 0 }} <span class="text-sm">тонн</span></p>
+        <!-- ВКЛАДКА: Обзор -->
+        <div x-show="tab === 'dashboard'" x-cloak class="mt-4 space-y-6">
+            
+            <!-- Карточки KPI -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-xs text-gray-500 uppercase">Общий объем</p>
+                    <p class="text-2xl font-bold text-emerald-600">{{ number_format($tripMetrics['total_volume'], 1) }} т</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-xs text-gray-500 uppercase">Рейсов</p>
+                    <p class="text-2xl font-bold text-blue-600">{{ $tripMetrics['total_trips'] }}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-xs text-gray-500 uppercase">Ср. скорость</p>
+                    <p class="text-2xl font-bold text-purple-600">{{ $tripMetrics['avg_speed'] }} <span class="text-sm">@if($tripMetrics['avg_speed'] != '-') км/ч @endif</span></p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-xs text-gray-500 uppercase">Ср. расстояние</p>
+                    <p class="text-2xl font-bold text-cyan-600">{{ $tripMetrics['avg_distance'] }} <span class="text-sm">@if($tripMetrics['avg_distance'] != '-') км @endif</span></p>
+                </div>
             </div>
-            <div class="bg-white rounded-xl border shadow-sm p-4">
-                <h3 class="font-semibold text-gray-700 mb-2">Рейсов всего</h3>
-                <p class="text-2xl font-bold text-emerald-600">{{ $tripMetrics['total_trips'] ?? 0 }}</p>
-            </div>
-            <div class="bg-white rounded-xl border shadow-sm p-4">
-                <h3 class="font-semibold text-gray-700 mb-2">Средняя скорость</h3>
-                <p class="text-2xl font-bold text-emerald-600">
-                    @if($tripMetrics['avg_speed'] !== null)
-                        {{ round($tripMetrics['avg_speed'], 1) }}
-                    @else
-                        -
-                    @endif
-                    <span class="text-sm">км/ч</span>
-                </p>
 
+            <!-- Активные перевозки (в данный момент) -->
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                    <span class="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span>
+                    Активные перевозки (в данный момент)
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b">
+                            <tr>
+                                <th class="text-left p-3 font-semibold text-gray-600">Самосвал</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Забой (откуда)</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Направление (куда)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($activeHauls as $haul)
+                                <tr class="border-b hover:bg-slate-50">
+                                    <td class="p-3 font-medium text-gray-800">{{ $haul->truck?->number ?? '—' }}</td>
+                                    <td class="p-3 text-gray-600">{{ $haul->miner?->name_miner ?? '—' }}</td>
+                                    <td class="p-3"><span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $haul->rock?->name_rock ?? '—' }}</span></td>
+                                    <td class="p-3 text-gray-600">
+                                        {{ $haul->zone?->dump?->name_dump ?? '—' }} / <span class="font-medium text-gray-800">{{ $haul->zone?->name_zone ?? 'Не назначена' }}</span>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="4" class="p-4 text-center text-gray-500">Нет активных перевозок</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div class="bg-white rounded-xl border shadow-sm p-4">
-                <h3 class="font-semibold text-gray-700 mb-2">Среднее расстояние</h3>
-                <p class="text-2xl font-bold text-emerald-600">{{ round($tripMetrics['avg_distance'] ?? 0, 1) }} <span class="text-sm">км</span></p>
-            </div>
-        </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-white rounded-xl border shadow-sm p-4">
-                <h3 class="font-semibold text-gray-700 mb-2">Проблемы</h3>
-                <div class="space-y-2">
-                    <div class="flex justify-between">
-                        <span>Поломки техники:</span>
-                        <span class="font-semibold text-red-500">{{ $issueSummary['breakdowns'] ?? 0 }}</span>
+            <!-- Сводки за смену -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <!-- Объемы по зонам -->
+                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Объемы по зонам (за смену)</div>
+                    <div class="p-4 space-y-3">
+                        @forelse($zoneVolumes as $zv)
+                            <div class="flex justify-between items-center pb-2 border-b last:border-0">
+                                <span class="text-sm text-gray-700">
+                                    {{ $zv->zone?->dump?->name_dump ?? '—' }} - <span class="font-medium">{{ $zv->zone?->name_zone ?? '—' }}</span>
+                                </span>
+                                <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded font-bold text-sm">{{ number_format($zv->total_volume, 1) }} т</span>
+                            </div>
+                        @empty
+                            <p class="text-gray-500 text-sm text-center py-4">Нет данных за смену</p>
+                        @endforelse
                     </div>
-                    <div class="flex justify-between">
-                        <span>Задержки:</span>
-                        <span class="font-semibold text-yellow-500">{{ $issueSummary['delays'] ?? 0 }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Забои в простое:</span>
-                        <span class="font-semibold text-blue-500">{{ $issueSummary['idle'] ?? 0 }}</span>
+                </div>
+
+                <!-- Перевозки Забой -> Зона -->
+                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Перевозки: Забой → Зона (за смену)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 border-b">
+                                <tr>
+                                    <th class="text-left p-3 font-semibold text-gray-600">Забой</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">Зона</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">Объем</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">Рейсов</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($haulsSummary as $hs)
+                                    <tr class="border-b hover:bg-slate-50">
+                                        <td class="p-3 text-gray-700">{{ $hs->miner?->name_miner ?? '—' }}</td>
+                                        <td class="p-3 text-gray-600">{{ $hs->zone?->name_zone ?? '—' }}</td>
+                                        <td class="p-3 font-medium text-emerald-700">{{ number_format($hs->total_volume, 1) }} т</td>
+                                        <td class="p-3 text-gray-500">{{ $hs->trips_count }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="4" class="p-4 text-center text-gray-500">Нет данных за смену</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
         <!-- ВКЛАДКА: Зоны разгрузки -->
         <div x-show="tab === 'zones'" x-cloak class="mt-4 space-y-4">
             @foreach($dumps as $dump)

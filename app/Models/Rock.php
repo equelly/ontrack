@@ -10,7 +10,11 @@ class Rock extends Model
     use HasFactory;
 
     protected $table = 'rocks';
-    protected $fillable = ['name'];
+
+    protected $fillable = [
+        'name_rock',
+        ];
+    
 
     public function zones() {
         return $this->belongsToMany(Zone::class, 'rock_zone');

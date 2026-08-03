@@ -3,7 +3,7 @@
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
-    <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
+    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
             <!-- Кнопка планирования (слева) -->
             <button wire:click="runShiftPlanning" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 rounded-md font-semibold uppercase text-xs tracking-wider hover:bg-emerald-700 whitespace-nowrap">
@@ -15,15 +15,15 @@
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <div class="flex items-center gap-2">
                     <i class="fas fa-check-circle text-emerald-400"></i>
-                    <div><span class="text-gray-400 block text-[10px] uppercase">Доступны</span><strong class="text-emerald-400">{{ $this->free_trucks_count }}</strong></div>
+                    <div><span class="text-gray-200 block text-[10px] uppercase">Доступны ТС</span><strong class="text-emerald-400">{{ $this->free_trucks_count }}</strong></div>
                 </div>
                 <div class="flex items-center gap-2">
                     <i class="fas fa-truck text-blue-400"></i>
-                    <div><span class="text-gray-400 block text-[10px] uppercase">В работе</span><strong class="text-blue-400">{{ $this->working_trucks_count }}</strong></div>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Авто работе</span><strong class="text-blue-400">{{ $this->working_trucks_count }}</strong></div>
                 </div>
                 <div class="flex items-center gap-2">
                     <i class="fas fa-clock text-amber-400"></i>
-                    <div><span class="text-gray-400 block text-[10px] uppercase">Задержки</span><strong class="text-amber-400">{{ $trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count() }}</strong></div>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Задержки ТС</span><strong class="text-amber-400">{{ $trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count() }}</strong></div>
                 </div>
                 <div class="flex items-center gap-2">
                     <i class="fas fa-wrench text-red-400"></i>

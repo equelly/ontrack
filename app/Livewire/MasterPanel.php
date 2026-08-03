@@ -7,6 +7,12 @@ use App\Services\ShiftService;
 use App\Models\TruckTrip;
 use App\Models\Truck;
 use App\Models\Miner;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
+
+
+#[Layout('components.layouts.app')]
+#[Title('Панель мастера')]
 
 class MasterPanel extends Component
 {
@@ -14,6 +20,9 @@ class MasterPanel extends Component
     public $trucksSummary;
     public $tripMetrics;
     public $issueSummary;
+    public $zoneVolumes;
+    public $haulsSummary;
+    public $activeHauls;
 
     public function mount(ShiftService $shiftService)
     {
@@ -61,6 +70,26 @@ class MasterPanel extends Component
             'avg_speed' => $speedCount > 0 ? round($totalSpeedSum / $speedCount, 1) : null,
             'avg_distance' => $trips->count() > 0 ? round($totalDistance / $trips->count(), 1) : null,
         ];
+                // 4. Объемы по зонам за смену
+        $this->zoneVolumes = TruckTrip::whereBetween('created_at', [$this->shift['start_time'], $this->shift['end_time']])
+            ->whereNotNull('zone_id')
+            ->with('zone.dump')
+            ->selectRaw('zone_id, SUM(load_volume) as total_volume')
+            ->groupBy('zone_id')
+            ->get();
+
+        // 5. Сводка перевозок (Забой -> Зона) за смену
+        $this->haulsSummary = TruckTrip::whereBetween('created_at', [$this->shift['start_time'], $this->shift['end_time']])
+            ->whereNotNull('zone_id')
+            ->with(['miner', 'zone.dump', 'rock'])
+            ->selectRaw('miner_id, zone_id, rock_id, SUM(load_volume) as total_volume, COUNT(*) as trips_count')
+            ->groupBy('miner_id', 'zone_id', 'rock_id')
+            ->get();
+
+        // 6. Активные перевозки в данный момент
+        $this->activeHauls = TruckTrip::whereNull('completed_at')
+            ->with(['truck', 'miner', 'zone.dump', 'rock'])
+            ->get();
     }
 
     public function render()
