@@ -1,6 +1,6 @@
 {
   "name": "Laravel Clear Ubuntu Environment",
-  "image": "://microsoft.com",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/mysql:1": {
       "databaseName": "laravel",
