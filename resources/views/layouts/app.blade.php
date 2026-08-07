@@ -67,7 +67,7 @@
                         elseif ($position === 'excavator_operator') $redirectRoute = route('excavator.index');
                         elseif ($position === 'master') $redirectRoute = '/master';
                     @endphp
-                    <a href="{{ $redirectRoute }}" class="nav-link hover:bg-violet-400">Вернуться в рабочую зону</a>
+                    <a href="{{ $redirectRoute }}" class="nav-link hover:bg-violet-400">В рабочую панель</a>
                 </li>
                 @endif
               </ul> 

@@ -116,9 +116,12 @@ class DatabaseSeeder extends Seeder
         // Маршруты (mining_orders)
         foreach ($miners as $miner) {
             foreach ($dumps as $dump) {
+                // Находим случайную зону для этого отвала
+            $zone = \App\Models\Zone::where('dump_id', $dump->id)->inRandomOrder()->first();
                 MiningOrder::create([
                     'miner_id' => $miner->id,
                     'dump_id' => $dump->id,
+                    'zone_id' => $zone?->id, // <--- Добавляем для связки маршрутов и зон
                     'rock_id' => $miner->rocks->first()?->id,
                     'distance_km' => rand(10, 60) / 10,
                     'active' => true

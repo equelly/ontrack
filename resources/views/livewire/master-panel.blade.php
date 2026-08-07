@@ -2,17 +2,20 @@
     <!-- Dark Header -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
-            <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1>
-            <div class="text-right text-sm">
-                <p class="text-gray-400">Текущая смена</p>
-                <p class="font-bold">Смена {{ $shift['shift_id'] }} ({{ $shift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
-            </div>
-        </div>
+            <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1> 
+                <div class="text-right text-sm">
+                    <p class="text-lg font-bold uppercase tracking-wider text-white shadow-lg">смена {{Auth::user()->name}}</p>
+                    @if(isset($shift) && is_array($shift))
+                        <p class="font-bold text-white shadow-lg">Смена {{ $shift['shift_id'] }} ({{ $shift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
+                    @else
+                        <p class="font-bold text-red-400">Смена не определена</p>
+                    @endif
+                </div>
     </header>
 
     <!-- Navigation Tabs -->
     <div class="bg-white border-b">
-        <div class="container mx-auto flex space-x-2 p-2">
+        <div class="mx-auto  p-1">
             <button @click="tab='zones'" 
                 :class="tab === 'zones' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
                 class="px-4 py-2 rounded-md font-semibold uppercase">
@@ -36,6 +39,21 @@
                 :class="{ 'bg-emerald-600 text-white': tab === 'requests', 'text-gray-600 hover:bg-gray-100': tab !== 'requests' }"
                 class="px-4 py-2 rounded-md font-semibold uppercase">
                 Заявки
+            </button>
+            <button @click="tab='miners'" 
+            :class="tab === 'miners' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
+            class="px-4 py-2 rounded-md font-semibold uppercase">
+                Забои
+            </button>
+            <button @click="tab='rocks'" 
+                :class="tab === 'rocks' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
+                class="px-4 py-2 rounded-md font-semibold uppercase">
+                Породы
+            </button>
+            <button @click="tab='dumps'" 
+                :class="tab === 'dumps' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
+                class="px-4 py-2 rounded-md font-semibold uppercase">
+                Перегрузки
             </button>
         </div>
     </div>
@@ -62,6 +80,44 @@
                     <p class="text-2xl font-bold text-cyan-600">{{ $tripMetrics['avg_distance'] }} <span class="text-sm">@if($tripMetrics['avg_distance'] != '-') км @endif</span></p>
                 </div>
             </div>
+                        <!-- Активные маршруты (Настроенные грузопотоки) -->
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                    <i class="fas fa-route text-blue-500"></i> Активные маршруты (Куда направлены грузопотоки)
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b">
+                            <tr>
+                                <th class="text-left p-3 font-semibold text-gray-600">Забой (Откуда)</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Перегрузка (Куда)</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Зона</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Расстояние</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse(($activeRoutes ?? []) as $route)
+                                <tr class="border-b hover:bg-slate-50">
+                                    <td class="p-3 text-gray-700">{{ $route->miner?->name_miner ?? '—' }}</td>
+                                    <td class="p-3 text-gray-600">{{ $route->dump?->name_dump ?? '—' }}</td>
+                                    <td class="p-3 font-medium text-gray-800">{{ $route->zone?->name_zone ?? '—' }}</td>
+                                    <td class="p-3">
+                                        @if($route->rock)
+                                            <span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $route->rock->name_rock }}</span>
+                                        @else
+                                            <span class="text-gray-400">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="p-3 text-gray-500">{{ $route->distance_km ?? '—' }} км</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5" class="p-4 text-center text-gray-500">Нет активных настроенных маршрутов</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <!-- Активные перевозки (в данный момент) -->
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -80,7 +136,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($activeHauls as $haul)
+                            @forelse(($activeHauls ?? []) as $haul)
                                 <tr class="border-b hover:bg-slate-50">
                                     <td class="p-3 font-medium text-gray-800">{{ $haul->truck?->number ?? '—' }}</td>
                                     <td class="p-3 text-gray-600">{{ $haul->miner?->name_miner ?? '—' }}</td>
@@ -151,48 +207,69 @@
         <div x-show="tab === 'zones'" x-cloak class="mt-4 space-y-4">
             @foreach($dumps as $dump)
                 <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                    <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
-                        <h3 class="font-bold text-gray-800 uppercase text-sm"> {{ $dump->name_dump }}</h3>
-                        <a href="{{ route('dump.edit', $dump->id) }}" target="_blank" class="text-xs text-emerald-600 hover:text-emerald-800 font-semibold uppercase">
-                            Открыть настройки <i class="fas fa-external-link-alt ml-1"></i>
-                        </a>
+                    <div class="p-4 border-b bg-slate-50">
+                        <h3 class="font-bold text-gray-800 uppercase text-sm">Перегрузка: {{ $dump->name_dump }}</h3>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead class="bg-slate-50 border-b">
                                 <tr>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Зона</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600 w-1/4">Зона</th>
                                     <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">Текущий объем</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">Вместимость</th>
                                     <th class="text-left p-3 font-semibold text-gray-600">Заполнение</th>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Статус</th>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Действие</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Принимает</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach($dump->zones as $zone)
-                                    @php $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0; @endphp
-                                    <tr class="border-b {{ !$zone->delivery ? 'opacity-50' : '' }}">
+                                    @php 
+                                        $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0; 
+                                        $currentRockId = $zone->rocks->first()?->id;
+                                    @endphp
+                                    <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
                                         <td class="p-3 font-medium text-gray-800">{{ $zone->name_zone }}</td>
-                                        <td class="p-3 text-gray-600">{{ $zone->rocks->pluck('name_rock')->join(', ') ?: 'Не указана' }}</td>
+                                        <td class="p-3">
+                                            <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
+                                                <option value="">Не указана</option>
+                                                @foreach($rocks as $rock)
+                                                    <option value="{{ $rock->id }}" @if($currentRockId == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <div class="flex items-center gap-2">
+                                                <!-- Вводим количество вертушек, отправляем в базу кубометры (value * 380) -->
+                                                <input type="number" 
+                                                       wire:change="updateZoneField({{ $zone->id }}, 'volume', $event.target.value * 380)" 
+                                                       value="{{ round($zone->volume / 380) }}" 
+                                                       class="border-gray-300 rounded-md text-sm py-1 w-20 text-center" 
+                                                       step="1" min="0">
+                                                <span class="text-xs text-gray-500 whitespace-nowrap">({{ number_format($zone->volume, 0, '.', ' ') }} м³)</span>
+                                            </div>
+                                        </td>
+                                        <td class="p-3">
+                                            <div class="flex items-center gap-2">
+                                                <!-- Вводим количество вертушек, отправляем в базу кубометры (value * 380) -->
+                                                <input type="number" 
+                                                       wire:change="updateZoneField({{ $zone->id }}, 'capacity', $event.target.value * 380)" 
+                                                       value="{{ round($zone->capacity / 380) }}" 
+                                                       class="border-gray-300 rounded-md text-sm py-1 w-20 text-center" 
+                                                       step="1" min="0">
+                                                <span class="text-xs text-gray-500 whitespace-nowrap">({{ number_format($zone->capacity, 0, '.', ' ') }} м³)</span>
+                                            </div>
+                                        </td>
                                         <td class="p-3">
                                             <div class="flex items-center gap-2">
                                                 <div class="w-24 bg-gray-200 rounded-full h-2.5">
                                                     <div class="h-2.5 rounded-full {{ $fillPercent > 90 ? 'bg-red-500' : ($fillPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500') }}" style="width: {{ $fillPercent }}%"></div>
                                                 </div>
-                                                <span class="text-xs text-gray-500">{{ number_format($zone->volume, 0) }} / {{ number_format($zone->capacity, 0) }}</span>
+                                                <span class="text-xs text-gray-500">{{ round($fillPercent) }}%</span>
                                             </div>
                                         </td>
-                                        <td class="p-3">
-                                            @if($zone->delivery)
-                                                <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-100 text-emerald-700">Принимает</span>
-                                            @else
-                                                <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-slate-200 text-slate-700">Закрыта</span>
-                                            @endif
-                                        </td>
-                                        <td class="p-3">
-                                            <a href="{{ route('dump.edit', $dump->id) }}" target="_blank" class="text-gray-400 hover:text-emerald-600" title="Редактировать зону">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
+                                        <td class="p-3 text-center">
+                                            <input type="checkbox" wire:change="updateZoneField({{ $zone->id }}, 'delivery', $event.target.checked)" {{ $zone->delivery ? 'checked' : '' }} class="rounded text-emerald-600 h-5 w-5 cursor-pointer">
                                         </td>
                                     </tr>
                                 @endforeach
@@ -442,5 +519,173 @@
                     @endif
                 @endforeach
             </div>
+        </div>
+        <!-- ВКЛАДКА: Забои -->
+        <div x-show="tab === 'miners'" x-cloak class="mt-4 space-y-4">
+            <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
+                <input type="text" wire:model="newMinerName" placeholder="Название нового забоя" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
+                <button wire:click="addMiner" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700">Добавить</button>
+            </div>
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Список забоев</div>
+                <ul class="divide-y divide-gray-100">
+                    @foreach($miners as $miner)
+                        <li class="p-3 hover:bg-slate-50">
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium text-gray-800">{{ $miner->name_miner }}</span>
+                                <div class="flex gap-3 items-center">
+                                    <button wire:click="editMinerDistances({{ $miner->id }})" class="text-blue-500 hover:text-blue-700 text-xs font-semibold uppercase">
+                                        Расстояния <i class="fas fa-route ml-1"></i>
+                                    </button>
+                                    <button wire:click="deleteMiner({{ $miner->id }})" wire:confirm="Удалить забой?" class="text-red-400 hover:text-red-600 text-sm"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                            
+                            <!-- Раскрывающаяся панель расстояний -->
+                            @if($editingMinerId === $miner->id)
+                                <div class="mt-4 pt-4 border-t bg-slate-50 p-3 rounded-lg">
+                                    <h6 class="text-xs font-bold text-gray-500 uppercase mb-3">Расстояние до мест разгрузки (км)</h6>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        @foreach($dumps as $dump)
+                                            @php
+                                                $dist = \App\Models\MinerDumpDistance::where('miner_id', $miner->id)->where('dump_id', $dump->id)->first();
+                                                $distVal = $dist ? $dist->distance_km : '';
+                                            @endphp
+                                            <div class="flex items-center gap-2">
+                                                <span class="flex-1 text-sm text-gray-700">{{ $dump->name_dump }}</span>
+                                                <input type="number" step="0.1" wire:change="saveDistance({{ $miner->id }}, {{ $dump->id }}, $event.target.value)" value="{{ $distVal }}" class="w-24 border-gray-300 rounded-md py-1 text-sm" placeholder="км">
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА: Породы -->
+        <div x-show="tab === 'rocks'" x-cloak class="mt-4 space-y-4">
+            <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
+                <input type="text" wire:model="newRockName" placeholder="Название новой породы" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
+                <button wire:click="addRock" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700">Добавить</button>
+            </div>
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Список пород</div>
+                <ul class="divide-y divide-gray-100">
+                    @foreach($rocks as $rock)
+                        <li class="p-3 flex justify-between items-center hover:bg-slate-50">
+                            <span class="font-medium text-gray-800">{{ $rock->name_rock }}</span>
+                            <button wire:click="deleteRock({{ $rock->id }})" wire:confirm="Удалить породу?" class="text-red-400 hover:text-red-600 text-sm"><i class="fas fa-trash"></i></button>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        </div>
+
+        <!-- ВКЛАДКА: Перегрузки -->
+        <div x-show="tab === 'dumps'" x-cloak class="mt-4 space-y-4">
+            <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
+                <input type="text" wire:model="newDumpName" placeholder="Название новой перегрузки" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
+                <button wire:click="addDump" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700">Добавить</button>
+            </div>
+
+            @foreach($dumps as $dump)
+                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
+                        <h3 class="font-bold text-gray-800 uppercase text-sm">{{ $dump->name_dump }}</h3>
+                        <div class="flex gap-3 items-center">
+                            <button wire:click="toggleAddZone({{ $dump->id }})" class="text-blue-500 hover:text-blue-700 text-xs font-semibold uppercase">
+                                + Добавить зону
+                            </button>
+                            <button wire:click="deleteDump({{ $dump->id }})" wire:confirm="Удалить перегрузку?" class="text-red-400 hover:text-red-600 text-sm"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Форма добавления зоны -->
+                    @if($addZoneDumpId === $dump->id)
+                        <div class="p-4 bg-blue-50 border-b grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                            <div class="md:col-span-2">
+                                <label class="text-xs text-gray-500 uppercase">Название зоны</label>
+                                <input type="text" wire:model="newZoneName" class="w-full border-gray-300 rounded-md text-sm py-1" placeholder="Зона 1">
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 uppercase">Порода</label>
+                                <select wire:model="newZoneRockId" class="w-full border-gray-300 rounded-md text-sm py-1">
+                                    <option value="">Выберите</option>
+                                    @foreach($rocks as $rock)<option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>@endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-500 uppercase">Вместимость (м³)</label>
+                                <input type="number" wire:model="newZoneCapacity" class="w-full border-gray-300 rounded-md text-sm py-1">
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="flex-1">
+                                    <label class="text-xs text-gray-500 uppercase">Текущ. объем (м³)</label>
+                                    <input type="number" wire:model="newZoneVolume" class="w-full border-gray-300 rounded-md text-sm py-1">
+                                </div>
+                                <button wire:click="addZone({{ $dump->id }})" class="px-3 py-2 bg-emerald-600 text-white rounded-md text-xs uppercase font-bold whitespace-nowrap">Создать</button>
+                            </div>
+                        </div>
+                    @endif
+
+                    <!-- Список зон этой перегрузки с инлайн-редактированием -->
+                    @if($dump->zones->isNotEmpty())
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b">
+                            <tr>
+                                <th class="text-left p-2 font-semibold text-gray-600 w-1/4">Зона</th>
+                                <th class="text-left p-2 font-semibold text-gray-600">Порода</th>
+                                <th class="text-left p-2 font-semibold text-gray-600">Текущ. (верт.)</th>
+                                <th class="text-left p-2 font-semibold text-gray-600">Вмест. (верт.)</th>
+                                <th class="text-center p-2 font-semibold text-gray-600">Принимает</th>
+                                <th class="text-center p-2 font-semibold text-gray-600">Удалить</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($dump->zones as $zone)
+                                <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
+                                    <td class="p-2">
+                                        <input type="text" wire:change="updateZoneField({{ $zone->id }}, 'name_zone', $event.target.value)" value="{{ $zone->name_zone }}" class="border-gray-300 rounded-md text-sm py-1 w-full">
+                                    </td>
+                                    <td class="p-2">
+                                        <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
+                                            <option value="">Не указана</option>
+                                            @foreach($rocks as $rock)
+                                                <option value="{{ $rock->id }}" @if($zone->rocks->first()?->id == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
+                                            @endforeach
+                                        </select>
+                                    </td>
+                                    <td class="p-2">
+                                        <div class="flex items-center gap-1">
+                                            <input type="number" wire:change="updateZoneField({{ $zone->id }}, 'volume', $event.target.value * 380)" value="{{ round($zone->volume / 380) }}" class="border-gray-300 rounded-md text-sm py-1 w-16 text-center" step="1">
+                                            <span class="text-xs text-gray-400">({{ number_format($zone->volume, 0) }})</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-2">
+                                        <div class="flex items-center gap-1">
+                                            <input type="number" wire:change="updateZoneField({{ $zone->id }}, 'capacity', $event.target.value * 380)" value="{{ round($zone->capacity / 380) }}" class="border-gray-300 rounded-md text-sm py-1 w-16 text-center" step="1">
+                                            <span class="text-xs text-gray-400">({{ number_format($zone->capacity, 0) }})</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-2 text-center">
+                                        <input type="checkbox" wire:change="updateZoneField({{ $zone->id }}, 'delivery', $event.target.checked)" {{ $zone->delivery ? 'checked' : '' }} class="rounded text-emerald-600 h-5 w-5 cursor-pointer">
+                                    </td>
+                                    <td class="p-2 text-center">
+                                        <button wire:click="deleteZone({{ $zone->id }})" wire:confirm="Удалить зону? Привязанные к ней маршруты станут неактивными." class="text-red-400 hover:text-red-600">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    @else
+                        <div class="p-4 text-center text-gray-500 text-sm">Нет зон. Нажмите "+ Добавить зону".</div>
+                    @endif
+                </div>
+            @endforeach
         </div>
 </div>

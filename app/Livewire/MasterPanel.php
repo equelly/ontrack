@@ -22,9 +22,9 @@ class MasterPanel extends Component
     public $issueSummary;
     public $zoneVolumes;
     public $haulsSummary;
-    public $activeHauls;
     public $trucks;
     public $miners;
+    public $rocks;
     public $activeServiceTasks;
     public $pendingServiceTasks;
     public $categoryId = '';
@@ -32,11 +32,20 @@ class MasterPanel extends Component
     public $mashineId = '';
     public $createdAt = '';
     public $contentSearch = '';
+    public $newMinerName;
+    public $newRockName;
+    public $newDumpName;
+    public $editingMinerId = null;
+    public $addZoneDumpId = null;
+    public $newZoneName = 'Зона 1';
+    public $newZoneRockId;
+    public $newZoneCapacity = 10000;
+    public $newZoneVolume = 0;
 
     public function mount(ShiftService $shiftService)
     {
         $this->shift = $shiftService->getCurrentShift();
-
+        $this->rocks = \App\Models\Rock::all();
         // 1. Реальная сводка по самосвалам
         $this->trucksSummary = [
             'total' => Truck::count(),
@@ -122,7 +131,144 @@ class MasterPanel extends Component
             ->get();
     }
 
-    public function render()
+    // === Управление Забоями ===
+    public function addMiner()
+    {
+        $this->validate(['newMinerName' => 'required|string|max:255']);
+        \App\Models\Miner::create(['name_miner' => $this->newMinerName]);
+        $this->reset('newMinerName');
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Забой добавлен']);
+    }
+
+    public function deleteMiner($id)
+    {
+        try { \App\Models\Miner::find($id)->delete(); } catch (\Exception $e) {}
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Забой удален']);
+    }
+
+    public function editMinerDistances($id)
+    {
+        // Раскрываем/скрываем панель расстояний
+        $this->editingMinerId = $this->editingMinerId === $id ? null : $id;
+    }
+
+    public function saveDistance($minerId, $dumpId, $value)
+    {
+        // Сохраняем расстояние в таблицу miner_dump_distances
+        \App\Models\MinerDumpDistance::updateOrCreate(
+            ['miner_id' => $minerId, 'dump_id' => $dumpId],
+            ['distance_km' => $value]
+        );
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Расстояние обновлено']);
+    }
+
+    // === Управление Породами ===
+    public function addRock()
+    {
+        $this->validate(['newRockName' => 'required|string|max:255']);
+        \App\Models\Rock::create(['name_rock' => $this->newRockName]);
+        $this->reset('newRockName');
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Порода добавлена']);
+    }
+
+    public function deleteRock($id)
+    {
+        try { \App\Models\Rock::find($id)->delete(); } catch (\Exception $e) {}
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Порода удалена']);
+    }
+
+    // === Управление Перегрузками и Зонами ===
+    public function addDump()
+    {
+        $this->validate(['newDumpName' => 'required|string|max:255']);
+        $dump = \App\Models\Dump::create([
+            'name_dump' => $this->newDumpName,
+            'last_updated_by' => auth()->id() // Фиксируем автора
+        ]);
+        $this->reset('newDumpName');
+        
+        // Автоматически открываем форму создания зоны для нового отвала
+        $this->addZoneDumpId = $dump->id; 
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Перегрузка добавлена. Создайте зону.']);
+    }
+
+    public function deleteDump($id)
+    {
+        try { \App\Models\Dump::find($id)->delete(); } catch (\Exception $e) {}
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Перегрузка удалена']);
+    }
+
+    public function toggleAddZone($dumpId)
+    {
+        $this->addZoneDumpId = $this->addZoneDumpId === $dumpId ? null : $dumpId;
+    }
+
+    public function addZone($dumpId)
+    {
+        $this->validate([
+            'newZoneName' => 'required|string',
+            'newZoneRockId' => 'required|exists:rocks,id',
+            'newZoneCapacity' => 'required|numeric',
+            'newZoneVolume' => 'required|numeric',
+        ]);
+
+        $zone = \App\Models\Zone::create([
+            'dump_id' => $dumpId,
+            'name_zone' => $this->newZoneName,
+            'capacity' => $this->newZoneCapacity,
+            'volume' => $this->newZoneVolume,
+            'delivery' => true,
+            'last_updated_by' => auth()->id() // Фиксируем автора
+        ]);
+        
+        $zone->rocks()->sync([$this->newZoneRockId]);
+
+        $this->reset(['newZoneName', 'newZoneRockId', 'newZoneCapacity', 'newZoneVolume', 'addZoneDumpId']);
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона добавлена']);
+    }
+
+    public function updateZoneField($zoneId, $field, $value)
+    {
+        $zone = \App\Models\Zone::find($zoneId);
+        if (!$zone) return;
+
+        if ($field === 'delivery') {
+            $zone->delivery = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        } elseif (in_array($field, ['volume', 'capacity', 'name_zone'])) {
+            $zone->$field = $value;
+        } elseif ($field === 'rock_id') {
+            $zone->rocks()->sync([$value]);
+        }
+        
+        // Фиксируем, кто изменил зону
+        $zone->last_updated_by = auth()->id();
+        $zone->save();
+        
+        app(\App\Services\MiningOrderSyncService::class)->syncActiveStatusForZone($zone->id);
+        
+        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона обновлена']);
+    }
+        public function deleteZone($zoneId)
+    {
+        $zone = \App\Models\Zone::find($zoneId);
+        if (!$zone) return;
+
+        // 1. Снимаем привязку зоны с маршрутами и делаем их неактивными
+        \App\Models\MiningOrder::where('zone_id', $zoneId)->update([
+            'zone_id' => null,
+            'active' => false
+        ]);
+
+        // 2. Удаляем саму зону
+        $zone->delete();
+
+        // 3. Обновляем данные в интерфейсе
+        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Зона удалена']);
+    }
+
+    public function render(ShiftService $shiftService)
     {
         // 1. Данные для выпадающих списков фильтра
         $categories = \App\Models\Category::all();
@@ -151,12 +297,41 @@ class MasterPanel extends Component
         })
         ->get()
         ->filter(function($mashine) {
-            // Оставляем только ту технику, у которой есть комплектация или отфильтрованные заявки
             return $mashine->sets->isNotEmpty() || $mashine->orders->isNotEmpty();
         });
 
         $ordersCount = \App\Models\Order::where('content', '!=', '')->count();
 
-        return view('livewire.master-panel', compact('dumps', 'mashines', 'ordersCount', 'categories', 'users', 'allMashines'));
+        // 3. Обновляем смену
+        $this->shift = $shiftService->getCurrentShift();
+        
+        // 4. Активные настроенные маршруты (Забой -> Зона)
+        $activeRoutes = \App\Models\MiningOrder::where('active', true)
+            ->whereNotNull('zone_id')
+            ->with(['miner', 'dump', 'zone', 'rock'])
+            ->get();
+            
+        // 5. Активные перевозки (в данный момент)
+        $activeHauls = \App\Models\TruckTrip::whereNull('completed_at')
+            ->with(['truck', 'miner', 'zone.dump', 'rock'])
+            ->get();
+        
+        // 6. Справочники для вкладок Мастера
+        $miners = \App\Models\Miner::orderBy('name_miner')->get();
+        $rocks = \App\Models\Rock::orderBy('name_rock')->get();
+        
+        // 7. Возвращаем вид
+        return view('livewire.master-panel', compact(
+            'dumps', 
+            'mashines', 
+            'ordersCount', 
+            'categories', 
+            'users', 
+            'allMashines', 
+            'miners', 
+            'rocks', 
+            'activeRoutes', 
+            'activeHauls'
+        ));
     }
 }
