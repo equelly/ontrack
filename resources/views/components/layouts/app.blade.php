@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $title ?? 'Page TITLE' }}</title>
+    <title>@yield('title', 'SiMqa')</title>
     
     <!-- 🔥 CSRF ПЕРВЫМ ДЕЛОМ! -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -18,8 +18,8 @@
 </head>
 <body class="font-roboto">
     {{ $slot }}
-    
-    {{-- 🔥 Livewire Scripts ПОСЛЕ контента --}}
     @livewireScripts
+  
+    @livewireScriptConfig
 </body>
 </html>

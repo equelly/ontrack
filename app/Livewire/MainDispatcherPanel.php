@@ -773,29 +773,65 @@ class MainDispatcherPanel extends Component
         $this->loadData();
     }
 
+     // 1. Мгновенное обновление UI без тяжелых запросов
     public function toggleZone(int $zoneId, bool $delivery): void
     {
         $zone = Zone::find($zoneId);
+        if (!$zone) return;
 
-        if (!$zone) {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Зона не найдена']);
-            return;
-        }
-
+        // Обновляем в базе
         $zone->update(['delivery' => $delivery]);
+        
+        // Быстро синхронизируем маршруты
+        app(\App\Services\MiningOrderSyncService::class)->syncActiveStatusForZone($zone->id);
 
-        if (!$delivery) {
-            $this->routeService->reassignOnZoneClose($zone);
-        }
+        // МГНОВЕННО обновляем коллекцию в памяти компонента, чтобы UI изменился без loadData()
+        $this->zones = $this->zones->map(function ($z) use ($zoneId, $delivery) {
+            if ($z->id == $zoneId) {
+                $z->delivery = $delivery;
+            }
+            return $z;
+        });
 
-        $this->loadData();
-
+        // Только одно уведомление
         $this->dispatch('notify', [
-            'type' => 'info',
-            'message' => $delivery ? "Зона {$zone->name_zone} открыта" : "Зона {$zone->name_zone} закрыта",
+            'type' => 'warning',
+            'message' => $delivery ? "Зона открыта. Нажмите 'Перенаправить технику'." : "Зона закрыта. Нажмите 'Перенаправить технику'.",
         ]);
     }
 
+    public function applyZoneChanges()
+    {
+        try {
+            // Находим ID закрытых зон, в которые ЕДУТ самосвалы
+            $closedZoneIds = TruckTrip::whereNull('completed_at')
+                ->whereHas('zone', function ($q) {
+                    $q->where('delivery', false);
+                })
+                ->pluck('zone_id')
+                ->unique();
+
+            $affectedZones = Zone::whereIn('id', $closedZoneIds)->get();
+
+            foreach ($affectedZones as $zone) {
+                $this->routeService->reassignOnZoneClose($zone);
+            }
+
+            $this->loadData();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Изменения применены. Техника перенаправлена!',
+            ]);
+
+        } catch (\Exception $e) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Ошибка при перенаправлении: ' . $e->getMessage(),
+            ]);
+            $this->loadData(); 
+        }
+    }
     public function getFreeTrucksCountProperty(): int
     {
         // Доступны для назначения = все кроме breakdown

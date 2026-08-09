@@ -41,6 +41,23 @@ class MasterPanel extends Component
     public $newZoneRockId;
     public $newZoneCapacity = 10000;
     public $newZoneVolume = 0;
+    public $newTruckNumber;
+    public $newTruckModelId;
+    public $newTruckFuel;
+
+        // Перевод названий полей для ошибок валидации
+    protected $validationAttributes = [
+        'newTruckNumber' => 'Номер грузовика',
+        'newTruckModelId' => 'Модель',
+        'newTruckFuel' => 'Топливо',
+        'newMinerName' => 'Название забоя',
+        'newRockName' => 'Название породы',
+        'newDumpName' => 'Название перегрузки',
+        'newZoneName' => 'Название зоны',
+        'newZoneRockId' => 'Порода зоны',
+        'newZoneCapacity' => 'Вместимость зоны',
+        'newZoneVolume' => 'Текущий объем зоны',
+    ];
 
     public function mount(ShiftService $shiftService)
     {
@@ -135,15 +152,88 @@ class MasterPanel extends Component
     public function addMiner()
     {
         $this->validate(['newMinerName' => 'required|string|max:255']);
-        \App\Models\Miner::create(['name_miner' => $this->newMinerName]);
+        
+        // 1. Сначала создаем карточку оборудования (Mashine)
+        $mashine = \App\Models\Mashine::create([
+            'number' => $this->newMinerName // Название забоя будет номером карточки
+        ]);
+
+        // 2. Создаем забой и сразу привязываем к карточке
+        \App\Models\Miner::create([
+            'name_miner' => $this->newMinerName,
+            'mashine_id' => $mashine->id
+        ]);
+
         $this->reset('newMinerName');
-        $this->dispatch('notify', ['type' => 'success', 'message' => 'Забой добавлен']);
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Забой добавлен и связан с оборудованием']);
     }
 
     public function deleteMiner($id)
     {
-        try { \App\Models\Miner::find($id)->delete(); } catch (\Exception $e) {}
-        $this->dispatch('notify', ['type' => 'info', 'message' => 'Забой удален']);
+        try {
+            $miner = \App\Models\Miner::find($id);
+            if ($miner) {
+                // Удаляем связанную карточку оборудования, если она есть
+                if ($miner->mashine_id) {
+                    \App\Models\Mashine::find($miner->mashine_id)?->delete();
+                }
+                $miner->delete();
+            }
+            $this->dispatch('notify', ['type' => 'info', 'message' => 'Забой удален']);
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Невозможно удалить: есть связанные данные']);
+        }
+    }
+    // === Управление Грузовиками ===
+    public function addTruck()
+    {
+        $this->validate([
+            'newTruckNumber' => 'required|string|max:255',
+            'newTruckModelId' => 'required|exists:truck_models,id',
+            'newTruckFuel' => 'required|numeric|min:0'
+        ]);
+
+        // 1. Находим выбранную модель, чтобы взять паспортные данные
+        $truckModel = \App\Models\TruckModel::find($this->newTruckModelId);
+
+        // 2. Создаем карточку оборудования
+        $mashine = \App\Models\Mashine::create([
+            'number' => $this->newTruckNumber
+        ]);
+
+        // 3. Создаем самосвал
+        \App\Models\Truck::create([
+            'number' => $this->newTruckNumber,
+            'truck_model_id' => $truckModel->id,
+            'mashine_id' => $mashine->id,
+            'status' => 'free',
+            'load_capacity' => $truckModel->load_capacity, 
+            // Берем ФАКТИЧЕСКОЕ топливо, которое ввел Мастер (не больше объема бака!)
+            'fuel_level' => min($this->newTruckFuel, $truckModel->fuel_capacity ?? 9999), 
+            'mileage' => 0,
+            'mileage_since_fuel' => 0,
+            'moto_minutes' => 0,
+            'moto_minutes_since_to' => 0,
+        ]);
+
+        $this->reset(['newTruckNumber', 'newTruckModelId', 'newTruckFuel']);
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Самосвал добавлен и связан с оборудованием']);
+    }
+        public function deleteTruck($id)
+    {
+        try {
+            $truck = \App\Models\Truck::find($id);
+            if ($truck) {
+                // Удаляем связанную карточку оборудования, если она есть
+                if ($truck->mashine_id) {
+                    \App\Models\Mashine::find($truck->mashine_id)?->delete();
+                }
+                $truck->delete();
+            }
+            $this->dispatch('notify', ['type' => 'info', 'message' => 'Самосвал удален']);
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Невозможно удалить: есть рейсы или заявки']);
+        }
     }
 
     public function editMinerDistances($id)

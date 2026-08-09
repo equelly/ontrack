@@ -3,16 +3,28 @@
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
             <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1> 
-                <div class="text-right text-sm">
-                    <p class="text-lg font-bold uppercase tracking-wider text-white shadow-lg">смена {{Auth::user()->name}}</p>
+            
+            <div class="flex items-center gap-4">
+                <!-- Информация о пользователе и смене -->
+                <div class="text-right text-sm hidden sm:block">
+                    <p class="text-gray-400">{{ Auth::user()->name }}</p>
                     @if(isset($shift) && is_array($shift))
                         <p class="font-bold text-white shadow-lg">Смена {{ $shift['shift_id'] }} ({{ $shift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
                     @else
                         <p class="font-bold text-red-400">Смена не определена</p>
                     @endif
                 </div>
-    </header>
 
+                <!-- Кнопка выхода -->
+                <form action="{{ route('logout') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition">
+                        Выйти
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
     <!-- Navigation Tabs -->
     <div class="bg-white border-b">
         <div class="mx-auto  p-1">
@@ -283,8 +295,57 @@
         <div x-show="tab === 'equipment'" x-cloak class="mt-4 space-y-6">
             
             <!-- Самосвалы -->
-            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Самосвалы</div>
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden" x-data="{ showAddTruck: false }">
+                <div class="p-4 border-b flex justify-between items-center">
+                    <span class="font-bold text-gray-800 uppercase text-sm">Самосвалы</span>
+                    <button @click="showAddTruck = !showAddTruck" class="text-emerald-600 hover:text-emerald-800 text-xs font-semibold uppercase">
+                        + Добавить
+                    </button>
+                </div>
+
+                <!-- Форма добавления самосвала -->
+                <div x-show="showAddTruck" x-cloak class="p-4 bg-slate-50 border-b">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        
+                        <!-- Номер -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Номер</label>
+                            <input type="text" wire:model="newTruckNumber" placeholder="Напр. 120" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newTruckNumber') border-red-500 bg-red-50 @enderror">
+                            @error('newTruckNumber')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <!-- Модель -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Модель</label>
+                            <select wire:model="newTruckModelId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newTruckModelId') border-red-500 bg-red-50 @enderror">
+                                <option value="">Выберите модель</option>
+                                @foreach(\App\Models\TruckModel::all() as $model)
+                                    <option value="{{ $model->id }}">{{ $model->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('newTruckModelId')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <!-- Топливо -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Топливо (л)</label>
+                            <input type="number" wire:model="newTruckFuel" placeholder="Напр. 150" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newTruckFuel') border-red-500 bg-red-50 @enderror" min="0">
+                            @error('newTruckFuel')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <!-- Кнопка -->
+                        <button wire:click="addTruck" class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700">
+                            Создать
+                        </button>
+                    </div>
+                </div>
+
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-slate-50 border-b">
@@ -299,12 +360,20 @@
                         <tbody>
                             @foreach($trucks as $truck)
                                 <tr class="border-b hover:bg-slate-50">
-                                    <td class="p-3 font-bold text-gray-800">{{ $truck->number }}</td>
+                                    <td class="p-3 font-bold text-gray-800">
+                                        <div class="flex items-center gap-2">
+                                            <span>{{ $truck->number }}</span>
+                                            <button wire:click="deleteTruck({{ $truck->id }})" wire:confirm="Удалить самосвал?" class="text-red-400 hover:text-red-600 text-xs">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td class="p-3">
                                         <span class="px-2 py-0.5 text-xs font-medium rounded-md 
                                             {{ $truck->status === 'breakdown' ? 'bg-red-100 text-red-700' : 
-                                               ($truck->status === 'free' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-700') }}">
+                                            ($truck->status === 'free' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-700') }}">
                                             {{ \App\Domain\TruckStatus::label($truck->status) }}
+                                        </span>
                                     </td>
                                     <td class="p-3 text-gray-500 text-xs">{{ $truck->updated_at?->diffForHumans() }}</td>
                                     <td class="p-3 text-gray-600">{{ $truck->fuel_level ?? '—' }} л</td>
@@ -524,6 +593,9 @@
         <div x-show="tab === 'miners'" x-cloak class="mt-4 space-y-4">
             <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
                 <input type="text" wire:model="newMinerName" placeholder="Название нового забоя" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
+                @error('newMinerName')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
                 <button wire:click="addMiner" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700">Добавить</button>
             </div>
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -569,6 +641,9 @@
         <div x-show="tab === 'rocks'" x-cloak class="mt-4 space-y-4">
             <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
                 <input type="text" wire:model="newRockName" placeholder="Название новой породы" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
+                @error('newRockName')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
                 <button wire:click="addRock" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700">Добавить</button>
             </div>
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -588,6 +663,9 @@
         <div x-show="tab === 'dumps'" x-cloak class="mt-4 space-y-4">
             <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
                 <input type="text" wire:model="newDumpName" placeholder="Название новой перегрузки" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
+                @error('newDumpName')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
                 <button wire:click="addDump" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700">Добавить</button>
             </div>
 
@@ -608,23 +686,27 @@
                         <div class="p-4 bg-blue-50 border-b grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                             <div class="md:col-span-2">
                                 <label class="text-xs text-gray-500 uppercase">Название зоны</label>
-                                <input type="text" wire:model="newZoneName" class="w-full border-gray-300 rounded-md text-sm py-1" placeholder="Зона 1">
+                                <input type="text" wire:model="newZoneName" placeholder="Зона 1" class="w-full border-gray-300 rounded-md text-sm py-1 @error('newZoneName') border-red-500 bg-red-50 @enderror">
+                                @error('newZoneName') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
                             <div>
                                 <label class="text-xs text-gray-500 uppercase">Порода</label>
-                                <select wire:model="newZoneRockId" class="w-full border-gray-300 rounded-md text-sm py-1">
+                                <select wire:model="newZoneRockId" class="w-full border-gray-300 rounded-md text-sm py-1 @error('newZoneRockId') border-red-500 bg-red-50 @enderror">
                                     <option value="">Выберите</option>
                                     @foreach($rocks as $rock)<option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>@endforeach
                                 </select>
+                                @error('newZoneRockId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
                             <div>
                                 <label class="text-xs text-gray-500 uppercase">Вместимость (м³)</label>
-                                <input type="number" wire:model="newZoneCapacity" class="w-full border-gray-300 rounded-md text-sm py-1">
+                                <input type="number" wire:model="newZoneCapacity" class="w-full border-gray-300 rounded-md text-sm py-1 @error('newZoneCapacity') border-red-500 bg-red-50 @enderror">
+                                @error('newZoneCapacity') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
                             <div class="flex gap-2">
                                 <div class="flex-1">
                                     <label class="text-xs text-gray-500 uppercase">Текущ. объем (м³)</label>
-                                    <input type="number" wire:model="newZoneVolume" class="w-full border-gray-300 rounded-md text-sm py-1">
+                                    <input type="number" wire:model="newZoneVolume" class="w-full border-gray-300 rounded-md text-sm py-1 @error('newZoneVolume') border-red-500 bg-red-50 @enderror">
+                                    @error('newZoneVolume') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                                 </div>
                                 <button wire:click="addZone({{ $dump->id }})" class="px-3 py-2 bg-emerald-600 text-white rounded-md text-xs uppercase font-bold whitespace-nowrap">Создать</button>
                             </div>

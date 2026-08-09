@@ -377,4 +377,9 @@ class Miner extends Model
         }
         return 'balanced'; // Сбалансирован
     }
+    // связь с таблицей mashines для заявок
+    public function mashine()
+    {
+        return $this->belongsTo(\App\Models\Mashine::class);
+    }
 }

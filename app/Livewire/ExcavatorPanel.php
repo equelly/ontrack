@@ -28,6 +28,12 @@ class ExcavatorPanel extends Component
     public $trucks;
     public array $stats = [];
     public array $productivityStats = [];
+    // для заявок
+    public $contentSearch;
+    public $categoryId;
+    public $userId;
+    public $createdAt;
+    public $mashineId;
 
     // Выбор экскаватора
     public ?int $selectedMinerId = null;
@@ -831,9 +837,41 @@ class ExcavatorPanel extends Component
     ];
     }
 
-
     public function render()
     {
-        return view('livewire.excavator-panel');
+        $categories = \App\Models\Category::all();
+        $users = \App\Models\User::orderBy('name')->get();
+        $allMashines = \App\Models\Mashine::orderBy('number')->get();
+
+        $mashinesQuery = \App\Models\Mashine::with(['orders' => function($q) {
+            $q->where('content', '!=', '')
+              ->when($this->contentSearch, function($q) {
+                  $q->where('content', 'like', '%' . $this->contentSearch . '%');
+              })
+              ->when($this->categoryId, function($q) {
+                  $q->where('category_id', $this->categoryId);
+              })
+              ->when($this->userId, function($q) {
+                  $q->where('user_id', $this->userId);
+              })
+              ->when($this->createdAt, function($q) {
+                  $q->whereDate('created_at', $this->createdAt);
+              });
+        }, 'sets']);
+
+        // --- АВТОФИЛЬТР ПО ТЕКУЩЕМУ ЭКСКАВАТОРУ ---
+        if ($this->miner && $this->miner->mashine_id) {
+            $mashinesQuery->where('id', $this->miner->mashine_id);
+        } else {
+            $mashinesQuery->whereRaw('1=0');
+        }
+
+        $mashines = $mashinesQuery->get()->filter(function($mashine) {
+            return $mashine->sets->isNotEmpty() || $mashine->orders->isNotEmpty();
+        });
+
+        $ordersCount = $mashines->sum(fn($m) => $m->orders->count());
+
+        return view('livewire.excavator-panel', compact('mashines', 'ordersCount', 'categories', 'users', 'allMashines'));
     }
 }

@@ -5,12 +5,6 @@
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
     <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
-            <!-- Кнопка планирования (слева) -->
-            <button wire:click="runShiftPlanning" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 rounded-md font-semibold uppercase text-xs tracking-wider hover:bg-emerald-700 whitespace-nowrap">
-                <span wire:loading.remove><i class="fas fa-calendar-check mr-1"></i> Планировать смену</span>
-                <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Планирование...</span>
-            </button>
-
             <!-- Статистика -->
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <div class="flex items-center gap-2">
@@ -57,9 +51,36 @@
                 </div>
             </div>
 
-            <button wire:click="loadData" wire:loading.attr="disabled" class="ml-auto text-gray-400 hover:text-white">
-                <i class="fas fa-sync-alt" wire:loading.class="fa-spin"></i>
-            </button>
+            <!-- ПРАВЫЙ БЛОК: Обновить, Пользователь, Выход -->
+            <div class="ml-auto flex items-center gap-4">
+                <button wire:click="runShiftPlanning" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 rounded-md font-semibold uppercase text-xs tracking-wider hover:bg-emerald-700 whitespace-nowrap">
+                    <span wire:loading.remove><i class="fas fa-calendar-check mr-1"></i> Планировать смену</span>
+                    <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Планирование...</span>
+                </button>
+                <!-- Кнопка обновления данных (только для диспетчера, у остальных можно убрать) -->
+                <button wire:click="loadData" wire:loading.attr="disabled" class="text-gray-400 hover:text-white" title="Обновить данные">
+                    <i class="fas fa-sync-alt" wire:loading.class="fa-spin"></i>
+                </button>
+
+                <!-- Информация о пользователе (скрывается на малых экранах) -->
+                <div class="text-right text-sm hidden md:block">
+                    <p class="text-gray-400">{{ Auth::user()->name }}</p>
+                    @php $currentShift = app(\App\Services\ShiftService::class)->getCurrentShift(); @endphp
+                    @if(is_array($currentShift))
+                        <p class="font-bold text-white">Смена {{ $currentShift['shift_id'] }} ({{ $currentShift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
+                    @else
+                        <p class="font-bold text-red-400">Смена не определена</p>
+                    @endif
+                </div>
+
+                <!-- Кнопка выхода -->
+                <form action="{{ route('logout') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition">
+                        Выйти
+                    </button>
+                </form>
+            </div>
         </div>
     </header>
 
@@ -713,6 +734,17 @@
 
             <div class="flex justify-between items-center mb-4">
                 <h5 class="font-bold text-gray-800 uppercase text-sm">Мониторинг зон разгрузки</h5>
+                            <!-- Плашка пакетного применения -->
+                        <div class="bg-amber-50 border-l-4 border-amber-400 p-4 mb-6 rounded flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div class="text-amber-700 text-sm">
+                                <i class="fas fa-exclamation-triangle mr-2"></i>
+                                <strong>Внимание!</strong> Изменения статусов зон вступят в силу для самосвалов только после нажатия кнопки.
+                            </div>
+                                <button wire:click="applyZoneChanges" wire:loading.attr="disabled" class="px-6 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-sm hover:bg-emerald-700 whitespace-nowrap w-full sm:w-auto">
+                                    <span wire:loading.remove wire:target="applyZoneChanges"><i class="fas fa-truck mr-1"></i> Перенаправить технику</span>
+                                    <span wire:loading wire:target="applyZoneChanges"><i class="fas fa-spinner fa-spin mr-1"></i> Идет расчет...</span>
+                                </button>
+                        </div>
                 <div class="flex gap-2">
                     @if(count($overloadedZones) > 0)
                         <button class="px-4 py-2 bg-amber-500 text-white rounded-md text-xs font-semibold uppercase hover:bg-amber-600" wire:click="balanceZones" wire:loading.attr="disabled">
@@ -720,9 +752,6 @@
                             <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Балансировка...</span>
                         </button>
                     @endif
-                    <a href="{{ route('dump.index') }}" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-md text-xs font-semibold uppercase hover:bg-slate-300" target="_blank">
-                        <i class="fas fa-cog mr-1"></i> Настроить
-                    </a>
                 </div>
             </div>
 
@@ -758,14 +787,25 @@
                         $statusColor = $statusColors[$loadStats['status']] ?? 'slate';
                         $statusLabel = $statusLabels[$loadStats['status']] ?? $loadStats['status'];
                     @endphp
-                    <div class="bg-white rounded-xl border shadow-sm p-4 {{ !$zone->delivery ? 'opacity-60' : '' }} {{ $isOverloaded ? 'border-red-500' : '' }}">
-                        <div class="flex justify-between items-center mb-3">
-                            <h5 class="font-bold text-gray-800">{{ $zone->dump?->name_dump }} - {{ $zone->name_zone }}</h5>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" {{ $zone->delivery ? 'checked' : '' }} wire:click="toggleZone({{ $zone->id }}, {{ $zone->delivery ? 'false' : 'true' }})" wire:loading.attr="disabled" class="rounded text-emerald-600 focus:ring-emerald-500">
-                                <span class="text-xs">{{ $zone->delivery ? 'Открыта' : 'Закрыта' }}</span>
-                            </label>
+                    <div class="bg-white rounded-xl border shadow-sm p-4 relative {{ !$zone->delivery ? 'opacity-60' : '' }} {{ $isOverloaded ? 'border-red-500' : '' }}">
+    
+                        <!-- Индикатор загрузки ТОЛЬКО для этой зоны -->
+                        <div wire:loading wire:target="toggleZone({{ $zone->id }}, true) wire:target="toggleZone({{ $zone->id }}, false)" class="absolute inset-0 bg-white/70 rounded-xl flex items-center justify-center z-10">
+                            <i class="fas fa-spinner fa-spin text-emerald-600 text-2xl"></i>
                         </div>
+
+                        <div class="flex justify-between items-center mb-3">
+                        <h5 class="font-bold text-gray-800">{{ $zone->dump?->name_dump }} - {{ $zone->name_zone }}</h5>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" 
+                                {{ $zone->delivery ? 'checked' : '' }} 
+                                wire:change="toggleZone({{ $zone->id }}, {{ $zone->delivery ? 'false' : 'true' }})"
+                                wire:loading.attr="disabled"
+                                wire:target="toggleZone({{ $zone->id }}, true) wire:target="toggleZone({{ $zone->id }}, false)" 
+                                class="rounded text-emerald-600 focus:ring-emerald-500">
+                            <span class="text-xs">{{ $zone->delivery ? 'Открыта' : 'Закрыта' }}</span>
+                        </label>
+                    </div>
 
                         <div class="flex justify-between items-center mb-2">
                             <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-{{ $statusColor }}-100 text-{{ $statusColor }}-700">{{ $statusLabel }}</span>
@@ -818,7 +858,6 @@
                 @endforeach
             </div>
         </div>
-        <!        <!-- Простои и задержки -->
         <div x-show="tab === 'pausesTab'" x-cloak class="mt-4" id="pausesTab">
             @php
                 $pauseStats = $this->pause_stats;
@@ -1094,7 +1133,7 @@
             </div>
             @endif
         </div>
-    </main>
+</div>
 
     <!-- Модальное окно принудительной смены статуса -->
     @if($forceStatusTruckId)
@@ -1206,17 +1245,8 @@
 
         document.addEventListener('livewire:init', () => {
             updateTripTimers();
-            Livewire.on('notify', (data) => {
-                const event = Array.isArray(data) ? data[0] : data;
-                if (!event || !event.message) return;
-                const container = document.getElementById('global-toast-container');
-                const toast = document.createElement('div');
-                const bgClass = event.type === 'success' ? 'bg-emerald-500' : event.type === 'error' ? 'bg-red-500' : event.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500';
-                toast.className = `${bgClass} text-white px-4 py-2 rounded-md shadow-lg mb-2 flex justify-between items-center text-sm max-w-xs`;
-                toast.innerHTML = `<span>${event.message}</span><button onclick="this.parentElement.remove()" class="ml-4 text-xl leading-none">&times;</button>`;
-                container.appendChild(toast);
-                setTimeout(() => { toast.style.transition = 'opacity 0.5s'; toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 5000);
-            });
+
+            
             if (window.Echo) {
                 window.Echo.channel('dispatcher')
                     .listen('.truck-updated', (data) => { Livewire.dispatch('refresh-dispatcher-data'); })

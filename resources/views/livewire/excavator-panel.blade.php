@@ -3,37 +3,41 @@
     <div id="global-toast-container" class="fixed top-0 right-0 p-3" style="z-index: 9999;"></div>
 
     <!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ЭКСКАВАТОРА -->
-    <header class="bg-slate-900 text-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-3 sm:px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-            <div class="flex items-center gap-2 w-full">
-                <select wire:model.live="selectedMinerId" class="bg-slate-800 border-slate-700 text-white focus:border-emerald-500 focus:ring-emerald-500 rounded-md shadow-sm py-2 pl-3 pr-8 text-sm flex-1 min-w-0">
-                    <option value="">-- Выберите экскаватор --</option>
-                    @foreach($miners as $m)
-                        <option value="{{ $m->id }}">{{ $m->name_miner }}</option>
-                    @endforeach
-                </select>
+    <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
+        <div class="px-4 py-3 flex items-center justify-between">
+            <h1 class="text-lg font-bold uppercase tracking-wider">Панель экскаваторщика</h1> 
+            <!-- ПРАВЫЙ БЛОК: Обновить, Пользователь, Выход -->
+            <div class="ml-auto flex items-center gap-4">
+                <div class="flex items-center gap-2 w-full">
+                    <select wire:model.live="selectedMinerId" class="bg-slate-800 border-slate-700 text-white focus:border-emerald-500 focus:ring-emerald-500 rounded-md shadow-sm py-2 pl-3 pr-8 text-sm flex-1 min-w-0">
+                        <option value="">-- Выберите экскаватор --</option>
+                        @foreach($miners as $m)
+                            <option value="{{ $m->id }}">{{ $m->name_miner }}</option>
+                        @endforeach
+                    </select>
                 <button wire:click="selectMiner" wire:loading.attr="disabled" class="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-emerald-700 active:bg-emerald-900 transition ease-in-out duration-150 whitespace-nowrap">
                     <span wire:loading.remove>Выбрать</span>
                     <span wire:loading class="animate-spin">⏳</span>
                 </button>
-            </div>
-            
-            @if($miner)
-            <div class="flex items-center gap-4 text-sm sm:ml-auto justify-end w-full sm:w-auto">
-                <div class="text-right">
-                    <p class="text-[10px] sm:text-xs text-gray-400 uppercase">Экскаватор</p>
-                    <p class="font-bold text-white text-sm sm:text-base">{{ $miner->name_miner }}</p>
-                </div>
-                <div class="text-right">
-                    <p class="text-[10px] sm:text-xs text-gray-400 uppercase">Порода</p>
-                    @if($miner->currentRock)
-                        <p class="font-bold text-emerald-400 text-sm sm:text-base">{{ $miner->currentRock->name_rock }}</p>
+                <!-- Информация о пользователе (скрывается на малых экранах) -->
+                <div class="text-right text-sm hidden md:block">
+                    <p class="text-gray-400">{{ Auth::user()->name }}</p>
+                    @php $currentShift = app(\App\Services\ShiftService::class)->getCurrentShift(); @endphp
+                    @if(is_array($currentShift))
+                        <p class="font-bold text-white">Смена {{ $currentShift['shift_id'] }} ({{ $currentShift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
                     @else
-                        <p class="font-bold text-amber-400 text-sm sm:text-base">Не выбрана</p>
+                        <p class="font-bold text-red-400">Смена не определена</p>
                     @endif
                 </div>
+
+                <!-- Кнопка выхода -->
+                <form action="{{ route('logout') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition">
+                        Выйти
+                    </button>
+                </form>
             </div>
-            @endif
         </div>
     </header>
 
@@ -47,9 +51,11 @@
             <button @click="tab='stats'" :class="tab === 'stats' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'" class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5">
                 <span>📊</span> <span class="hidden sm:inline">Статистика</span>
             </button>
-            <a href="{{ route('order.index') }}" class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5 text-gray-600 hover:bg-gray-100">
-                <span>🛠️</span> <span class="hidden sm:inline">Заявки</span>
-            </a>
+            <button @click="tab='requests'"
+                :class="{ 'bg-emerald-600 text-white': tab === 'requests', 'text-gray-600 hover:bg-gray-100': tab !== 'requests' }"
+                class="px-4 py-2 rounded-md font-semibold uppercase">
+                <span>📝</span> <span class="hidden sm:inline">Заявки</span>
+            </button>
         </div>
     </nav>
 
@@ -262,7 +268,101 @@
         </div>
     </main>
     @endif
+            <!-- ВКЛАДКА: Заявки -->
+        <div x-show="tab === 'requests'" x-cloak class="mt-4 space-y-6">
+            <!-- Панель фильтрации -->
+            <div class="bg-white rounded-xl border shadow-sm p-4 mb-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div>
+                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Категория</label>
+                        <select wire:model.live="categoryId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                            <option value="">Все</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}">{{ $category->title }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Автор</label>
+                        <select wire:model.live="userId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                            <option value="">Все</option>
+                            @foreach($users as $user)
+                                <option value="{{ $user->id }}">{{ $user->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Оборудование</label>
+                        <select wire:model.live="mashineId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                            <option value="">Все</option>
+                            @foreach($allMashines as $mashine)
+                                <option value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Дата</label>
+                        <input type="date" wire:model.live="createdAt" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Фрагмент заявки</label>
+                        <input type="text" wire:model.live.debounce.300ms="contentSearch" placeholder="Поиск по тексту..." class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                    </div>
+                </div>
+                <div class="flex justify-between items-center mt-4 pt-4 border-t">
+                    <h3 class="font-bold text-gray-800 uppercase text-sm">Всего заявок: <span class="text-emerald-600">{{ $ordersCount }}</span></h3>
+                    <a href="{{ route('order.create') }}" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-xs hover:bg-emerald-700">
+                        <i class="fas fa-plus mr-1"></i> Создать заявку
+                    </a>
+                </div>
+            </div>
 
+            <!-- Карточки техники с заявками -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                @foreach($mashines as $mashine)
+                    @if(count($mashine->sets) != 0 || count($mashine->orders) != 0)
+                        <div class="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col sm:flex-row">
+                            
+                            <!-- Левая часть: Заявки -->
+                            <div class="flex-1 p-4 border-b sm:border-b-0 sm:border-r">
+                                <h5 class="font-bold text-gray-800 mb-3">ЭКГ №{{ $mashine->number }}</h5>
+                                <div class="space-y-3">
+                                    @foreach($mashine->orders as $order)
+                                        <div class="bg-slate-50 p-3 rounded-md border border-slate-200">
+                                            <small class="text-gray-500 block mb-1">
+                                                {{ $order->created_at->translatedFormat('d F Y') }} ({{ $order->created_at->diffForHumans() }})
+                                            </small>
+                                            <p class="text-sm text-gray-700">{{ $order->content }}</p>
+                                            <a href="{{ route('order.show', $order->id) }}" class="text-xs text-emerald-600 hover:text-emerald-800 mt-2 inline-block font-semibold">
+                                                Смотреть подробнее <i class="fas fa-arrow-right ml-1"></i>
+                                            </a>
+                                        </div>
+                                    @endforeach
+                                    @if(count($mashine->orders) == 0)
+                                        <p class="text-gray-400 text-sm">Нет активных заявок</p>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <!-- Правая часть: Комплектация -->
+                            @if(count($mashine->sets) != 0)
+                                <div class="sm:w-1/3 p-4 bg-slate-50">
+                                    <h6 class="font-bold text-gray-600 uppercase text-xs mb-2">Необходимо укомплектовать:</h6>
+                                    <ul class="space-y-1">
+                                        @foreach($mashine->sets as $set)
+                                            <li class="text-sm text-gray-700 flex items-center gap-2">
+                                                <i class="fas fa-circle text-[6px] text-emerald-500"></i> {{ $set->name }}
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
+                            
+                        </div>
+                    @endif
+                @endforeach
+            </div>
+        </div>
     <script>
         @if($miner)
         window.currentMinerId = {{ $miner->id }};

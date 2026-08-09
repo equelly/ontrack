@@ -43,6 +43,12 @@ class DriverPanel extends Component
     public $newLoadCapacity;
     public string $statusColor = 'secondary';
     public string $statusLabel = '';
+    //данные для заявок
+    public $contentSearch;
+    public $categoryId;
+    public $userId;
+    public $createdAt;
+    public $mashineId;
 
     // Данные для таймера
     public ?string $tripStartedAt = null;
@@ -1102,8 +1108,41 @@ class DriverPanel extends Component
 
     public function render()
     {
-        
-        return view('livewire.driver-panel');
+        $categories = \App\Models\Category::all();
+        $users = \App\Models\User::orderBy('name')->get();
+        $allMashines = \App\Models\Mashine::orderBy('number')->get();
+
+        $mashinesQuery = \App\Models\Mashine::with(['orders' => function($q) {
+            $q->where('content', '!=', '')
+              ->when($this->contentSearch, function($q) {
+                  $q->where('content', 'like', '%' . $this->contentSearch . '%');
+              })
+              ->when($this->categoryId, function($q) {
+                  $q->where('category_id', $this->categoryId);
+              })
+              ->when($this->userId, function($q) {
+                  $q->where('user_id', $this->userId);
+              })
+              ->when($this->createdAt, function($q) {
+                  $q->whereDate('created_at', $this->createdAt);
+              });
+        }, 'sets']);
+
+        // --- АВТОФИЛЬТР ПО ТЕКУЩЕМУ ГРУЗОВИКУ ---
+        if ($this->truck && $this->truck->mashine_id) {
+            $mashinesQuery->where('id', $this->truck->mashine_id);
+        } else {
+            // Если грузовик не выбран или не привязан к карточке оборудования
+            $mashinesQuery->whereRaw('1=0');
+        }
+
+        $mashines = $mashinesQuery->get()->filter(function($mashine) {
+            return $mashine->sets->isNotEmpty() || $mashine->orders->isNotEmpty();
+        });
+
+        $ordersCount = $mashines->sum(fn($m) => $m->orders->count());
+
+        return view('livewire.driver-panel', compact('mashines', 'ordersCount', 'categories', 'users', 'allMashines'));
     }
 }
 
