@@ -14,14 +14,12 @@ class ZoneChanged implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public Truck $truck;
-    public string $oldZone;
     public string $newZone;
     public string $newDump;
 
-    public function __construct(Truck $truck, string $oldZone, string $newZone, string $newDump)
+    public function __construct(Truck $truck, string $newZone, string $newDump) 
     {
         $this->truck = $truck;
-        $this->oldZone = $oldZone;
         $this->newZone = $newZone;
         $this->newDump = $newDump;
     }
@@ -36,7 +34,6 @@ class ZoneChanged implements ShouldBroadcast
         return [
             'truck_id' => $this->truck->id,
             'truck_number' => $this->truck->number,
-            'old_zone' => $this->oldZone,
             'new_zone' => $this->newZone,
             'new_dump' => $this->newDump,
             'message' => "Место разгрузки изменено: {$this->newDump} - {$this->newZone}",

@@ -637,6 +637,9 @@ class MainDispatcherPanel extends Component
         $order->update(['active' => true]);
         $this->loadData();
 
+        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+        event(new \App\Events\RoutesUpdated());
+
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Маршрут активирован']);
     }
 
@@ -654,6 +657,9 @@ class MainDispatcherPanel extends Component
 
         $order->update(['active' => false]);
         $this->loadData();
+
+         // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+        event(new \App\Events\RoutesUpdated());
 
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Маршрут деактивирован']);
     }
@@ -793,6 +799,9 @@ class MainDispatcherPanel extends Component
             return $z;
         });
 
+        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+        event(new \App\Events\RoutesUpdated());
+
         // Только одно уведомление
         $this->dispatch('notify', [
             'type' => 'warning',
@@ -818,6 +827,9 @@ class MainDispatcherPanel extends Component
             }
 
             $this->loadData();
+
+            // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+            event(new \App\Events\RoutesUpdated());
 
             $this->dispatch('notify', [
                 'type' => 'success',

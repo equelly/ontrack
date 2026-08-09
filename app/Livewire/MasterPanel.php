@@ -336,6 +336,9 @@ class MasterPanel extends Component
         
         app(\App\Services\MiningOrderSyncService::class)->syncActiveStatusForZone($zone->id);
         
+        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+        event(new \App\Events\RoutesUpdated());
+        
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона обновлена']);
     }

@@ -49,6 +49,7 @@ class DriverPanel extends Component
     public $userId;
     public $createdAt;
     public $mashineId;
+    public $isSearchingRoute = false;
 
     // Данные для таймера
     public ?string $tripStartedAt = null;
@@ -339,14 +340,49 @@ class DriverPanel extends Component
         try {
             $routeService = app(RouteAssignmentService::class);
             $routeService->assignForTruck($this->truck);
+            
+            // Маршрут найден! Выключаем поиск.
+            $this->isSearchingRoute = false;
             $this->loadData();
-        } catch (\Exception $e) {
-            Log::error('Route assignment failed', ['error' => $e->getMessage()]);
+
             $this->dispatch('notify', [
-                'type' => 'error',
-                'message' => 'Не удалось назначить маршрут: ' . $e->getMessage(),
+                'type' => 'success',
+                'message' => 'Маршрут успешно назначен!',
             ]);
+
+        } catch (\Exception $e) {
+            // Маршрута нет. Включаем режим ожидания.
+            $wasSearching = $this->isSearchingRoute;
+            $this->isSearchingRoute = true;
+            
+            // Выводим уведомление только один раз (при первом переходе в режим ожидания)
+            if (!$wasSearching) {
+                $this->dispatch('notify', [
+                    'type' => 'warning',
+                    'message' => 'Свободных маршрутов нет. Ожидание доступности...',
+                ]);
+            }
         }
+    }
+
+    // Слушатель WebSocket-события из канала 'routes'
+    #[On('echo:routes,RoutesUpdated')]
+    public function onRoutesUpdated()
+    {
+        // Если водитель в режиме ожидания, пробуем назначить маршрут снова!
+        if ($this->isSearchingRoute) {
+            $this->assignRoute();
+        }
+    }
+
+    // Ручная отмена ожидания водителем
+    public function stopSearchingRoute(): void
+    {
+        $this->isSearchingRoute = false;
+        $this->dispatch('notify', [
+            'type' => 'info',
+            'message' => 'Ожидание маршрута отменено.',
+        ]);
     }
 
     public function startLoading(): void

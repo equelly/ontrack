@@ -235,6 +235,9 @@ class ExcavatorPanel extends Component
 
         $rock = Rock::find($this->selectedRockId);
 
+        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+        event(new \App\Events\RoutesUpdated());
+
         $this->dispatch('notify', [
             'type' => 'success',
             'message' => 'Текущая порода: ' . ($rock?->name_rock ?? ''),
