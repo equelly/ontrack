@@ -39,9 +39,22 @@ class DatabaseSeeder extends Seeder
             ]));
         }
 
-        // Назначаем породы забоям (все породы для всех забоев для тестирования)
-        foreach ($miners as $miner) {
-            $miner->rocks()->attach($rocks->pluck('id')->toArray());
+        // Назначаем породы забоям (разделяем экскаваторы по типам работ)
+        foreach ($miners as $index => $miner) {
+            if ($index < 4) {
+                // Первые 4 экскаватора копают только руду
+                $miner->rocks()->attach([
+                    $rocks['руда']->id,
+                    $rocks['руда_S']->id,
+                    $rocks['руда_ЦПТ']->id,
+                ]);
+            } elseif ($index < 8) {
+                // Следующие 4 экскаватора — на вскрыше
+                $miner->rocks()->attach([$rocks['вскрыша']->id]);
+            } else {
+                // Остальные копают песчаник
+                $miner->rocks()->attach([$rocks['песчаник']->id]);
+            }
         }
 
         // Перегрузки
@@ -50,29 +63,41 @@ class DatabaseSeeder extends Seeder
             Dump::create(['name_dump' => 'Перегрузка №10', 'delivered_volume' => 0, 'trips_count' => 0]),
         ]);
 
-        // Зоны
+        // Зоны с четким технологическим разделением пород
         $zones = collect();
         foreach ($dumps as $dump) {
-            for ($i = 1; $i <= 3; $i++) {
-                $zone = Zone::create([
-                    'dump_id' => $dump->id,
-                    'name_zone' => "Зона {$i}",
-                    'volume' => 0,
-                    'capacity' => 10000,
-                    'delivery' => true,
-                    'ship' => false
-                ]);
-                // Добавляем все породы в зоны
-                $zone->rocks()->attach([
-                    $rocks['руда']->id,
-                    $rocks['вскрыша']->id,
-                    $rocks['песчаник']->id,
-                    $rocks['руда_S']->id,
-                    $rocks['руда_ЦПТ']->id,
-                ]);
-                $zones->push($zone);
-            }
+            // Зона 1: Принимает руду, руду_S и руду_ЦПТ
+            $zone1 = Zone::create([
+                'dump_id' => $dump->id,
+                'name_zone' => "Зона 1",
+                'volume' => 0, 'capacity' => 10000, 'delivery' => true, 'ship' => false
+            ]);
+            $zone1->rocks()->attach([
+                $rocks['руда']->id,
+                $rocks['руда_S']->id,
+                $rocks['руда_ЦПТ']->id,
+            ]);
+            $zones->push($zone1);
+
+            // Зона 2: Принимает только вскрышу
+            $zone2 = Zone::create([
+                'dump_id' => $dump->id,
+                'name_zone' => "Зона 2",
+                'volume' => 0, 'capacity' => 10000, 'delivery' => true, 'ship' => false
+            ]);
+            $zone2->rocks()->attach([$rocks['вскрыша']->id]);
+            $zones->push($zone2);
+
+            // Зона 3: Принимает только песчаник
+            $zone3 = Zone::create([
+                'dump_id' => $dump->id,
+                'name_zone' => "Зона 3",
+                'volume' => 0, 'capacity' => 10000, 'delivery' => true, 'ship' => false
+            ]);
+            $zone3->rocks()->attach([$rocks['песчаник']->id]);
+            $zones->push($zone3);
         }
+
 
         // Модели самосвалов
         $truckModels = collect([
@@ -113,21 +138,29 @@ class DatabaseSeeder extends Seeder
             ]));
         }
 
-        // Маршруты (mining_orders)
+        // Маршруты (mining_orders) — Логичное распределение
         foreach ($miners as $miner) {
-            foreach ($dumps as $dump) {
-                // Находим случайную зону для этого отвала
-            $zone = \App\Models\Zone::where('dump_id', $dump->id)->inRandomOrder()->first();
+            // 1. Выбираем ОДНУ случайную породу, которую СЕЙЧАС копает этот экскаватор
+            $currentRock = $miner->rocks->random();
+
+            // 2. Выбираем ОДНУ случайную перегрузку для этого экскаватора
+            $dump = $dumps->random();
+
+            // 3. Находим случайную зону СТРОГО на выбранной перегрузке
+            $zone = Zone::where('dump_id', $dump->id)->inRandomOrder()->first();
+
+            if ($zone) {
                 MiningOrder::create([
-                    'miner_id' => $miner->id,
-                    'dump_id' => $dump->id,
-                    'zone_id' => $zone?->id, // <--- Добавляем для связки маршрутов и зон
-                    'rock_id' => $miner->rocks->first()?->id,
+                    'miner_id'    => $miner->id,
+                    'dump_id'     => $dump->id,
+                    'zone_id'     => $zone->id,        // Четкая привязка к выбранной перегрузке
+                    'rock_id'     => $currentRock->id, // Экскаватор везет именно ту породу, которую добывает
                     'distance_km' => rand(10, 60) / 10,
-                    'active' => true
+                    'active'      => true
                 ]);
             }
         }
+
 
         // Пользователи
         User::create([

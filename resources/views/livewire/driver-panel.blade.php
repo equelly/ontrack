@@ -2,7 +2,7 @@
     <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="fixed top-0 right-0 p-3" style="z-index: 9999;"></div>
 
-        <!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ГРУЗОВИКА (Адаптивная) -->
+    <!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ГРУЗОВИКА (Адаптивная) -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
             <h1 class="text-lg font-bold uppercase tracking-wider">Панель водителя</h1> 
@@ -45,8 +45,7 @@
                     </button>
                 </form>
             </div>
-            </div>
-
+        </div>
     </header>
 
     @if($truck)
@@ -71,9 +70,7 @@
             <button @click="tab='stats'" :class="tab === 'stats' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'" class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5">
                 <span>📊</span> <span class="hidden sm:inline">Статистика</span>
             </button>
-            <button @click="tab='requests'"
-                :class="{ 'bg-emerald-600 text-white': tab === 'requests', 'text-gray-600 hover:bg-gray-100': tab !== 'requests' }"
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button @click="tab='requests'" :class="tab === 'requests' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'" class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5">
                 <span>📝</span> <span class="hidden sm:inline">Заявки</span>
             </button>
         </div>
@@ -83,7 +80,7 @@
     <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6">
         
         <!-- ВКЛАДКА: МАРШРУТ -->
-        <div x-show="tab === 'route'" class="space-y-4 sm:space-y-6">
+        <div x-show="tab === 'route'" x-cloak class="space-y-4 sm:space-y-6">
             <!-- Заголовок и статус -->
             <div class="flex items-center gap-2 sm:gap-4">
                 <h2 class="text-base sm:text-lg font-bold text-gray-800 uppercase tracking-wider">Маршрут</h2>
@@ -152,6 +149,19 @@
             <!-- Управление статусами -->
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6" data-truck-status="{{ $truck->status }}">
                 @php $status = $truck->status; @endphp
+
+                {{-- Плашка автопоиска --}}
+                @if($isSearchingRoute)
+                    <div class="bg-amber-50 border-l-4 border-amber-500 text-amber-700 p-4 mb-4 rounded flex justify-between items-center">
+                        <span class="text-sm font-medium">
+                            <i class="fas fa-sync-alt fa-spin mr-2"></i>
+                            Идет ожидание доступного маршрута...
+                        </span>
+                        <button wire:click="stopSearchingRoute" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-bold uppercase">
+                            Отменить
+                        </button>
+                    </div>
+                @endif
 
                 @if($status === 'free')
                     <div wire:key="status-free">
@@ -302,7 +312,7 @@
         </div> <!-- Конец вкладки Маршрут -->
 
         <!-- ВКЛАДКА: ТОПЛИВО -->
-        <div x-show="tab === 'fuel'" class="space-y-4 sm:space-y-6" style="display: none;">
+        <div x-show="tab === 'fuel'" x-cloak class="space-y-4 sm:space-y-6">
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6">
                 <h3 class="font-bold text-gray-800 uppercase tracking-wider mb-4 text-sm sm:text-base">Топливо</h3>
                 
@@ -343,7 +353,7 @@
         </div>
 
         <!-- ВКЛАДКА: ОГРАНИЧЕНИЯ -->
-        <div x-show="tab === 'restrictions'" class="space-y-4 sm:space-y-6" style="display: none;">
+        <div x-show="tab === 'restrictions'" x-cloak class="space-y-4 sm:space-y-6">
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6">
                 <h3 class="font-bold text-gray-800 uppercase tracking-wider mb-4 text-sm sm:text-base">Текущая грузоподъемность</h3>
                 <div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
@@ -371,7 +381,7 @@
         </div>
 
         <!-- ВКЛАДКА: ОБСЛУЖИВАНИЕ -->
-        <div x-show="tab === 'service'" class="space-y-4 sm:space-y-6" style="display: none;">
+        <div x-show="tab === 'service'" x-cloak class="space-y-4 sm:space-y-6">
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6">
                 <h3 class="font-bold text-gray-800 uppercase tracking-wider mb-4 text-sm sm:text-base">Показатели</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -416,7 +426,7 @@
         </div>
 
         <!-- ВКЛАДКА: СТАТИСТИКА -->
-        <div x-show="tab === 'stats'" class="space-y-4 sm:space-y-6" style="display: none;">
+        <div x-show="tab === 'stats'" x-cloak class="space-y-4 sm:space-y-6">
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6">
                 <h3 class="font-bold text-gray-800 uppercase tracking-wider mb-4 text-sm sm:text-base">Статистика за смену ({{ $stats['shift_name'] ?? '-' }})</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -440,71 +450,8 @@
             </div>
         </div>
 
-    </main>
-
-    @else
-    <main class="flex-1 flex items-center justify-center p-4">
-        <div class="text-center py-8 text-gray-500 bg-white rounded-xl border shadow-sm p-8">
-            <p class="text-base sm:text-lg">Выберите грузовик для начала работы</p>
-        </div>
-    </main>
-    @endif
-
-    <!-- Модальные окна (Tailwind + JS overlay) -->
-    @if($showZoneModal)
-    <div wire:key="zone-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" style="display: flex;">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-            <div class="p-4 border-b flex justify-between items-center">
-                <h5 class="font-bold text-gray-800 uppercase text-sm sm:text-base">Выбор зоны разгрузки</h5>
-                <button wire:click="closeZoneModal" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
-            </div>
-            <div class="p-4 max-h-[60vh] overflow-y-auto">
-                @forelse($availableZones as $zone)
-                    <div wire:click="selectZone({{ $zone['id'] }})" class="p-3 mb-2 border rounded-md cursor-pointer hover:bg-slate-50">
-                        <strong class="text-gray-800 text-sm">{{ $zone['name'] }}</strong>
-                        <small class="block text-gray-500">{{ $zone['dump_name'] }} | Свободно: {{ $zone['available_capacity'] }} м³</small>
-                    </div>
-                @empty
-                    <p class="text-gray-500">Нет доступных зон</p>
-                @endforelse
-            </div>
-        </div>
-    </div>
-    @endif
-
-    @if($showDelayModal)
-    <div wire:key="delay-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" style="display: flex;">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-            <div class="p-4 border-b flex justify-between items-center">
-                <h5 class="font-bold text-gray-800 uppercase text-sm sm:text-base">Задержка</h5>
-                <button wire:click="closeDelayModal" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
-            </div>
-            <div class="p-4">
-                <div class="mb-4">
-                    <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Причина</label>
-                    <select wire:model="delayReason" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
-                        <option value="traffic">Пробки</option>
-                        <option value="road_works">Дорожные работы</option>
-                        <option value="waiting_loading">Ожидание погрузки</option>
-                        <option value="waiting_unloading">Очередь на выгрузку</option>
-                        <option value="weather">Погодные условия</option>
-                        <option value="other">Другое</option>
-                    </select>
-                </div>
-                <div class="mb-4">
-                    <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Ожидаемое время (мин)</label>
-                    <input type="number" wire:model="delayMinutes" min="1" max="120" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
-                </div>
-            </div>
-            <div class="p-4 border-t flex flex-col sm:flex-row justify-end gap-2">
-                <button wire:click="closeDelayModal" class="w-full sm:w-auto px-4 py-2 bg-slate-200 text-slate-700 rounded-md font-semibold uppercase hover:bg-slate-300 text-sm">Отмена</button>
-                <button wire:click="confirmDelay" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase hover:bg-emerald-700 text-sm">Подтвердить</button>
-            </div>
-        </div>
-    </div>
-    @endif
-    <!-- ВКЛАДКА: Заявки -->
-        <div x-show="tab === 'requests'" x-cloak class="mt-4 space-y-6">
+        <!-- ВКЛАДКА: Заявки -->
+        <div x-show="tab === 'requests'" x-cloak class="space-y-4 sm:space-y-6">
             <!-- Панель фильтрации -->
             <div class="bg-white rounded-xl border shadow-sm p-4 mb-6">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -523,15 +470,6 @@
                             <option value="">Все</option>
                             @foreach($users as $user)
                                 <option value="{{ $user->id }}">{{ $user->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Оборудование</label>
-                        <select wire:model.live="mashineId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
-                            <option value="">Все</option>
-                            @foreach($allMashines as $mashine)
-                                <option value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -598,6 +536,71 @@
                 @endforeach
             </div>
         </div>
+
+    </main>
+
+    @else
+    <main class="flex-1 flex items-center justify-center p-4">
+        <div class="text-center py-8 text-gray-500 bg-white rounded-xl border shadow-sm p-8">
+            <p class="text-base sm:text-lg">Выберите грузовик для начала работы</p>
+        </div>
+    </main>
+    @endif
+
+    <!-- Модальные окна (Tailwind + JS overlay) -->
+    @if($showZoneModal)
+    <div wire:key="zone-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" style="display: flex;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h5 class="font-bold text-gray-800 uppercase text-sm sm:text-base">Выбор зоны разгрузки</h5>
+                <button wire:click="closeZoneModal" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 max-h-[60vh] overflow-y-auto">
+                @forelse($availableZones as $zone)
+                    <div wire:click="selectZone({{ $zone['id'] }})" class="p-3 mb-2 border rounded-md cursor-pointer hover:bg-slate-50">
+                        <strong class="text-gray-800 text-sm">{{ $zone['name'] }}</strong>
+                        <small class="block text-gray-500">{{ $zone['dump_name'] }} | Свободно: {{ $zone['available_capacity'] }} м³</small>
+                    </div>
+                @empty
+                    <p class="text-gray-500">Нет доступных зон</p>
+                @endforelse
+            </div>
+        </div>
+    </div>
+    @endif
+
+    @if($showDelayModal)
+    <div wire:key="delay-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" style="display: flex;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h5 class="font-bold text-gray-800 uppercase text-sm sm:text-base">Задержка</h5>
+                <button wire:click="closeDelayModal" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <div class="p-4">
+                <div class="mb-4">
+                    <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Причина</label>
+                    <select wire:model="delayReason" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                        <option value="traffic">Пробки</option>
+                        <option value="road_works">Дорожные работы</option>
+                        <option value="waiting_loading">Ожидание погрузки</option>
+                        <option value="waiting_unloading">Очередь на выгрузку</option>
+                        <option value="weather">Погодные условия</option>
+                        <option value="other">Другое</option>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Ожидаемое время (мин)</label>
+                    <input type="number" wire:model="delayMinutes" min="1" max="120" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
+                </div>
+            </div>
+            <div class="p-4 border-t flex flex-col sm:flex-row justify-end gap-2">
+                <button wire:click="closeDelayModal" class="w-full sm:w-auto px-4 py-2 bg-slate-200 text-slate-700 rounded-md font-semibold uppercase hover:bg-slate-300 text-sm">Отмена</button>
+                <button wire:click="confirmDelay" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase hover:bg-emerald-700 text-sm">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <script>
         @if($truck)
         window.truckId = {{ $truck->id }};

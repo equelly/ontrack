@@ -770,4 +770,55 @@
                 </div>
             @endforeach
         </div>
+<!-- Модальное окно интерактивной карты -->
+<div x-data="{ showMap: false, initMap() { 
+        // Инициализируем карту только один раз
+        if (!window.leafletMapInstance) {
+            // Добавлен параметр { attributionControl: false } для отключения логотипов
+            window.leafletMapInstance = L.map('leafletMap', { attributionControl: false }).setView([51.280247, 37.633032], 13); // Координаты вашего карьера
+            
+            // Спутниковый слой Esri
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '© Esri',
+                maxZoom: 19
+            }).addTo(window.leafletMapInstance);
+
+            // Обработчик клика
+            window.leafletMapInstance.on('click', function(e) {
+                L.popup()
+                    .setLatLng(e.latlng)
+                    .setContent(`<b>Координаты:</b><br>Широта: ${e.latlng.lat.toFixed(6)}<br>Долгота: ${e.latlng.lng.toFixed(6)}`)
+                    .openOn(window.leafletMapInstance);
+            });
+        }
+        // Лекарство от скрытого окна: заставляем карту перерисоваться через 100мс после открытия
+        setTimeout(() => window.leafletMapInstance.invalidateSize(), 100);
+    } 
+    }">
+    <!-- Кнопка открытия карты -->
+    <button @click="showMap = true; initMap()" class="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase shadow-lg z-30">
+        🗺️ Открыть карту
+    </button>
+
+    <!-- Само окно карты -->
+    <div x-show="showMap" x-cloak class="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h5 class="font-bold text-gray-800 uppercase">Интерактивная карта карьера</h5>
+                <button @click="showMap = false" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            
+            <!-- Контейнер карты. Добавлен h-full -->
+            <div id="leafletMap" class="flex-1 w-full h-full bg-slate-200 rounded-b-xl overflow-hidden"></div>
+            
+            <div class="p-3 bg-slate-50 border-t text-xs text-gray-500">
+                <i class="fas fa-info-circle"></i> Кликните по карте, чтобы поставить точку.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Подключаем стили и скрипты Leaflet (если еще не подключены) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </div>
