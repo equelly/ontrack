@@ -174,6 +174,55 @@
                                         <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-{{ $status['color'] }}-100 text-{{ $status['color'] }}-700">
                                             <i class="fas {{ $status['icon'] }} mr-1"></i>{{ $status['label'] }}
                                         </span>
+                                        {{-- Для свободных самосвалов без маршрута показываем точную причину --}}
+                                        @if(in_array($truck->status, ['free', 'completed']))
+                                            @php
+                                                $truckDiag = $this->truckDiagnostics[$truck->id] ?? null;
+                                            @endphp
+                                            @if($truckDiag && $truckDiag['primary_reason'])
+                                                @php
+                                                    $reasonCode = $truckDiag['primary_reason'];
+                                                    $reasonLabel = \App\Domain\RouteBlockReason::shortLabel($reasonCode);
+                                                    $reasonColor = \App\Domain\RouteBlockReason::color($reasonCode);
+                                                    $reasonIcon = \App\Domain\RouteBlockReason::icon($reasonCode);
+                                                    $reasonAction = \App\Domain\RouteBlockReason::action($reasonCode);
+                                                    $reasonCount = $truckDiag['summary'][$reasonCode] ?? 0;
+                                                @endphp
+                                                <div class="mt-1 group relative inline-block">
+                                                    <span class="px-2 py-0.5 text-[10px] font-medium rounded-md bg-{{ $reasonColor }}-100 text-{{ $reasonColor }}-700 cursor-help"
+                                                          title="{{ \App\Domain\RouteBlockReason::label($reasonCode) }}. {{ $reasonAction }}">
+                                                        <i class="fas {{ $reasonIcon }} mr-0.5"></i>{{ $reasonLabel }}@if($reasonCount > 1) ×{{ $reasonCount }}@endif
+                                                    </span>
+                                                    {{-- Тултип с детальным описанием --}}
+                                                    <div class="hidden group-hover:block absolute z-50 left-0 top-full mt-1 w-64 bg-slate-800 text-white text-xs rounded-lg shadow-xl p-3">
+                                                        <div class="font-semibold mb-1">{{ \App\Domain\RouteBlockReason::label($reasonCode) }}</div>
+                                                        <div class="text-slate-300 mb-2">{{ $reasonAction }}</div>
+                                                        @if(!empty($truckDiag['orders']))
+                                                            <div class="border-t border-slate-600 pt-2 mt-2">
+                                                                <div class="text-slate-400 mb-1">По маршрутам:</div>
+                                                                @foreach(collect($truckDiag['orders'])->take(5) as $orderDiag)
+                                                                    <div class="text-slate-200 text-[10px]">
+                                                                        <span class="font-mono">#{{ $orderDiag['order_id'] }}</span>
+                                                                        {{ $orderDiag['miner_name'] }}
+                                                                        @if($orderDiag['rock_name'])
+                                                                            <span class="text-slate-400">({{ $orderDiag['rock_name'] }})</span>
+                                                                        @endif
+                                                                        — {{ $orderDiag['reason_label'] }}
+                                                                    </div>
+                                                                @endforeach
+                                                                @if(count($truckDiag['orders']) > 5)
+                                                                    <div class="text-slate-400 text-[10px] mt-1">…и ещё {{ count($truckDiag['orders']) - 5 }}</div>
+                                                                @endif
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <span class="ml-1 px-2 py-0.5 text-[10px] font-medium rounded-md bg-emerald-50 text-emerald-600">
+                                                    <i class="fas fa-check mr-0.5"></i>Готов к назначению
+                                                </span>
+                                            @endif
+                                        @endif
                                     </td>
                                     <td class="p-3">
                                         @if($truckRock)

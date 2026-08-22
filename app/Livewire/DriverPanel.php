@@ -14,6 +14,8 @@ use App\Services\TruckStatusService;
 use App\Services\RouteAssignmentService;
 use App\Services\ServiceSchedulingService;
 use App\Services\ShiftPlanningService;
+use App\Exceptions\NoRouteAvailableException;
+use App\Domain\RouteBlockReason;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
@@ -50,6 +52,7 @@ class DriverPanel extends Component
     public $createdAt;
     public $mashineId;
     public $isSearchingRoute = false;
+    public ?string $lastBlockReason = null; // последняя причина отказа (для дедупликации уведомлений)
 
     // Данные для таймера
     public ?string $tripStartedAt = null;
@@ -350,19 +353,79 @@ class DriverPanel extends Component
                 'message' => 'Маршрут успешно назначен!',
             ]);
 
-        } catch (\Exception $e) {
-            // Маршрута нет. Включаем режим ожидания.
+        } catch (NoRouteAvailableException $e) {
+            // Точная причина, почему маршрута нет
             $wasSearching = $this->isSearchingRoute;
             $this->isSearchingRoute = true;
             
+            // Формируем человекочитаемое сообщение для водителя
+            $message = $this->buildDriverMessage($e->getDiagnostics());
+            
             // Выводим уведомление только один раз (при первом переходе в режим ожидания)
-            if (!$wasSearching) {
+            // или если причина изменилась
+            if (!$wasSearching || ($this->lastBlockReason ?? '') !== $message) {
+                $this->lastBlockReason = $message;
                 $this->dispatch('notify', [
                     'type' => 'warning',
-                    'message' => 'Свободных маршрутов нет. Ожидание доступности...',
+                    'message' => $message,
                 ]);
             }
+        } catch (\Exception $e) {
+            // Системная ошибка (грузовик занят, БД недоступна и т.д.)
+            $this->isSearchingRoute = false;
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => $e->getMessage(),
+            ]);
         }
+    }
+
+    /**
+     * Построить человекочитаемое сообщение для водителя из диагностики.
+     *
+     * Вместо абстрактного "Свободных маршрутов нет" показываем:
+     * "Маршрутов нет: <причина>. <Что нужно сделать>"
+     */
+    private function buildDriverMessage(array $diagnostics): string
+    {
+        $primaryReason = $diagnostics['primary_reason'] ?? null;
+        $summary = $diagnostics['summary'] ?? [];
+
+        if (!$primaryReason) {
+            return 'Свободных маршрутов нет. Ожидание доступности...';
+        }
+
+        $label = RouteBlockReason::label($primaryReason);
+        $action = RouteBlockReason::action($primaryReason);
+        $count = $summary[$primaryReason] ?? 0;
+
+        // Пример вывода:
+        // "Маршрутов нет: 8 забоев не работают. Дождитесь, пока мастер активирует забои."
+        $prefix = match($primaryReason) {
+            RouteBlockReason::MINER_NOT_WORKING    => $count . ' ' . $this->pluralize($count, ['забой не работает', 'забоя не работают', 'забоев не работают']),
+            RouteBlockReason::MINER_INACTIVE       => $count . ' ' . $this->pluralize($count, ['забой выключен', 'забоя выключено', 'забоев выключено']),
+            RouteBlockReason::NO_AVAILABLE_ZONES   => 'нет доступных зон разгрузки (на ' . $count . ' ' . $this->pluralize($count, ['маршруте', 'маршрутах', 'маршрутах']) . ')',
+            RouteBlockReason::NO_CURRENT_ROCK      => $count . ' ' . $this->pluralize($count, ['забое не задана порода', 'забоях не задана порода', 'забоях не задана порода']),
+            RouteBlockReason::MINER_OVERLOADED     => $count . ' ' . $this->pluralize($count, ['забой перегружен', 'забоя перегружены', 'забоев перегружено']),
+            RouteBlockReason::ROCK_RESTRICTED      => 'порода запрещена для этого самосвала',
+            RouteBlockReason::NO_ACTIVE_ORDERS     => 'нет активных маршрутов',
+            default                                => $label,
+        };
+
+        return "Маршрутов нет: {$prefix}. {$action}";
+    }
+
+    /**
+     * Склонение существительных по числу (1 забой / 2 забоя / 5 забоев).
+     */
+    private function pluralize(int $count, array $forms): string
+    {
+        $n = abs($count) % 100;
+        $n1 = $n % 10;
+        if ($n > 10 && $n < 20) return $forms[2];
+        if ($n1 > 1 && $n1 < 5) return $forms[1];
+        if ($n1 == 1) return $forms[0];
+        return $forms[2];
     }
 
     // Слушатель WebSocket-события из канала 'routes'
@@ -1181,4 +1244,3 @@ class DriverPanel extends Component
         return view('livewire.driver-panel', compact('mashines', 'ordersCount', 'categories', 'users', 'allMashines'));
     }
 }
-

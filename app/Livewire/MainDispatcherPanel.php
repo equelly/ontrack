@@ -856,6 +856,45 @@ class MainDispatcherPanel extends Component
         return $this->trucks->whereNotIn('status', ['free', 'completed', 'breakdown'])->count();
     }
 
+    /**
+     * Диагностика причин, по которым свободные самосвалы не получили маршрут.
+     *
+     * Возвращает массив вида:
+     *   [truck_id => ['primary_reason' => 'miner_not_working', 'summary' => [...], 'orders' => [...]]]
+     *
+     * Используется в шаблоне trucksTab для показа причины под бейджем статуса.
+     * Кешируется на один render — вычисляется только один раз.
+     */
+    public function getTruckDiagnosticsProperty(): array
+    {
+        // Берём только свободные самосвалы (у них нет активного trip)
+        $freeTrucks = $this->trucks->whereIn('status', ['free', 'completed']);
+
+        if ($freeTrucks->isEmpty()) {
+            return [];
+        }
+
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        $diagnostics = [];
+
+        foreach ($freeTrucks as $truck) {
+            try {
+                $diag = $routeService->diagnoseForTruck($truck);
+                if (!$diag['can_assign']) {
+                    $diagnostics[$truck->id] = $diag;
+                }
+            } catch (\Exception $e) {
+                // Тихо логируем, не роняем панель диспетчера
+                \Illuminate\Support\Facades\Log::error('Truck diagnostics failed', [
+                    'truck_id' => $truck->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $diagnostics;
+    }
+
     public function getActiveMinersCountProperty(): int
     {
         return $this->miners->where('status', 'active')->count();

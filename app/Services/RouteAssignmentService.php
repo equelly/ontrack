@@ -11,6 +11,8 @@ use App\Models\MinerDumpDistance;
 use App\Events\DriverRouteUpdated;
 use App\Events\DispatcherNotification;
 use App\Events\ExcavatorNotification;
+use App\Exceptions\NoRouteAvailableException;
+use App\Domain\RouteBlockReason;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -55,12 +57,14 @@ class RouteAssignmentService
     }
 
     /**
-     * Назначить маршрут грузовику
-     * 
+     * Назначить маршрут грузовику.
+     *
      * Вызывается из TruckStatusService::onToMiner() после смены статуса на 'to_miner'
-     * Также может вызываться для грузовиков в статусе 'free' или 'completed'
-     * 
-     * @throws \RuntimeException если нет доступных маршрутов
+     * Также может вызываться для грузовиков в статусе 'free' или 'completed'.
+     *
+     * @throws \App\Exceptions\NoRouteAvailableException если нет доступных маршрутов
+     *         (содержит диагностику причин в getDiagnostics())
+     * @throws \RuntimeException если грузовик занят или другая системная ошибка
      */
     public function assignForTruck(Truck $truck): void
     {
@@ -80,16 +84,26 @@ class RouteAssignmentService
             Log::info('Route search before filtering', ['active_orders' => $activeOrders->count()]);
 
             if ($activeOrders->isEmpty()) {
-                throw new \RuntimeException("Нет активных маршрутов");
+                $diagnostics = [
+                    'primary_reason' => RouteBlockReason::NO_ACTIVE_ORDERS,
+                    'summary' => [RouteBlockReason::NO_ACTIVE_ORDERS => 1],
+                    'orders' => [],
+                ];
+                throw new NoRouteAvailableException('Нет активных маршрутов', $diagnostics);
             }
 
-            // Фильтруем маршруты с доступными зонами
-            $availableRoutes = $this->filterRoutesWithAvailableZones($activeOrders, $truck);
+            // Фильтруем маршруты с диагностикой причин отказа
+            $filterResult = $this->filterRoutesWithAvailableZones($activeOrders, $truck);
+            $availableRoutes = $filterResult['available'];
+            $diagnostics = $filterResult['diagnostics'];
 
-            Log::info('Route search after filtering', ['filtered' => count($availableRoutes)]);
+            Log::info('Route search after filtering', [
+                'filtered' => count($availableRoutes),
+                'blocked' => count($diagnostics['orders']),
+            ]);
 
             if (empty($availableRoutes)) {
-                throw new \RuntimeException("Нет маршрутов с доступными зонами");
+                throw new NoRouteAvailableException('Нет доступных маршрутов', $diagnostics);
             }
 
             // Выбираем маршрут по WRR с учётом весов
@@ -119,6 +133,58 @@ class RouteAssignmentService
     }
 
     /**
+     * Диагностика причин, по которым грузовику не может быть назначен маршрут.
+     *
+     * НЕ делает назначение — только возвращает массив причин.
+     * Используется в DriverPanel (для показа водителю) и MainDispatcherPanel
+     * (для показа во вкладке «Самосвалы» для свободных машин без маршрута).
+     *
+     * @return array Формат как в NoRouteAvailableException::diagnostics:
+     *     [
+     *         'can_assign' => bool,
+     *         'primary_reason' => string|null,        // RouteBlockReason::*
+     *         'summary' => [reason_code => count],    // сводка
+     *         'orders' => [                          // детали по каждому маршруту
+     *             ['order_id', 'miner_id', 'miner_name', 'dump_id', 'rock_id', 'reason'],
+     *         ],
+     *     ]
+     */
+    public function diagnoseForTruck(Truck $truck): array
+    {
+        // Если грузовик занят — это и есть причина
+        if (!in_array($truck->status, ['free', 'completed', 'to_miner'])) {
+            return [
+                'can_assign' => false,
+                'primary_reason' => RouteBlockReason::TRUCK_BUSY,
+                'summary' => [RouteBlockReason::TRUCK_BUSY => 1],
+                'orders' => [],
+            ];
+        }
+
+        $activeOrders = MiningOrder::where('active', true)
+            ->with(['miner.currentRock', 'dump.zones.rocks', 'zone'])
+            ->get();
+
+        if ($activeOrders->isEmpty()) {
+            return [
+                'can_assign' => false,
+                'primary_reason' => RouteBlockReason::NO_ACTIVE_ORDERS,
+                'summary' => [RouteBlockReason::NO_ACTIVE_ORDERS => 1],
+                'orders' => [],
+            ];
+        }
+
+        $filterResult = $this->filterRoutesWithAvailableZones($activeOrders, $truck);
+
+        return [
+            'can_assign' => !empty($filterResult['available']),
+            'primary_reason' => $filterResult['diagnostics']['primary_reason'],
+            'summary' => $filterResult['diagnostics']['summary'],
+            'orders' => $filterResult['diagnostics']['orders'],
+        ];
+    }
+
+    /**
      * Проверяет, запрещена ли порода для грузовика
      */
     protected function isRockRestricted(int $truckId, int $rockId): bool
@@ -129,55 +195,128 @@ class RouteAssignmentService
     }
 
     /**
-     * Фильтруем маршруты с доступными зонами
+     * Фильтруем маршруты с доступными зонами + собираем диагностику причин отказа.
+     *
+     * Возвращает и доступные маршруты, и детали по каждому заблокированному.
+     * Эта информация показывается водителю (точная причина «маршрутов нет»)
+     * и диспетчеру (вкладка «Самосвалы» → для свободных машин без маршрута).
+     *
+     * @return array{available: array, diagnostics: array}
      */
     protected function filterRoutesWithAvailableZones($orders, Truck $truck): array
     {
         $available = [];
+        $diagnosticsOrders = [];
+        $summary = [];
 
         foreach ($orders as $order) {
             $miner = $order->miner;
+            $reason = null;
 
-            // Проверяем активность и статус забоя
-            if (!$miner || !$miner->active || !$miner->isWorking()) {
-                continue;
+            // ===== 1. ПРОВЕРКА ЗАБОЯ =====
+            if (!$miner) {
+                $reason = RouteBlockReason::MINER_NOT_FOUND;
+            } elseif (!$miner->active) {
+                $reason = RouteBlockReason::MINER_INACTIVE;
+            } elseif (!$miner->isWorking()) {
+                $reason = RouteBlockReason::MINER_NOT_WORKING;
             }
 
-            $currentRock = $miner->currentRock;
-            
-            if (!$currentRock) {
-                continue;
+            // ===== 2. ПРОВЕРКА ПОРОДЫ =====
+            if (!$reason) {
+                $currentRock = $miner->currentRock;
+                if (!$currentRock) {
+                    $reason = RouteBlockReason::NO_CURRENT_ROCK;
+                }
+            } else {
+                $currentRock = $miner?->currentRock;
             }
 
-            // Проверяем, можно ли назначить на этот забой
-            if (!$this->canAssignToMiner($order)) {
-                continue;
+            // ===== 3. ПРОВЕРКА ЗАГРУЗКИ ЗАБОЯ =====
+            if (!$reason && !$this->canAssignToMiner($order)) {
+                $reason = RouteBlockReason::MINER_OVERLOADED;
             }
 
-            // Проверяем, не запрещена ли порода для грузовика
-            if ($this->isRockRestricted($truck->id, $currentRock->id)) {
-                Log::info("Пропускаем маршрут с породой {$currentRock->id} - запрещена для грузовика {$truck->id}");
-                continue;
+            // ===== 4. ПРОВЕРКА ОГРАНИЧЕНИЙ ГРУЗОВИКА =====
+            if (!$reason && $currentRock && $this->isRockRestricted($truck->id, $currentRock->id)) {
+                $reason = RouteBlockReason::ROCK_RESTRICTED;
             }
 
-            // Проверяем, что зона указана и открыта
-            if ($order->zone_id && $order->zone && $order->zone->delivery && $order->zone->volume < $order->zone->capacity) {
-                // Получаем время погрузки для этого забоя
+            // ===== 5. ПОИСК ЗОНЫ =====
+            $zone = null;
+            if (!$reason) {
+                // Если у MiningOrder задана zone_id — проверяем её
+                if ($order->zone_id && $order->zone) {
+                    if ($order->zone->delivery && $order->zone->volume < $order->zone->capacity) {
+                        $zone = $order->zone;
+                    }
+                }
+
+                // Если зона недоступна — ищем автоматически с учётом fallback-пород
+                if (!$zone) {
+                    $zone = $this->selectZoneForRock($order->dump_id, $currentRock->id);
+                    if ($zone) {
+                        // Сохраняем найденную зону для диспетчера и следующих грузовиков
+                        $order->update(['zone_id' => $zone->id]);
+                        $order->refresh();
+                    } else {
+                        $reason = RouteBlockReason::NO_AVAILABLE_ZONES;
+                    }
+                }
+            }
+
+            // ===== 6. РЕЗУЛЬТАТ =====
+            if ($reason) {
+                // Маршрут заблокирован — добавляем в диагностику
+                $diagnosticsOrders[] = [
+                    'order_id' => $order->id,
+                    'miner_id' => $order->miner_id,
+                    'miner_name' => $miner?->name_miner ?? "Забой #{$order->miner_id}",
+                    'miner_status' => $miner?->status,
+                    'dump_id' => $order->dump_id,
+                    'rock_id' => $currentRock?->id,
+                    'rock_name' => $currentRock?->name_rock,
+                    'reason' => $reason,
+                    'reason_label' => RouteBlockReason::label($reason),
+                    'action' => RouteBlockReason::action($reason),
+                ];
+                $summary[$reason] = ($summary[$reason] ?? 0) + 1;
+
+                Log::debug("Маршрут {$order->id} пропущен: {$reason}", [
+                    'miner_id' => $order->miner_id,
+                    'miner_status' => $miner?->status,
+                    'rock_id' => $currentRock?->id,
+                ]);
+            } else {
+                // Маршрут доступен
                 $loadingTime = $this->getLoadingTimeForMiner($miner);
-
                 $available[] = [
                     'order' => $order,
-                    'zone' => $order->zone,
+                    'zone' => $zone,
                     'rock_id' => $currentRock->id,
                     'weight' => $order->weight ?? 100,
                     'loading_time' => $loadingTime,
                 ];
-            } else {
-                Log::info("Маршрут {$order->id} пропущен: зона не указана или недоступна");
             }
         }
 
-        return $available;
+        // Определяем «основную» причину (по частоте встречаемости)
+        $primaryReason = null;
+        if (empty($available) && !empty($summary)) {
+            arsort($summary);
+            $primaryReason = array_key_first($summary);
+        }
+
+        $diagnostics = [
+            'primary_reason' => $primaryReason,
+            'summary' => $summary,
+            'orders' => $diagnosticsOrders,
+        ];
+
+        return [
+            'available' => $available,
+            'diagnostics' => $diagnostics,
+        ];
     }
 
     /**
