@@ -164,6 +164,24 @@ Route::get('/', [App\Http\Controllers\IndexController::class, 'index'])->name('w
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
 
 // =========================================
+// Восстановление сессии при 419 Page Expired
+// =========================================
+// AJAX-логин — возвращает JSON с новым CSRF-токеном, не меняет URL.
+// Используется модалкой session-guard.js при истечении сессии.
+Route::post('/ajax-login', [App\Http\Controllers\Auth\LoginController::class, 'ajaxLogin'])
+    ->name('ajax.login');
+
+// Обновление CSRF-токена + heartbeat. Доступен даже гостям (не требует auth),
+// но возвращает флаг is_authenticated, чтобы фронтенд мог показать модалку.
+Route::get('/refresh-csrf', function () {
+    return response()->json([
+        'csrf_token'        => csrf_token(),
+        'is_authenticated'  => auth()->check(),
+        'session_lifetime'  => (int) config('session.lifetime'),
+    ]);
+})->name('csrf.refresh');
+
+// =========================================
 // МАРШРУТЫ ДИСПЕТЧЕРА обыяный js
 // =========================================
 // Route::middleware(['auth', 'role:dispatcher'])->group(function () {

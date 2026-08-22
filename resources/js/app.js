@@ -1,4 +1,5 @@
 import './bootstrap';
+import './session-guard';  // реализация выхода из page expired
 
 document.addEventListener('DOMContentLoaded', () => {
     // =========================================

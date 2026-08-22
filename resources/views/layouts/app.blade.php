@@ -19,6 +19,9 @@
         <!-- Глобальный контейнер для toast уведомлений (вне Livewire компонентов) -->
         <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
+        {{-- Модалка входа при истечении сессии (419 Page Expired) --}}
+        @include('includes.session-guard-modal')
+        
         @if(!isset($hideNav))
         <header>
         <!-- Navbar -->

@@ -27,11 +27,15 @@
   <link rel="stylesheet" href="{{asset('plugins/summernote/summernote-bs4.min.css')}}">
   <link rel="dns-prefetch" href="//fonts.gstatic.com">
   <link href="https://fonts.bunny.net/css?family=Nunito" rel="stylesheet">
+    {{-- CSRF-токен нужен для модалки входа при 419 --}}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- font awesome cdn link  -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
+{{-- Модалка входа при истечении сессии (419 Page Expired) --}}
+@include('includes.session-guard-modal')
 <div class="wrapper">
 
   <!-- Preloader -->
