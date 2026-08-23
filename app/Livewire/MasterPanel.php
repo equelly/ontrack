@@ -334,31 +334,84 @@ class MasterPanel extends Component
         $zone->last_updated_by = auth()->id();
         $zone->save();
         
-        app(\App\Services\MiningOrderSyncService::class)->syncActiveStatusForZone($zone->id);
+        // 1. Синхронизируем ВСЕ MiningOrder — эта зона могла стать доступной
+        //    для других маршрутов (не только с zone_id=этой зоне)
+        try {
+            $syncService = app(\App\Services\MiningOrderSyncService::class);
+            $syncService->syncAllOrders();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('MasterPanel syncAllOrders: ' . $e->getMessage());
+        }
         
-        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
-        event(new \App\Events\RoutesUpdated());
+        // 2. Назначаем маршруты всем свободным/ожидающим самосвалам
+        $assignedCount = 0;
+        try {
+            $routeService = app(\App\Services\RouteAssignmentService::class);
+            $assignedCount = $routeService->assignRoutesToAllFree();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('MasterPanel assignRoutesToAllFree: ' . $e->getMessage());
+        }
+        
+        // 3. Отправляем сигнал водителям
+        try {
+            event(new \App\Events\RoutesUpdated());
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('MasterPanel RoutesUpdated: ' . $e->getMessage());
+        }
         
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
-        $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона обновлена']);
+        
+        $message = 'Зона обновлена';
+        if ($assignedCount > 0) {
+            $message .= " (назначено маршрутов: {$assignedCount})";
+        }
+        $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
     }
-        public function deleteZone($zoneId)
+
+    public function deleteZone($zoneId)
     {
         $zone = \App\Models\Zone::find($zoneId);
         if (!$zone) return;
 
-        // 1. Снимаем привязку зоны с маршрутами и делаем их неактивными
+        // 1. Снимаем привязку зоны с маршрутами (но не деактивируем — syncAllOrders разберётся)
         \App\Models\MiningOrder::where('zone_id', $zoneId)->update([
             'zone_id' => null,
-            'active' => false
         ]);
 
         // 2. Удаляем саму зону
         $zone->delete();
 
-        // 3. Обновляем данные в интерфейсе
+        // 3. Синхронизируем все маршруты
+        try {
+            $syncService = app(\App\Services\MiningOrderSyncService::class);
+            $syncService->syncAllOrders();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('MasterPanel syncAllOrders (delete): ' . $e->getMessage());
+        }
+        
+        // 4. Назначаем маршруты свободным самосвалам
+        $assignedCount = 0;
+        try {
+            $routeService = app(\App\Services\RouteAssignmentService::class);
+            $assignedCount = $routeService->assignRoutesToAllFree();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('MasterPanel assignRoutesToAllFree (delete): ' . $e->getMessage());
+        }
+        
+        // 5. Сигнал водителям
+        try {
+            event(new \App\Events\RoutesUpdated());
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('MasterPanel RoutesUpdated (delete): ' . $e->getMessage());
+        }
+        
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
-        $this->dispatch('notify', ['type' => 'info', 'message' => 'Зона удалена']);
+        
+        $message = 'Зона удалена';
+        if ($assignedCount > 0) {
+            $message .= " (переназначено маршрутов: {$assignedCount})";
+        }
+        $this->dispatch('notify', ['type' => 'info', 'message' => $message]);
     }
 
     public function render(ShiftService $shiftService)

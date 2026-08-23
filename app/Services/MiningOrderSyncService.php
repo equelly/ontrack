@@ -4,48 +4,85 @@ namespace App\Services;
 
 use App\Models\MiningOrder;
 use App\Models\Zone;
+use Illuminate\Support\Facades\Log;
 
 class MiningOrderSyncService
 {
     /**
-     * Синхронизирует статус active для всех MiningOrder, связанных с указанным zone_id.
+     * Синхронизирует статус active для всех MiningOrder, связанных с указанным zone_id,
+     * а также для маршрутов без зоны — пытается найти им доступную зону автоматически.
      *
      * @param int $zoneId
      */
     public function syncActiveStatusForZone(int $zoneId): void
     {
-        // Находим все маршруты для этой зоны
-        $zoneOrders = MiningOrder::where('zone_id', $zoneId)->get();
-
-        // Также находим все маршруты без зоны (zone_id = null)
-        $nullZoneOrders = MiningOrder::whereNull('zone_id')->get();
-
-        // Получаем зону
         $zone = Zone::find($zoneId);
 
-        // Обновляем маршруты для указанной зоны
+        // 1. Обновляем маршруты, у которых zone_id = эта зона
+        $zoneOrders = MiningOrder::where('zone_id', $zoneId)->get();
         foreach ($zoneOrders as $order) {
             if (!$zone) {
-                // Если зона не существует, деактивируем маршрут
-                $order->update(['active' => false]);
+                $order->update([
+                    'zone_id' => null,
+                    'active' => $this->canFindZoneForOrder($order),
+                ]);
                 continue;
             }
 
-            // Проверяем условия активности: зона открыта и не переполнена
             $isActive = $zone->delivery && $zone->volume < $zone->capacity;
             $order->update(['active' => $isActive]);
         }
 
-        // Жестко деактивируем все маршруты без зоны
+        // 2. Для маршрутов без zone_id — проверяем, можно ли найти зону автоматически.
+        $nullZoneOrders = MiningOrder::whereNull('zone_id')->get();
         foreach ($nullZoneOrders as $order) {
-            $order->update(['active' => false]);
+            $foundZone = $this->findZoneForOrder($order);
+            if ($foundZone) {
+                $order->update([
+                    'zone_id' => $foundZone->id,
+                    'active'  => true,
+                ]);
+                Log::info("MiningOrderSync: автопривязка зоны", [
+                    'order_id' => $order->id,
+                    'zone_id'  => $foundZone->id,
+                ]);
+            } else {
+                $order->update(['active' => false]);
+            }
         }
     }
 
     /**
+     * Проверяет, может ли маршрут найти доступную зону (без самой привязки).
+     */
+    protected function canFindZoneForOrder(MiningOrder $order): bool
+    {
+        return $this->findZoneForOrder($order) !== null;
+    }
+
+    /**
+     * Найти подходящую зону для маршрута.
+     * Использует RouteAssignmentService::selectZoneForRock() — единая точка правды
+     * по fallback-логике пород.
+     */
+    protected function findZoneForOrder(MiningOrder $order): ?Zone
+    {
+        $miner = $order->miner;
+        if (!$miner) {
+            return null;
+        }
+
+        $currentRock = $miner->currentRock;
+        if (!$currentRock) {
+            return null;
+        }
+
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        return $routeService->selectZoneForRock($order->dump_id, $currentRock->id);
+    }
+
+    /**
      * Синхронизирует статус active для конкретного MiningOrder.
-     *
-     * @param MiningOrder $order
      */
     public function syncActiveStatusForOrder(MiningOrder $order): void
     {
@@ -61,5 +98,49 @@ class MiningOrderSyncService
             ->exists();
 
         $order->update(['active' => $eligibleZones]);
+    }
+
+    /**
+     * Полная синхронизация всех MiningOrder.
+     * Возвращает количество маршрутов, для которых удалось найти зону автоматически.
+     */
+    public function syncAllOrders(): int
+    {
+        $autoAssigned = 0;
+
+        $ordersWithZone = MiningOrder::whereNotNull('zone_id')->get();
+        foreach ($ordersWithZone as $order) {
+            $zone = $order->zone;
+            if (!$zone || !$zone->delivery || $zone->volume >= $zone->capacity) {
+                $newZone = $this->findZoneForOrder($order);
+                if ($newZone) {
+                    $order->update([
+                        'zone_id' => $newZone->id,
+                        'active'  => true,
+                    ]);
+                    $autoAssigned++;
+                } else {
+                    $order->update(['active' => false]);
+                }
+            } else {
+                $order->update(['active' => true]);
+            }
+        }
+
+        $ordersWithoutZone = MiningOrder::whereNull('zone_id')->get();
+        foreach ($ordersWithoutZone as $order) {
+            $newZone = $this->findZoneForOrder($order);
+            if ($newZone) {
+                $order->update([
+                    'zone_id' => $newZone->id,
+                    'active'  => true,
+                ]);
+                $autoAssigned++;
+            } else {
+                $order->update(['active' => false]);
+            }
+        }
+
+        return $autoAssigned;
     }
 }
