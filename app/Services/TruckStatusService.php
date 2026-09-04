@@ -415,26 +415,73 @@ class TruckStatusService
         }
     }
 
-    /**
-     * Найти доступную зону на любой перегрузке
+     /**
+     * Найти доступную зону на любой перегрузке.
+     *
+     * ВАЖНО: Использует RouteAssignmentService::selectZoneForRock() как
+     * единую точку правды — чтобы fallback-логика пород (руда_ЦПТ → руда → руда_Sera)
+     * работала одинаково во всех точках системы.
      */
     public function findAvailableZoneOnAnyDump(int $rockId): ?Zone
     {
-        return Zone::where('delivery', true)
-            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
-            ->whereRaw('volume < capacity')
-            ->orderBy('volume', 'asc')
-            ->first();
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        $acceptableRockIds = $routeService::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
+
+        foreach ($acceptableRockIds as $acceptableRockId) {
+            $zone = Zone::where('delivery', true)
+                ->whereHas('rocks', fn($q) => $q->where('rocks.id', $acceptableRockId))
+                ->whereRaw('volume < capacity')
+                ->orderBy('volume', 'asc')
+                ->first();
+
+            if ($zone) {
+                if ($acceptableRockId !== $rockId) {
+                    Log::info("findAvailableZoneOnAnyDump: fallback породы", [
+                        'requested_rock_id' => $rockId,
+                        'used_rock_id' => $acceptableRockId,
+                        'zone_id' => $zone->id,
+                    ]);
+                }
+                return $zone;
+            }
+        }
+
+        return null;
     }
 
+    /**
+     * Найти доступную зону на конкретной перегрузке.
+     *
+     * ВАЖНО: Использует RouteAssignmentService::selectZoneForRock() как
+     * единую точку правды — fallback-логика пород работает одинаково.
+     */
     public function findAvailableZone(int $dumpId, int $rockId): ?Zone
     {
-        return Zone::where('dump_id', $dumpId)
-            ->where('delivery', true)
-            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
-            ->whereRaw('volume < capacity')
-            ->orderBy('volume', 'asc')
-            ->first();
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        $acceptableRockIds = $routeService::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
+
+        foreach ($acceptableRockIds as $acceptableRockId) {
+            $zone = Zone::where('dump_id', $dumpId)
+                ->where('delivery', true)
+                ->whereHas('rocks', fn($q) => $q->where('rocks.id', $acceptableRockId))
+                ->whereRaw('volume < capacity')
+                ->orderBy('volume', 'asc')
+                ->first();
+
+            if ($zone) {
+                if ($acceptableRockId !== $rockId) {
+                    Log::info("findAvailableZone: fallback породы", [
+                        'dump_id' => $dumpId,
+                        'requested_rock_id' => $rockId,
+                        'used_rock_id' => $acceptableRockId,
+                        'zone_id' => $zone->id,
+                    ]);
+                }
+                return $zone;
+            }
+        }
+
+        return null;
     }
 
     protected function getActiveTrip(Truck $truck): ?TruckTrip

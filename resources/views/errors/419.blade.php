@@ -8,7 +8,7 @@
 <div class="min-h-screen flex items-center justify-center bg-gray-100">
     <div class="text-center">
         <div class="text-6xl mb-4">⌛</div>
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">Сессия истекла</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Время сессии закончилось</h1>
         <p class="text-gray-600 mb-6">
             В целях безопасности ваша сессия была завершена. <br>
             Войдите снова, чтобы продолжить работу — вы вернётесь на эту же страницу.

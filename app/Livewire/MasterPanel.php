@@ -322,6 +322,10 @@ class MasterPanel extends Component
         $zone = \App\Models\Zone::find($zoneId);
         if (!$zone) return;
 
+        // Сохраняем старое состояние для проверки, изменилась ли доступность зоны
+        $wasDelivery = (bool) $zone->delivery;
+        $wasRockId = $zone->rocks->first()?->id;
+
         if ($field === 'delivery') {
             $zone->delivery = filter_var($value, FILTER_VALIDATE_BOOLEAN);
         } elseif (in_array($field, ['volume', 'capacity', 'name_zone'])) {
@@ -330,12 +334,12 @@ class MasterPanel extends Component
             $zone->rocks()->sync([$value]);
         }
         
-        // Фиксируем, кто изменил зону
         $zone->last_updated_by = auth()->id();
         $zone->save();
         
-        // 1. Синхронизируем ВСЕ MiningOrder — эта зона могла стать доступной
-        //    для других маршрутов (не только с zone_id=этой зоне)
+        $isDeliveryNow = (bool) $zone->fresh()->delivery;
+        $isRockIdNow = $zone->fresh()->rocks->first()?->id;
+        
         try {
             $syncService = app(\App\Services\MiningOrderSyncService::class);
             $syncService->syncAllOrders();
@@ -343,16 +347,23 @@ class MasterPanel extends Component
             \Illuminate\Support\Facades\Log::error('MasterPanel syncAllOrders: ' . $e->getMessage());
         }
         
-        // 2. Назначаем маршруты всем свободным/ожидающим самосвалам
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        $reassignedCount = 0;
         $assignedCount = 0;
+        
         try {
-            $routeService = app(\App\Services\RouteAssignmentService::class);
+            // Если зона стала недоступной или изменилась порода — переназначаем
+            // самосвалов, которые к ней едут, на другие зоны
+            if ((!$isDeliveryNow && $wasDelivery) || ($isRockIdNow !== $wasRockId)) {
+                $reassignedCount = $routeService->reassignOnZoneClose($zone);
+            }
+            
+            // Назначаем маршруты всем свободным/ожидающим самосвалам
             $assignedCount = $routeService->assignRoutesToAllFree();
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel assignRoutesToAllFree: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('MasterPanel route reassignment: ' . $e->getMessage());
         }
         
-        // 3. Отправляем сигнал водителям
         try {
             event(new \App\Events\RoutesUpdated());
         } catch (\Exception $e) {
@@ -362,8 +373,12 @@ class MasterPanel extends Component
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
         
         $message = 'Зона обновлена';
-        if ($assignedCount > 0) {
-            $message .= " (назначено маршрутов: {$assignedCount})";
+        if ($reassignedCount > 0 && $assignedCount > 0) {
+            $message .= " (переназначено: {$reassignedCount}, новых: {$assignedCount})";
+        } elseif ($reassignedCount > 0) {
+            $message .= " (переназначено: {$reassignedCount})";
+        } elseif ($assignedCount > 0) {
+            $message .= " (назначено: {$assignedCount})";
         }
         $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
     }
