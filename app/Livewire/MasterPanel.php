@@ -322,6 +322,19 @@ class MasterPanel extends Component
         $zone = \App\Models\Zone::find($zoneId);
         if (!$zone) return;
 
+        // ===== ЗАЩИТА: нельзя менять породу в открытой зоне (delivery=true) =====
+        // Бизнес-правило: перед сменой породы зона должна быть «вычищена»
+        // (вся горная масса отгружена) и закрыта для приёма (delivery=false).
+        // Это предотвращает сценарий, когда самосвалы едут на зону,
+        // которая уже не принимает их породу.
+        if ($field === 'rock_id' && $zone->delivery) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Нельзя сменить породу в открытой зоне. Сначала закройте зону (delivery=false) и отгрузите остатки горной массы.',
+            ]);
+            return;
+        }
+
         // Сохраняем старое состояние для проверки, изменилась ли доступность зоны
         $wasDelivery = (bool) $zone->delivery;
         $wasRockId = $zone->rocks->first()?->id;

@@ -235,12 +235,41 @@ class ExcavatorPanel extends Component
 
         $rock = Rock::find($this->selectedRockId);
 
-        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
-        event(new \App\Events\RoutesUpdated());
+        // === Event-driven цепочка при смене породы ===
+        // 1. Пересинхронизируем маршруты — текущая порода забоя изменилась,
+        //    значит для MiningOrder с этим забоем может потребоваться другая зона.
+        $reassignedCount = 0;
+        $assignedCount = 0;
+        try {
+            $syncService = app(\App\Services\MiningOrderSyncService::class);
+            $syncService->syncAllOrders();
+        } catch (\Exception $e) {
+            Log::error('ExcavatorPanel syncAllOrders: ' . $e->getMessage());
+        }
 
+        // 2. Назначаем маршруты свободным самосвалам — вдруг теперь
+        //    они могут поехать в этот забой (если порода совпала с их ограничениями)
+        try {
+            $routeService = app(\App\Services\RouteAssignmentService::class);
+            $assignedCount = $routeService->assignRoutesToAllFree();
+        } catch (\Exception $e) {
+            Log::error('ExcavatorPanel assignRoutesToAllFree: ' . $e->getMessage());
+        }
+
+        // 3. Сигнал водителям
+        try {
+            event(new \App\Events\RoutesUpdated());
+        } catch (\Exception $e) {
+            Log::error('ExcavatorPanel RoutesUpdated: ' . $e->getMessage());
+        }
+
+        $message = 'Текущая порода: ' . ($rock?->name_rock ?? '');
+        if ($assignedCount > 0) {
+            $message .= " (назначено маршрутов: {$assignedCount})";
+        }
         $this->dispatch('notify', [
             'type' => 'success',
-            'message' => 'Текущая порода: ' . ($rock?->name_rock ?? ''),
+            'message' => $message,
         ]);
     }
 

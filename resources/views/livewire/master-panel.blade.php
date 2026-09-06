@@ -243,10 +243,14 @@
                                     <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
                                         <td class="p-3 font-medium text-gray-800">{{ $zone->name_zone }}</td>
                                         <td class="p-3">
-                                            <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
-                                                <option value="">Не указана</option>
+                                            <select
+                                                wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)"
+                                                @if($zone->delivery) disabled @endif
+                                                class="border-gray-300 rounded-md text-sm py-1 w-full @if($zone->delivery) bg-slate-100 cursor-not-allowed text-slate-500 @endif"
+                                                @if($zone->delivery) title="Сначала закройте зону для приёма горной массы" @endif
+                                            >
                                                 @foreach($rocks as $rock)
-                                                    <option value="{{ $rock->id }}" @if($currentRockId == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
+                                                    <option value="{{ $rock->id }}" @selected($currentRockId === $rock->id)>{{ $rock->name_rock }}</option>
                                                 @endforeach
                                             </select>
                                         </td>
@@ -733,10 +737,15 @@
                                         <input type="text" wire:change="updateZoneField({{ $zone->id }}, 'name_zone', $event.target.value)" value="{{ $zone->name_zone }}" class="border-gray-300 rounded-md text-sm py-1 w-full">
                                     </td>
                                     <td class="p-2">
-                                        <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
-                                            <option value="">Не указана</option>
+                                        @php($currentRockId = $zone->rocks->first()?->id)
+                                        <select
+                                            wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)"
+                                            @if($zone->delivery) disabled @endif
+                                            class="border-gray-300 rounded-md text-sm py-1 w-full @if($zone->delivery) bg-slate-100 cursor-not-allowed text-slate-500 @endif"
+                                            @if($zone->delivery) title="Сначала закройте зону для приёма горной массы" @endif
+                                            >
                                             @foreach($rocks as $rock)
-                                                <option value="{{ $rock->id }}" @if($zone->rocks->first()?->id == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
+                                                <option value="{{ $rock->id }}" @selected($currentRockId === $rock->id)>{{ $rock->name_rock }}</option>
                                             @endforeach
                                         </select>
                                     </td>

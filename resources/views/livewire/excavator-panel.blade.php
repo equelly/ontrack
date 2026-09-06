@@ -1,6 +1,6 @@
 <div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'face' }">
     <!-- Toast контейнер для уведомлений -->
-    <div id="global-toast-container" class="fixed top-0 right-0 p-3" style="z-index: 9999;"></div>
+    <!-- <div id="global-toast-container" class="fixed top-0 right-0 p-3" style="z-index: 9999;"></div> -->
 
     <!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ЭКСКАВАТОРА -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
@@ -46,7 +46,7 @@
     <nav class="bg-white border-b shadow-sm sticky top-0 z-10">
         <div class="max-w-7xl mx-auto px-2 sm:px-4 flex overflow-x-auto gap-1 sm:gap-2 py-2 justify-around sm:justify-start">
             <button @click="tab='face'" :class="tab === 'face' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'" class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5">
-                <span>🚜</span> <span class="hidden sm:inline">Забой</span>
+                <span></span> <span class="hidden sm:inline">Забой</span>
             </button>
             <button @click="tab='stats'" :class="tab === 'stats' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'" class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5">
                 <span>📊</span> <span class="hidden sm:inline">Статистика</span>
@@ -76,11 +76,17 @@
         <div x-show="tab === 'face'" class="space-y-4 sm:space-y-6">
             
             <!-- Настройки забоя (Порода и Норма) -->
-            <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6">
+            <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6 {{ !$miner->current_rock_id ? 'border-amber-400 border-2 bg-amber-50' : '' }}">
+                @if(!$miner->current_rock_id)
+                    <div class="mb-3 px-3 py-2 bg-amber-100 border border-amber-300 rounded-md text-amber-800 text-sm flex items-center gap-2">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span><strong>Порода не выбрана!</strong> Самосвалы не смогут получить маршрут в этот забой. Выберите породу и нажмите «Сменить».</span>
+                    </div>
+                @endif
                 <div class="flex flex-col sm:flex-row gap-4">
                     <div class="flex-1 flex items-center gap-2">
-                        <select wire:model.live="selectedRockId" class="flex-1 border-gray-300 focus:border-emerald-500 focus:ring-emerald-500 rounded-md shadow-sm py-2 text-sm">
-                            <option value="">-- Сменить породу --</option>
+                        <select wire:model.live="selectedRockId" class="flex-1 border-gray-300 focus:border-emerald-500 focus:ring-emerald-500 rounded-md shadow-sm py-2 text-sm {{ !$miner->current_rock_id ? 'border-amber-400' : '' }}">
+                            <option value="">-- Выберите породу --</option>
                             @foreach($rocks as $rock)
                                 <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
                             @endforeach
@@ -93,6 +99,12 @@
                         <button wire:click="setTargetLoadTime" wire:loading.attr="disabled" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-md font-semibold uppercase text-xs hover:bg-slate-300 whitespace-nowrap">OK</button>
                     </div>
                 </div>
+                @if($miner->current_rock_id)
+                    <div class="mt-3 text-xs text-emerald-700 flex items-center gap-1">
+                        <i class="fas fa-check-circle"></i>
+                        Текущая порода: <strong>{{ $miner->currentRock?->name_rock }}</strong>
+                    </div>
+                @endif
             </div>
 
             <!-- Статус забоя -->
