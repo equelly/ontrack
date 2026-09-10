@@ -22,6 +22,7 @@ class RouteBlockReason
     const ROCK_RESTRICTED = 'rock_restricted';
     const NO_AVAILABLE_ZONES = 'no_available_zones';
     const NO_ACTIVE_ORDERS = 'no_active_orders';
+    const ZONE_UNDER_BERM = 'zone_under_berm';
 
     /**
      * Человекочитаемая метка причины.
@@ -38,6 +39,7 @@ class RouteBlockReason
             self::ROCK_RESTRICTED      => 'Порода запрещена для этого самосвала',
             self::NO_AVAILABLE_ZONES   => 'Нет доступных зон разгрузки для породы',
             self::NO_ACTIVE_ORDERS     => 'Нет активных маршрутов',
+            self::ZONE_UNDER_BERM      => 'Необходимо обваловать — обычные маршруты заблокированы',
             default                    => 'Неизвестная причина',
         };
     }

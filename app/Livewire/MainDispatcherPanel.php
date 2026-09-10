@@ -1259,7 +1259,28 @@ class MainDispatcherPanel extends Component
             'message' => "Обновлено время погрузки забоя «{$minerName}»: {$data['target_load_time']} сек",
         ]);
     }
+ /**
+     * Обработчик вебсокет-события ZoneNeedsBerm.
+     * Зона заполнена до предела — требуется обваловка.
+     *
+     * В Панели Диспетчера уведомление показываем, но решение
+     * об обваловке принимает Мастер — диспетчер только информируется.
+     */
+    #[On('echo:dispatcher,zone.needs.berm')]
+    public function onZoneNeedsBerm($event): void
+    {
+        $zoneName = $event['zone_name'] ?? '—';
+        $dumpName = $event['dump_name'] ?? '—';
+        $fillPct  = $event['fill_percent'] ?? 100;
 
+        $this->dispatch('notify', [
+            'type' => 'warning',
+            'message' => "Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%. Уведомите мастера о необходимости обваловки.",
+        ]);
+
+        // Перезагружаем данные — зоны могли измениться (delivery=false)
+        $this->loadData();
+    }
     // =========================================
     // УПРАВЛЕНИЕ ВКЛАДКАМИ
     // =========================================

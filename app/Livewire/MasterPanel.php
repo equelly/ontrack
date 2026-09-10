@@ -8,6 +8,7 @@ use App\Models\TruckTrip;
 use App\Models\Truck;
 use App\Models\Miner;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 
 
@@ -441,7 +442,185 @@ class MasterPanel extends Component
         }
         $this->dispatch('notify', ['type' => 'info', 'message' => $message]);
     }
+        /**
+     * Обработчик вебсокет-события ZoneNeedsBerm.
+     * Зона заполнена до предела — требуется обваловка
+     * (предохранительный вал для безопасности горных работ).
+     *
+     * Событие прилетает из TruckStatusService::onUnloading() когда
+     * volume зоны достиг capacity после выгрузки самосвала.
+     */
+    #[On('echo:master,zone.needs.berm')]
+    public function onZoneNeedsBerm($event): void
+    {
+        $zoneName = $event['zone_name'] ?? '—';
+        $dumpName = $event['dump_name'] ?? '—';
+        $fillPct  = $event['fill_percent'] ?? 100;
 
+        $this->dispatch('notify', [
+            'type' => 'error',
+            'message' => "⚠️ Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%. Требуется обваловка!",
+        ]);
+
+        \Illuminate\Support\Facades\Log::info('MasterPanel: received ZoneNeedsBerm', [
+            'zone_id' => $event['zone_id'] ?? null,
+            'zone_name' => $zoneName,
+        ]);
+
+        // Обновляем данные в интерфейсе — возможно, после закрытия зоны
+        // нужно перерисовать список зон
+        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+    }
+    
+
+    /**
+     * Обработчик вебсокет-события BermProgress.
+     * Прогресс обваловки зоны — обновляем UI и показываем уведомление.
+     */
+    #[On('echo:master,berm.progress')]
+    public function onBermProgress($event): void
+    {
+        $zoneName = $event['zone_name'] ?? '—';
+        $status   = $event['status'] ?? 'in_progress';
+        $message  = $event['message'] ?? '';
+
+        // Тип уведомления по статусу
+        $type = match($status) {
+            \App\Models\BermRequest::STATUS_COMPLETED => 'success',
+            \App\Models\BermRequest::STATUS_CANCELLED => 'info',
+            default => 'info',
+        };
+
+        $this->dispatch('notify', [
+            'type' => $type,
+            'message' => $message,
+        ]);
+
+        // Обновляем данные — список зон, активные обваловки
+        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+    }
+
+    // ==========================================
+    // ОБВАЛОВКА (BERM)
+    // ==========================================
+
+    /**
+     * Свойство для модального окна создания запроса обваловки.
+     */
+    public ?int $bermZoneId = null;
+    public ?string $bermZoneName = null;
+    public int $bermTrucksNeeded = 1;
+    public ?int $bermRockId = null;
+    public bool $showBermModal = false;
+
+    /**
+     * Открыть модальное окно для создания запроса обваловки.
+     */
+    public function openBermModal(int $zoneId): void
+    {
+        $zone = \App\Models\Zone::with('dump', 'rocks')->find($zoneId);
+        if (!$zone) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Зона не найдена']);
+            return;
+        }
+
+        // Проверяем, нет ли уже активной обваловки
+        $bermService = app(\App\Services\BermService::class);
+        if ($bermService->isZoneUnderBerm($zoneId)) {
+            $this->dispatch('notify', ['type' => 'warning', 'message' => 'На эту зону уже есть активный запрос обваловки']);
+            return;
+        }
+
+        $this->bermZoneId = $zoneId;
+        $this->bermZoneName = $zone->name_zone . ' (' . $zone->dump?->name_dump . ')';
+        $this->bermTrucksNeeded = 1;
+        $this->bermRockId = null;
+        $this->showBermModal = true;
+    }
+
+    /**
+     * Закрыть модальное окно обваловки.
+     */
+    public function closeBermModal(): void
+    {
+        $this->showBermModal = false;
+        $this->bermZoneId = null;
+        $this->bermZoneName = null;
+        $this->bermTrucksNeeded = 1;
+        $this->bermRockId = null;
+    }
+
+    /**
+     * Создать запрос на обваловку.
+     */
+    public function createBermRequest(): void
+    {
+        if (!$this->bermZoneId) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Зона не выбрана']);
+            return;
+        }
+
+        if ($this->bermTrucksNeeded < 1 || $this->bermTrucksNeeded > 50) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Количество самосвалов должно быть от 1 до 50']);
+            return;
+        }
+
+        try {
+            $bermService = app(\App\Services\BermService::class);
+            $request = $bermService->createRequest(
+                $this->bermZoneId,
+                $this->bermTrucksNeeded,
+                $this->bermRockId,
+                auth()->id()
+            );
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => "Запрос на обваловку создан. Самосвалов нужно: {$request->trucks_needed}. Свободные самосвалы будут направлены автоматически.",
+            ]);
+
+            $this->closeBermModal();
+
+            // Обновляем данные — возможно, зона изменилась
+            $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Отменить запрос на обваловку (мастер вручную).
+     */
+    public function cancelBermRequest(int $requestId): void
+    {
+        try {
+            $bermService = app(\App\Services\BermService::class);
+            $bermService->cancelRequest($requestId, auth()->id());
+
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => 'Запрос на обваловку отменён. Обычные маршруты снова доступны.',
+            ]);
+
+            $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+
+        } catch (\Exception $e) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Получить активные запросы обваловки (для отображения в UI).
+     */
+    public function getActiveBermRequestsProperty()
+    {
+        return \App\Models\BermRequest::active()
+            ->with(['zone', 'dump', 'rock'])
+            ->orderBy('created_at')
+            ->get();
+    }
+    
     public function render(ShiftService $shiftService)
     {
         // 1. Данные для выпадающих списков фильтра

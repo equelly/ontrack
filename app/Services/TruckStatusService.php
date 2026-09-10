@@ -415,73 +415,26 @@ class TruckStatusService
         }
     }
 
-     /**
-     * Найти доступную зону на любой перегрузке.
-     *
-     * ВАЖНО: Использует RouteAssignmentService::selectZoneForRock() как
-     * единую точку правды — чтобы fallback-логика пород (руда_ЦПТ → руда → руда_Sera)
-     * работала одинаково во всех точках системы.
+    /**
+     * Найти доступную зону на любой перегрузке
      */
     public function findAvailableZoneOnAnyDump(int $rockId): ?Zone
     {
-        $routeService = app(\App\Services\RouteAssignmentService::class);
-        $acceptableRockIds = $routeService::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
-
-        foreach ($acceptableRockIds as $acceptableRockId) {
-            $zone = Zone::where('delivery', true)
-                ->whereHas('rocks', fn($q) => $q->where('rocks.id', $acceptableRockId))
-                ->whereRaw('volume < capacity')
-                ->orderBy('volume', 'asc')
-                ->first();
-
-            if ($zone) {
-                if ($acceptableRockId !== $rockId) {
-                    Log::info("findAvailableZoneOnAnyDump: fallback породы", [
-                        'requested_rock_id' => $rockId,
-                        'used_rock_id' => $acceptableRockId,
-                        'zone_id' => $zone->id,
-                    ]);
-                }
-                return $zone;
-            }
-        }
-
-        return null;
+        return Zone::where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->orderBy('volume', 'asc')
+            ->first();
     }
 
-    /**
-     * Найти доступную зону на конкретной перегрузке.
-     *
-     * ВАЖНО: Использует RouteAssignmentService::selectZoneForRock() как
-     * единую точку правды — fallback-логика пород работает одинаково.
-     */
     public function findAvailableZone(int $dumpId, int $rockId): ?Zone
     {
-        $routeService = app(\App\Services\RouteAssignmentService::class);
-        $acceptableRockIds = $routeService::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
-
-        foreach ($acceptableRockIds as $acceptableRockId) {
-            $zone = Zone::where('dump_id', $dumpId)
-                ->where('delivery', true)
-                ->whereHas('rocks', fn($q) => $q->where('rocks.id', $acceptableRockId))
-                ->whereRaw('volume < capacity')
-                ->orderBy('volume', 'asc')
-                ->first();
-
-            if ($zone) {
-                if ($acceptableRockId !== $rockId) {
-                    Log::info("findAvailableZone: fallback породы", [
-                        'dump_id' => $dumpId,
-                        'requested_rock_id' => $rockId,
-                        'used_rock_id' => $acceptableRockId,
-                        'zone_id' => $zone->id,
-                    ]);
-                }
-                return $zone;
-            }
-        }
-
-        return null;
+        return Zone::where('dump_id', $dumpId)
+            ->where('delivery', true)
+            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
+            ->whereRaw('volume < capacity')
+            ->orderBy('volume', 'asc')
+            ->first();
     }
 
     protected function getActiveTrip(Truck $truck): ?TruckTrip
@@ -577,18 +530,64 @@ class TruckStatusService
                 $volumeInTrains = $loadVolume / self::TRAIN_CAPACITY;
                 $zone->increment('volume', $volumeInTrains);
 
+                // Обновляем зону, чтобы видеть актуальный volume
+                $zone = $zone->fresh();
+
                 Log::info("Zone {$zone->id} volume updated", [
-                    'volume_trains' => $zone->fresh()->volume,
+                    'volume_trains' => $zone->volume,
                     'capacity_trains' => $zone->capacity,
                     'added_m3' => $loadVolume,
                     'added_trains' => round($volumeInTrains, 4),
+                    'fill_percent' => $zone->capacity > 0
+                        ? round(($zone->volume / $zone->capacity) * 100, 1)
+                        : 100.0,
                 ]);
 
-                if ($zone->fresh()->volume >= $zone->capacity) {
-                    Log::warning("Zone {$zone->id} is FULL!", [
-                        'volume' => $zone->fresh()->volume,
-                        'capacity' => $zone->capacity,
+                // ===== Проверка переполнения =====
+                if ($zone->volume >= $zone->capacity) {
+                    Log::warning("Zone {$zone->id} is FULL — needs berm!", [
+                        'zone_name' => $zone->name_zone,
+                        'dump_name' => $zone->dump?->name_dump,
+                        'volume'    => $zone->volume,
+                        'capacity'  => $zone->capacity,
                     ]);
+
+                    try {
+                        event(new \App\Events\ZoneNeedsBerm($zone));
+                    } catch (\Exception $e) {
+                        Log::error('Failed to broadcast ZoneNeedsBerm: ' . $e->getMessage());
+                    }
+
+                    // Закрываем зону — новые самосвалы не едут на переполненную
+                    $zone->update(['delivery' => false]);
+
+                    try {
+                        app(\App\Services\MiningOrderSyncService::class)->syncAllOrders();
+                    } catch (\Exception $e) {
+                        Log::error('syncAllOrders after zone full failed: ' . $e->getMessage());
+                    }
+
+                    try {
+                        app(\App\Services\RouteAssignmentService::class)->assignRoutesToAllFree();
+                    } catch (\Exception $e) {
+                        Log::error('assignRoutesToAllFree after zone full failed: ' . $e->getMessage());
+                    }
+
+                    try {
+                        event(new \App\Events\RoutesUpdated());
+                    } catch (\Exception $e) {
+                        Log::error('RoutesUpdated after zone full failed: ' . $e->getMessage());
+                    }
+                }
+
+                // ===== Проверка обваловки =====
+                // Если эта зона под активным запросом обваловки — увеличиваем счётчик
+                // завершённых рейсов. Когда trucks_completed достиг trucks_needed,
+                // запрос автоматически закроется.
+                try {
+                    app(\App\Services\BermService::class)->onTruckUnloaded($truck->id, $zone->id);
+                } catch (\Exception $e) {
+                    Log::error('BermService::onTruckUnloaded failed: ' . $e->getMessage());
                 }
             } else {
                 Log::warning("Trip {$trip->id} completed without zone - volume not added to any zone");

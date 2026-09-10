@@ -90,6 +90,26 @@ class RouteAssignmentService
             throw new \RuntimeException("Грузовик занят (статус: {$truck->status})");
         }
 
+        // ===== ПРИОРИТЕТ ОБВАЛОВКИ =====
+        // Если есть активные запросы обваловки — сначала пытаемся направить
+        // самосвал на обваловку. Обваловка имеет приоритет над обычными маршрутами.
+        try {
+            $bermService = app(\App\Services\BermService::class);
+            $assigned = $bermService->assignTrucks();
+
+            if ($assigned > 0) {
+                // Грузовик могли назначить на обваловку — проверим статус
+                $truck->refresh();
+                if (in_array($truck->status, [Truck::STATUS_TO_MINER, Truck::STATUS_LOADING])) {
+                    Log::info('assignForTruck: truck assigned to berm', ['truck_id' => $truck->id]);
+                    return;
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('assignForTruck: berm assignment failed', ['error' => $e->getMessage()]);
+        }
+
+
         DB::transaction(function () use ($truck) {
             $activeOrders = MiningOrder::where('active', true)
                 ->with(['miner.currentRock', 'dump.zones.rocks', 'zone'])
@@ -241,25 +261,45 @@ class RouteAssignmentService
             // ===== 5. ПОИСК ЗОНЫ =====
             $zone = null;
             if (!$reason) {
+                // Если у MiningOrder задана zone_id — проверяем её
                 if ($order->zone_id && $order->zone) {
                     if ($order->zone->delivery && $order->zone->volume < $order->zone->capacity) {
                         $zone = $order->zone;
                     }
                 }
 
+                // Если зона недоступна — ищем автоматически с учётом fallback-пород
                 if (!$zone) {
                     $zone = $this->selectZoneForRock($order->dump_id, $currentRock->id);
                     if ($zone) {
+                        // Сохраняем найденную зону для диспетчера и следующих грузовиков
                         $order->update(['zone_id' => $zone->id]);
                         $order->refresh();
                     } else {
                         $reason = RouteBlockReason::NO_AVAILABLE_ZONES;
                     }
                 }
+
+                // ===== ПРОВЕРКА ОБВАЛОВКИ =====
+                // Если зона под обваловкой — обычные маршруты на неё не назначаются.
+                // Самосвалы на обваловку направляются через BermService (приоритет).
+                if ($zone && !$reason) {
+                    try {
+                        $bermService = app(\App\Services\BermService::class);
+                        if ($bermService->isZoneUnderBerm($zone->id)) {
+                            $reason = RouteBlockReason::ZONE_UNDER_BERM;
+                            Log::info("Маршрут {$order->id}: зона {$zone->id} под обваловкой — обычный маршрут заблокирован");
+                            $zone = null;
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Проверка обваловки в filterRoutesWithAvailableZones: ' . $e->getMessage());
+                    }
+                }
             }
 
             // ===== 6. РЕЗУЛЬТАТ =====
             if ($reason) {
+                // Маршрут заблокирован — добавляем в диагностику
                 $diagnosticsOrders[] = [
                     'order_id' => $order->id,
                     'miner_id' => $order->miner_id,
@@ -280,6 +320,7 @@ class RouteAssignmentService
                     'rock_id' => $currentRock?->id,
                 ]);
             } else {
+                // Маршрут доступен
                 $loadingTime = $this->getLoadingTimeForMiner($miner);
                 $available[] = [
                     'order' => $order,
@@ -291,6 +332,7 @@ class RouteAssignmentService
             }
         }
 
+        // Определяем «основную» причину (по частоте встречаемости)
         $primaryReason = null;
         if (empty($available) && !empty($summary)) {
             arsort($summary);

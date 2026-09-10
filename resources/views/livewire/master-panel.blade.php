@@ -1,4 +1,4 @@
-<div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'zones' }">
+<div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'dumps' }">
     <!-- Dark Header -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
@@ -243,14 +243,10 @@
                                     <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
                                         <td class="p-3 font-medium text-gray-800">{{ $zone->name_zone }}</td>
                                         <td class="p-3">
-                                            <select
-                                                wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)"
-                                                @if($zone->delivery) disabled @endif
-                                                class="border-gray-300 rounded-md text-sm py-1 w-full @if($zone->delivery) bg-slate-100 cursor-not-allowed text-slate-500 @endif"
-                                                @if($zone->delivery) title="Сначала закройте зону для приёма горной массы" @endif
-                                            >
+                                            <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
+                                                <option value="">Не указана</option>
                                                 @foreach($rocks as $rock)
-                                                    <option value="{{ $rock->id }}" @selected($currentRockId === $rock->id)>{{ $rock->name_rock }}</option>
+                                                    <option value="{{ $rock->id }}" @if($currentRockId == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
                                                 @endforeach
                                             </select>
                                         </td>
@@ -727,6 +723,7 @@
                                 <th class="text-left p-2 font-semibold text-gray-600">Текущ. (верт.)</th>
                                 <th class="text-left p-2 font-semibold text-gray-600">Вмест. (верт.)</th>
                                 <th class="text-center p-2 font-semibold text-gray-600">Принимает</th>
+                                <th class="text-center p-2 font-semibold text-gray-600">Обваловать</th>
                                 <th class="text-center p-2 font-semibold text-gray-600">Удалить</th>
                             </tr>
                         </thead>
@@ -737,32 +734,34 @@
                                         <input type="text" wire:change="updateZoneField({{ $zone->id }}, 'name_zone', $event.target.value)" value="{{ $zone->name_zone }}" class="border-gray-300 rounded-md text-sm py-1 w-full">
                                     </td>
                                     <td class="p-2">
-                                        @php($currentRockId = $zone->rocks->first()?->id)
-                                        <select
-                                            wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)"
-                                            @if($zone->delivery) disabled @endif
-                                            class="border-gray-300 rounded-md text-sm py-1 w-full @if($zone->delivery) bg-slate-100 cursor-not-allowed text-slate-500 @endif"
-                                            @if($zone->delivery) title="Сначала закройте зону для приёма горной массы" @endif
-                                            >
+                                        <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
+                                            <option value="">Не указана</option>
                                             @foreach($rocks as $rock)
-                                                <option value="{{ $rock->id }}" @selected($currentRockId === $rock->id)>{{ $rock->name_rock }}</option>
+                                                <option value="{{ $rock->id }}" @if($zone->rocks->first()?->id == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
                                             @endforeach
                                         </select>
                                     </td>
                                     <td class="p-2">
                                         <div class="flex items-center gap-1">
                                             <input type="number" wire:change="updateZoneField({{ $zone->id }}, 'volume', $event.target.value * 380)" value="{{ round($zone->volume / 380) }}" class="border-gray-300 rounded-md text-sm py-1 w-16 text-center" step="1">
-                                            <span class="text-xs text-gray-400">({{ number_format($zone->volume, 0) }})</span>
+                                            {{-- Класс whitespace-nowrap не даст тексту разорваться на две строки --}}
+                                            <span class="text-xs text-gray-400 whitespace-nowrap">({{ number_format($zone->volume / 1000, 0, '.', ' ') }}&nbsp;т.м³)</span>
                                         </div>
+
                                     </td>
                                     <td class="p-2">
                                         <div class="flex items-center gap-1">
                                             <input type="number" wire:change="updateZoneField({{ $zone->id }}, 'capacity', $event.target.value * 380)" value="{{ round($zone->capacity / 380) }}" class="border-gray-300 rounded-md text-sm py-1 w-16 text-center" step="1">
-                                            <span class="text-xs text-gray-400">({{ number_format($zone->capacity, 0) }})</span>
+                                            <span class="text-xs text-gray-400  whitespace-nowrap">({{ number_format($zone->capacity / 1000, 0, '.', ' ') }}&nbsp; т.м³)</span>
                                         </div>
                                     </td>
                                     <td class="p-2 text-center">
                                         <input type="checkbox" wire:change="updateZoneField({{ $zone->id }}, 'delivery', $event.target.checked)" {{ $zone->delivery ? 'checked' : '' }} class="rounded text-emerald-600 h-5 w-5 cursor-pointer">
+                                    </td>
+                                    <td class="p-2 text-center">
+                                        <button wire:click="openBermModal({{ $zone->id }})" class="text-orange-500 hover:text-orange-700" title="Запросить обваловку">
+                                            <i class="fas fa-mountain"></i>
+                                        </button>
                                     </td>
                                     <td class="p-2 text-center">
                                         <button wire:click="deleteZone({{ $zone->id }})" wire:confirm="Удалить зону? Привязанные к ней маршруты станут неактивными." class="text-red-400 hover:text-red-600">
@@ -776,9 +775,110 @@
                     @else
                         <div class="p-4 text-center text-gray-500 text-sm">Нет зон. Нажмите "+ Добавить зону".</div>
                     @endif
+
+                    {{-- Активные запросы обваловки --}}
+                    {{-- Проверяем, что коллекция не пуста И содержит dump_id, равный $dump->id --}}
+                    @if($this->activeBermRequests->isNotEmpty() && $this->activeBermRequests->contains('dump_id', $dump->id))
+                    <div class="mt-6 p-4 bg-orange-50 border-2 border-orange-300 rounded-xl">
+                        <h4 class="text-sm font-bold text-orange-800 mb-3 flex items-center gap-2">
+                            <i class="fas fa-mountain"></i> Обваловать: 
+                            {{-- Считаем количество запросов именно для этого отвала --}}
+                            {{ $this->activeBermRequests->where('dump_id', $dump->id)->count() }}
+                        </h4>
+                        <div class="space-y-2">
+                            {{-- Фильтруем коллекцию через where, чтобы выводить только нужные строки --}}
+                            @foreach($this->activeBermRequests->where('dump_id', $dump->id) as $berm)
+                                @php
+                                    $progressPct = $berm->progressPercent();
+                                    $remaining = $berm->remainingToComplete();
+                                @endphp
+                                <div class="bg-white p-3 rounded-lg border border-orange-200 flex items-center gap-3">
+                                    <div class="flex-1">
+                                        <div class="text-sm font-semibold text-gray-800">
+                                            Перегрузка {{ $berm->dump?->name_dump }} зона «{{ $berm->zone?->name_zone }}» 
+                                            @if($berm->rock) <span class="text-xs text-gray-500">порода: {{ $berm->rock->name_rock }}</span> @endif
+                                        </div>
+                                        <div class="mt-1 flex items-center gap-2">
+                                            <div class="flex-1 bg-gray-200 rounded-full h-2.5">
+                                                <div class="bg-orange-500 h-2.5 rounded-full transition-all" style="width: {{ $progressPct }}%"></div>
+                                            </div>
+                                            <span class="text-xs font-medium text-gray-700 whitespace-nowrap">
+                                                {{ $berm->trucks_completed }}/{{ $berm->trucks_needed }} ({{ $progressPct }}%)
+                                            </span>
+                                        </div>
+                                        <div class="text-xs text-gray-500 mt-1">
+                                            Назначено: {{ $berm->trucks_assigned }} · Осталось завершить: {{ $remaining }}
+                                        </div>
+                                    </div>
+                                    <button wire:click="cancelBermRequest({{ $berm->id }})" wire:confirm="Отменить запрос обваловки?" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded-md font-medium">
+                                        Отменить
+                                    </button>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+
                 </div>
             @endforeach
         </div>
+
+{{-- Модальное окно «Запрос обваловки» --}}
+<div
+    x-data="{ open: @entangle('showBermModal') }"
+    x-show="open"
+    x-cloak
+    x-transition.opacity
+    style="display: none;"
+    class="fixed inset-0 z-[99999] flex items-center justify-center"
+    x-on:keydown.escape.window="open = false"
+>
+    <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+    <div x-show="open" x-transition class="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-mountain text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Запрос обваловки зоны</h3>
+                    <p class="text-sm text-white/90">Отсыпка предохранительного вала</p>
+                </div>
+            </div>
+        </div>
+        <form wire:submit.prevent="createBermRequest" class="px-6 py-5 space-y-4">
+            <div class="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-md border border-gray-100">
+                Зона: <strong>{{ $bermZoneName ?? '—' }}</strong>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Количество самосвалов</label>
+                <input type="number" wire:model.live="bermTrucksNeeded" min="1" max="50" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                <p class="mt-1 text-xs text-gray-500">Сколько самосвалов нужно для отсыпки предохранительного вала</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Порода (необязательно)</label>
+                <select wire:model.live="bermRockId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                    <option value="">Любая подходящая</option>
+                    @foreach(\App\Models\Rock::all() as $rock)
+                        <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-xs text-gray-500">Если не указать — система найдёт забой с любой подходящей породой</p>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800">
+                <i class="fas fa-info-circle mr-1"></i>
+                Пока зона  обваловывается, обычные маршруты на неё блокируются. Свободные самосвалы направляются на обваловку в первую очередь.
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button type="submit" class="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-md font-medium transition">
+                    <i class="fas fa-mountain mr-1"></i> Создать запрос
+                </button>
+                <button type="button" wire:click="closeBermModal" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition">
+                    Отмена
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Модальное окно интерактивной карты -->
 <div x-data="{ showMap: false, initMap() { 
         // Инициализируем карту только один раз
