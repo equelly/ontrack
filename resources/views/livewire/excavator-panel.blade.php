@@ -1,7 +1,4 @@
 <div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'face' }">
-    <!-- Toast контейнер для уведомлений -->
-    <!-- <div id="global-toast-container" class="fixed top-0 right-0 p-3" style="z-index: 9999;"></div> -->
-
     <!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ЭКСКАВАТОРА -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">

@@ -34,6 +34,9 @@ class MasterPanel extends Component
     public $createdAt = '';
     public $contentSearch = '';
     public $newMinerName;
+    public $newMinerCapacityPerTrip;
+    public $newMinerTargetLoadTime;
+    public $newMinerRockId;
     public $newRockName;
     public $newDumpName;
     public $editingMinerId = null;
@@ -52,6 +55,9 @@ class MasterPanel extends Component
         'newTruckModelId' => 'Модель',
         'newTruckFuel' => 'Топливо',
         'newMinerName' => 'Название забоя',
+        'newMinerCapacityPerTrip' => 'Ёмкость ковша (т)',
+        'newMinerTargetLoadTime'  => 'Норма погрузки (сек)',
+        'newMinerRockId' => 'Текущая порода',
         'newRockName' => 'Название породы',
         'newDumpName' => 'Название перегрузки',
         'newZoneName' => 'Название зоны',
@@ -149,24 +155,48 @@ class MasterPanel extends Component
             ->get();
     }
 
-    // === Управление Забоями ===
+    // === Управление Забоями (экскаваторами) ===
     public function addMiner()
     {
-        $this->validate(['newMinerName' => 'required|string|max:255']);
-        
-        // 1. Сначала создаем карточку оборудования (Mashine)
+        $validated = $this->validate([
+            'newMinerName'           => 'required|string|max:255',
+            'newMinerCapacityPerTrip' => 'nullable|numeric|min:0|max:500',
+            'newMinerTargetLoadTime'  => 'nullable|integer|min:25|max:3600',
+            'newMinerRockId'          => 'nullable|exists:rocks,id',
+        ]);
+
+        // 1. Создаем карточку оборудования (Mashine)
         $mashine = \App\Models\Mashine::create([
-            'number' => $this->newMinerName // Название забоя будет номером карточки
+            'number' => $this->newMinerName
         ]);
 
-        // 2. Создаем забой и сразу привязываем к карточке
-        \App\Models\Miner::create([
-            'name_miner' => $this->newMinerName,
-            'mashine_id' => $mashine->id
-        ]);
+        // 2. Создаем забой с расширенными полями
+        $minerData = [
+            'name_miner'         => $this->newMinerName,
+            'mashine_id'         => $mashine->id,
+            'active'             => true,
+            'status'             => \App\Models\Miner::STATUS_ACTIVE,
+            'status_changed_at'  => now(),
+            'status_changed_by'  => auth()->id(),
+            'last_updated_at'    => now(),
+            'last_updated_by'    => auth()->id(),
+        ];
 
-        $this->reset('newMinerName');
-        $this->dispatch('notify', ['type' => 'success', 'message' => 'Забой добавлен и связан с оборудованием']);
+        // Опциональные поля — добавляем только если заполнены
+        if ($this->newMinerCapacityPerTrip !== null && $this->newMinerCapacityPerTrip !== '') {
+            $minerData['capacity_per_trip'] = $this->newMinerCapacityPerTrip;
+        }
+        if ($this->newMinerTargetLoadTime !== null && $this->newMinerTargetLoadTime !== '') {
+            $minerData['target_load_time'] = $this->newMinerTargetLoadTime;
+        }
+        if ($this->newMinerRockId) {
+            $minerData['current_rock_id'] = $this->newMinerRockId;
+        }
+
+        \App\Models\Miner::create($minerData);
+
+        $this->reset(['newMinerName', 'newMinerCapacityPerTrip', 'newMinerTargetLoadTime', 'newMinerRockId']);
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Экскаватор добавлен и связан с карточкой оборудования']);
     }
 
     public function deleteMiner($id)
