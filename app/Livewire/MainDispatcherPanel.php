@@ -108,6 +108,19 @@ class MainDispatcherPanel extends Component
         $this->loadData();
         $this->loadThresholds();
         $this->loadServicePostSettings();
+        $this->zoneSharingThreshold = SystemSetting::getZoneSharingThreshold();
+    }
+
+    /**
+     * Обработчик изменения порога адаптивной балансировки — сохраняет в БД.
+     */
+    public function updatedZoneSharingThreshold(int $value): void
+    {
+        SystemSetting::setZoneSharingThreshold($value);
+        $this->dispatch('notify', [
+            'type' => 'info',
+            'message' => "Порог адаптивной балансировки зон: {$value}%. Будет применен при следующей оптимизации.",
+        ]);
     }
 
     public function loadThresholds(): void
@@ -1932,6 +1945,9 @@ class MainDispatcherPanel extends Component
 
     // Коэффициент пустых пробегов
     public float $emptyRunCoefficient = 0.5;
+
+    // Порог адаптивной балансировки зон (0-100%)
+    public int $zoneSharingThreshold = 30;
 
     /**
      * Загрузить настройки сервисных постов

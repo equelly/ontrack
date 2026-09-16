@@ -400,9 +400,16 @@ class RouteOptimizerService
      * Раунд 2: каждому забою — СЛЕДУЮЩИЙ лучший (резервный, на другой отвал)
      * Раунд N: ...
      *
+     * АДАПТИВНАЯ БАЛАНСИРОВКА (через SystemSetting::getZoneSharingThreshold()):
+     *   - Если отвал уже занят в этом раунде другим забоем, проверяем заполненность зоны:
+     *     • Зона ≤ порога (по умолчанию 30%) → РАЗРЕШАЕМ делиться отвалом между забоями
+     *       (минимизация среднего расстояния перевозки). Зона почти пустая — нет смысла
+     *       блокировать её эксклюзивно.
+     *     • Зона > порога → СОХРАНЯЕМ эксклюзивный режим (один отвал — один забой),
+     *       чтобы избежать "жадного захвата" и обеспечить равномерное заполнение.
+     *
      * Ограничения:
      *   - В каждом раунде забой может получить только один маршрут
-     *   - В каждом раунде один отвал обслуживает только один забой (балансировка)
      *   - Один и тот же маршрут не активируется в нескольких раундах
      *   - Если у забоя больше нет доступных маршрутов — он пропускается в этом раунде
      *
@@ -414,6 +421,9 @@ class RouteOptimizerService
     {
         $assignments = [];
 
+        // Порог адаптивной балансировки (по умолчанию 30%)
+        $sharingThreshold = SystemSetting::getZoneSharingThreshold();
+
         // Группируем маршруты по забою, сортируя внутри группы по score (возрастание)
         $byMiner = $routes->groupBy('miner_id')->map(function ($group) {
             return $group->sortBy('score')->values();
@@ -424,29 +434,70 @@ class RouteOptimizerService
         $maxRoutesPerMiner = $byMiner->map(fn($r) => $r->count())->max() ?: 0;
         $roundsCount = min($maxRoutesPerMiner, self::MAX_ROUNDS);
 
+        Log::info('assignByRounds: старт', [
+            'rounds_count' => $roundsCount,
+            'sharing_threshold_pct' => $sharingThreshold,
+            'miners_count' => $byMiner->count(),
+        ]);
+
         for ($round = 1; $round <= $roundsCount; $round++) {
             $roundAssignments = [];
-            $usedDumpsInThisRound = []; // один отвал не должен повторяться в одном раунде
+            // Каждый отвал может обслуживать несколько забоев, если зона ≤ порога.
+            // Структура: [dump_id => ['miner_id' => X, 'fill_pct' => Y]]
+            $usedDumpsInThisRound = [];
 
             foreach ($byMiner as $minerId => $minerRoutes) {
-                // Ищем первый маршрут, чей отвал ещё не использовался в этом раунде
+                $assigned = false;
+
                 foreach ($minerRoutes as $route) {
-                    if (!in_array($route['dump_id'], $usedDumpsInThisRound)) {
+                    $dumpId = $route['dump_id'];
+
+                    // Если отвал ещё не использовался в этом раунде — берём без вопросов
+                    if (!isset($usedDumpsInThisRound[$dumpId])) {
                         $roundAssignments[] = $route;
-                        $usedDumpsInThisRound[] = $route['dump_id'];
-
-                        // Удаляем этот маршрут из доступных для следующих раундов
-                        $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($route) {
-                            return $r['dump_id'] === $route['dump_id'];
-                        })->values();
-
+                        $usedDumpsInThisRound[$dumpId] = [
+                            'miner_id' => $minerId,
+                            'fill_pct' => $this->calculateDumpFillPercent($route),
+                        ];
+                        $assigned = true;
                         break;
                     }
+
+                    // Отвал уже занят другим забоем — проверяем адаптивный порог
+                    $fillPct = $usedDumpsInThisRound[$dumpId]['fill_pct'];
+
+                    if ($fillPct <= $sharingThreshold) {
+                        // Зона почти пустая — разрешаем "поделиться" отвалом
+                        // (минимизация расстояния перевозки)
+                        $roundAssignments[] = $route;
+                        Log::info('assignByRounds: адаптивное разделение отвала', [
+                            'round' => $round,
+                            'dump_id' => $dumpId,
+                            'fill_pct' => $fillPct,
+                            'threshold' => $sharingThreshold,
+                            'miner_id' => $minerId,
+                            'also_used_by' => $usedDumpsInThisRound[$dumpId]['miner_id'],
+                        ]);
+                        $assigned = true;
+                        break;
+                    }
+                    // Зона > порога — продолжаем искать другой отвал (балансировка)
+                }
+
+                if ($assigned) {
+                    // Удаляем использованный маршрут из доступных для следующих раундов
+                    $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($route) {
+                        return $r['dump_id'] === $route['dump_id'];
+                    })->values();
                 }
             }
 
             if (!empty($roundAssignments)) {
                 $assignments[$round] = $roundAssignments;
+                Log::info("assignByRounds: раунд {$round} завершён", [
+                    'assignments_count' => count($roundAssignments),
+                    'shared_dumps' => count(array_filter($usedDumpsInThisRound, fn($d) => $d['fill_pct'] <= $sharingThreshold)),
+                ]);
             } else {
                 // Если раунд пуст — заканчиваем (больше маршрутов нет)
                 break;
@@ -454,6 +505,34 @@ class RouteOptimizerService
         }
 
         return $assignments;
+    }
+
+    /**
+     * Рассчитать средний процент заполнения зон отвалa.
+     * Используется для принятия решения об адаптивной балансировке.
+     *
+     * @param array $route Элемент из коллекции routes (с available_zones)
+     * @return float Средний процент заполнения (0-100)
+     */
+    protected function calculateDumpFillPercent(array $route): float
+    {
+        $zones = $route['available_zones'] ?? collect();
+
+        if ($zones->isEmpty()) {
+            return 100.0; // Нет зон — считаем полностью заполненным (не делимся)
+        }
+
+        $totalFillPct = 0;
+        $count = 0;
+
+        foreach ($zones as $zone) {
+            if ($zone->capacity > 0) {
+                $totalFillPct += ($zone->volume / $zone->capacity) * 100;
+                $count++;
+            }
+        }
+
+        return $count > 0 ? round($totalFillPct / $count, 1) : 100.0;
     }
     
     /**

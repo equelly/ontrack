@@ -530,7 +530,6 @@
             >
                 <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
                 <div x-show="open" x-transition class="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
-                    {{-- Шапка --}}
                     <div class="sticky top-0 z-10 px-6 py-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white flex justify-between items-center">
                         <div class="flex items-center gap-3">
                             <i class="fas fa-route text-2xl"></i>
@@ -541,11 +540,7 @@
                         </div>
                         <button type="button" x-on:click="open = false" class="text-white/80 hover:text-white text-2xl leading-none">&times;</button>
                     </div>
-
-                    {{-- Тело --}}
                     <div class="p-6 space-y-5 text-sm text-gray-700">
-
-                        {{-- Режимы --}}
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-toggle-on text-emerald-500"></i> Режимы</h4>
                             <div class="space-y-1.5 pl-6">
@@ -553,8 +548,6 @@
                                 <div><span class="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs">✋ Ручной</span> — диспетчер сам активирует маршруты кнопкой ▶️</div>
                             </div>
                         </div>
-
-                        {{-- Кнопки --}}
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-mouse-pointer text-blue-500"></i> Кнопки</h4>
                             <div class="space-y-1.5 pl-6">
@@ -563,8 +556,6 @@
                                 <div><strong>✨ Оптимизировать</strong> — полный пересчёт: сбрасывает WRR-курсоры, выбирает лучшие отвалы для каждого забоя, активирует раунды. Запускать в начале смены или после структурных изменений.</div>
                             </div>
                         </div>
-
-                        {{-- Статусы маршрутов --}}
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-tags text-purple-500"></i> Статусы маршрутов</h4>
                             <div class="space-y-1.5 pl-6">
@@ -574,8 +565,6 @@
                                 <div><span class="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs">⚠ Нет зон</span> — активен, но нет доступных зон (закрыты/переполнены).</div>
                             </div>
                         </div>
-
-                        {{-- Цвета строк --}}
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-palette text-pink-500"></i> Цвета строк</h4>
                             <div class="space-y-1.5 pl-6">
@@ -585,8 +574,6 @@
                                 <div class="bg-slate-50 border-l-4 border-slate-300 pl-2 opacity-60">Серая — неактивный маршрут (в резерве)</div>
                             </div>
                         </div>
-
-                        {{-- Вес маршрута --}}
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-balance-scale text-orange-500"></i> Вес маршрута (WRR)</h4>
                             <div class="pl-6 space-y-1.5">
@@ -597,8 +584,27 @@
                                 <div class="text-xs text-gray-500 mt-1">Повышай вес ближайшего отвала, чтобы направить туда больше самосвалов. Снижай, чтобы разгрузить.</div>
                             </div>
                         </div>
-
-                        {{-- Бизнес-правила --}}
+                        {{-- АДАПТИВНАЯ БАЛАНСИРОВКА --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-balance-scale-right text-orange-500"></i> Адаптивная балансировка</h4>
+                            <div class="pl-6 space-y-1.5 text-xs">
+                                <div>Алгоритм балансирует между двумя целями:</div>
+                                <div class="bg-orange-50 p-2 rounded border-l-2 border-orange-400">
+                                    <strong>Эксклюзивный режим</strong> (один отвал — один забой) → предотвращает «жадный захват», равномерное заполнение зон.
+                                </div>
+                                <div class="bg-emerald-50 p-2 rounded border-l-2 border-emerald-400">
+                                    <strong>Разделение отвала</strong> (несколько забоев на один отвал) → минимизирует среднее расстояние перевозки.
+                                </div>
+                                <div class="mt-2">
+                                    Решение принимается по <strong>порогу разделения зон</strong> (в Настройках, по умолчанию 30%):
+                                </div>
+                                <div class="pl-2">→ Зона ≤ 30% заполнения → <strong>разрешаем делиться</strong> отвалом (минимизация расстояния)</div>
+                                <div class="pl-2">→ Зона > 30% заполнения → <strong>эксклюзив</strong> (защита от перегрузки)</div>
+                                <div class="text-gray-500 mt-1">
+                                    Пример: у забоя А ближайший отвал X занят забоем Б. Если зона X пустая (≤30%) — А всё равно работает на X. Если заполнена (>30%) — А переключается на дальний Y.
+                                </div>
+                            </div>
+                        </div>
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-exclamation-circle text-red-500"></i> Важные правила</h4>
                             <div class="pl-6 space-y-1.5 text-xs">
@@ -607,10 +613,9 @@
                                 <div>• Без <strong>current_rock_id</strong> у забоя маршруты не назначаются</div>
                                 <div>• Без <strong>расстояний</strong> маршрут не участвует в оптимизации (задаются в Панели Мастера → Забои → «Расстояния»)</div>
                                 <div>• <strong>Аварийный режим</strong>: если все активные маршруты забоя недоступны — система сама активирует первый доступный резервный</div>
+                                <div>• <strong>Порог разделения зон</strong> настраивается в Настройках (0-100%, по умолчанию 30%)</div>
                             </div>
                         </div>
-
-                        {{-- Типичные сценарии --}}
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-lightbulb text-yellow-500"></i> Типичные сценарии</h4>
                             <div class="pl-6 space-y-2 text-xs">
@@ -627,14 +632,11 @@
                                     <strong>Добавлен забой:</strong> в авто-режиме оптимизация запустится автоматически. Проверь, что у забоя задана порода и расстояния.
                                 </div>
                                 <div class="bg-slate-50 p-2 rounded">
-                                    <strong>Направить больше самосвалов в зону разгрузки:</strong> повысь вес маршрута кнопкой <span class="font-mono bg-slate-200 px-1 rounded">+</span> до 200-300. Не забудь вернуть обратно.
+                                    <strong>Хочу направить больше самосвалов на отвал:</strong> повысь вес маршрута кнопкой <span class="font-mono bg-slate-200 px-1 rounded">+</span> до 200-300. Не забудь вернуть обратно.
                                 </div>
                             </div>
                         </div>
-
                     </div>
-
-                    {{-- Подвал --}}
                     <div class="sticky bottom-0 px-6 py-3 bg-slate-50 border-t flex justify-end">
                         <button type="button" x-on:click="open = false" class="px-4 py-2 bg-slate-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-slate-700">
                             Понятно
@@ -1299,31 +1301,39 @@
             <!-- Алгоритм WRR -->
             <div class="bg-white rounded-xl border shadow-sm p-6">
                 <h3 class="font-bold text-gray-800 uppercase text-sm mb-4 flex items-center gap-2"><i class="fas fa-route text-blue-500"></i> Алгоритм распределения маршрутов (WRR)</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                         <label class="block text-xs uppercase text-gray-500 mb-2">Количество раундов</label>
                         <div class="p-3 bg-blue-50 rounded-md text-blue-700 text-sm">
                             <i class="fas fa-info-circle mr-1"></i>
-                            <strong>Динамическое</strong> (до 5 максимум)
+                            <strong>Динамическое</strong> (до 5)
                         </div>
                         <small class="text-gray-400 block mt-2">
-                            Система автоматически определяет количество раундов для каждого забоя
-                            на основе доступных пар забой→отвал. Раунд 1 = лучший (основной) маршрут,
-                            Раунд 2+ = резервные на другие отвалы. Если основной недоступен —
-                            WRR переключится на резервный автоматически.
+                            Система автоматически определяет количество раундов: Раунд 1 = основной, Раунд 2+ = резервные.
+                        </small>
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase text-gray-500 mb-2">Порог разделения зон</label>
+                        <div class="flex items-center gap-4">
+                            <input type="range" min="0" max="100" step="5" wire:model.live="zoneSharingThreshold" class="flex-1 text-emerald-600">
+                            <span class="px-3 py-1 bg-orange-100 text-orange-700 rounded font-bold">{{ $zoneSharingThreshold }}%</span>
+                        </div>
+                        <small class="text-gray-400 block mt-2">
+                            Если зона отвалa заполнена ≤ порога — несколько забоев могут работать на этот отвал (минимизация расстояния).
+                            Если > порога — эксклюзивный режим (один отвал — один забой, защита от «жадного захвата»).
                         </small>
                     </div>
                     <div>
                         <label class="block text-xs uppercase text-gray-500 mb-2">Текущий режим</label>
                         <div class="flex items-center gap-2 p-3 rounded-md {{ $this->routeMode === 'auto' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700' }}">
                             <i class="fas {{ $this->routeMode === 'auto' ? 'fa-robot' : 'fa-hand-paper' }}"></i>
-                            <span class="font-semibold uppercase text-sm">{{ $this->routeMode === 'auto' ? 'Автоматический' : 'Ручной' }}</span>
+                            <span class="font-semibold uppercase text-sm">{{ $this->routeMode === 'auto' ? 'Авто' : 'Ручной' }}</span>
                         </div>
                         <small class="text-gray-400 block mt-2">
                             @if($this->routeMode === 'auto')
-                                Система сама выбирает лучшие маршруты при начале смены, добавлении/удалении забоев и отвалов, и по кнопке «Оптимизировать».
+                                Оптимизация при начале смены, структурных изменениях и по кнопке.
                             @else
-                                Диспетчер вручную активирует нужные маршруты. Оптимизатор недоступен — только пересинхронизация при событиях.
+                                Только ручное управление. syncAllOrders при событиях работает.
                             @endif
                         </small>
                     </div>
