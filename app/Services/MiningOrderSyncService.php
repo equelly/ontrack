@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\MiningOrder;
 use App\Models\Zone;
+use App\Models\Miner;
 use Illuminate\Support\Facades\Log;
 
 class MiningOrderSyncService
@@ -11,6 +12,10 @@ class MiningOrderSyncService
     /**
      * Синхронизирует статус active для всех MiningOrder, связанных с указанным zone_id,
      * а также для маршрутов без зоны — пытается найти им доступную зону автоматически.
+     *
+     * Вызывается из:
+     * - Zone::boot() (saved/deleted)
+     * - MasterPanel::updateZoneField()
      *
      * @param int $zoneId
      */
@@ -62,7 +67,7 @@ class MiningOrderSyncService
 
     /**
      * Найти подходящую зону для маршрута.
-     * Использует RouteAssignmentService::selectZoneForRock() — единая точка правды
+     * Использует RouteAssignmentService::selectZoneForRock() как единую точку правды
      * по fallback-логике пород.
      */
     protected function findZoneForOrder(MiningOrder $order): ?Zone
@@ -103,15 +108,22 @@ class MiningOrderSyncService
     /**
      * Полная синхронизация всех MiningOrder.
      * Возвращает количество маршрутов, для которых удалось найти зону автоматически.
+     *
+     * ВКЛЮЧАЕТ АВАРИЙНЫЙ РЕЖИМ:
+     * Если у забоя все активные маршруты стали недоступны (зоны закрылись/переполнились/
+     * под обваловкой), система автоматически активирует первый доступный неактивный маршрут.
+     * Это страховка от ситуации, когда забой "зависает" без маршрута.
      */
     public function syncAllOrders(): int
     {
         $autoAssigned = 0;
 
+        // 1. Обрабатываем маршруты с zone_id — проверяем доступность
         $ordersWithZone = MiningOrder::whereNotNull('zone_id')->get();
         foreach ($ordersWithZone as $order) {
             $zone = $order->zone;
             if (!$zone || !$zone->delivery || $zone->volume >= $zone->capacity) {
+                // Зона недоступна — пытаемся найти другую
                 $newZone = $this->findZoneForOrder($order);
                 if ($newZone) {
                     $order->update([
@@ -127,6 +139,7 @@ class MiningOrderSyncService
             }
         }
 
+        // 2. Обрабатываем маршруты без zone_id — ищем зону
         $ordersWithoutZone = MiningOrder::whereNull('zone_id')->get();
         foreach ($ordersWithoutZone as $order) {
             $newZone = $this->findZoneForOrder($order);
@@ -141,6 +154,66 @@ class MiningOrderSyncService
             }
         }
 
+        // 3. АВАРИЙНЫЙ РЕЖИМ: если у забоя все активные маршруты стали недоступны,
+        //    активируем первый доступный неактивный маршрут (с доступной зоной).
+        $autoAssigned += $this->activateEmergencyRoutes();
+
         return $autoAssigned;
+    }
+
+    /**
+     * Аварийный режим: для забоев без активных маршрутов активировать первый
+     * доступный неактивный маршрут.
+     *
+     * Срабатывает когда:
+     *   - У забоя все active=true маршруты стали недоступны
+     *   - Есть неактивные маршруты с доступной зоной
+     *
+     * @return int Количество аварийно активированных маршрутов
+     */
+    protected function activateEmergencyRoutes(): int
+    {
+        // Находим забои, у которых нет ни одного активного маршрута
+        $minersWithoutActiveRoutes = Miner::where('active', true)
+            ->where('status', Miner::STATUS_ACTIVE)
+            ->whereDoesntHave('orders', function ($q) {
+                $q->where('active', true);
+            })
+            ->pluck('id');
+
+        if ($minersWithoutActiveRoutes->isEmpty()) {
+            return 0;
+        }
+
+        $activated = 0;
+
+        foreach ($minersWithoutActiveRoutes as $minerId) {
+            // Ищем неактивные маршруты этого забоя, для которых есть доступная зона
+            $inactiveOrders = MiningOrder::where('miner_id', $minerId)
+                ->where('active', false)
+                ->with(['dump.zones.rocks', 'miner.currentRock'])
+                ->get();
+
+            foreach ($inactiveOrders as $order) {
+                $zone = $this->findZoneForOrder($order);
+                if ($zone) {
+                    $order->update([
+                        'zone_id' => $zone->id,
+                        'active'  => true,
+                    ]);
+                    $activated++;
+
+                    Log::info('Аварийная активация маршрута', [
+                        'order_id'  => $order->id,
+                        'miner_id'  => $minerId,
+                        'zone_id'   => $zone->id,
+                        'dump_id'   => $order->dump_id,
+                    ]);
+                    break; // активируем только один маршрут на забой
+                }
+            }
+        }
+
+        return $activated;
     }
 }

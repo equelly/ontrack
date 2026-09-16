@@ -479,43 +479,6 @@
                         </tbody>
                     </table>
                 </div>
-            
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 border-b">
-                            <tr>
-                                <th class="text-left p-3 font-semibold text-gray-600">Забой</th>
-                                <th class="text-left p-3 font-semibold text-gray-600">Статус</th>
-                                <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
-                                <th class="text-left p-3 font-semibold text-gray-600">Самосвалов у забоя</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($miners as $miner)
-                                <tr class="border-b hover:bg-slate-50">
-                                    <td class="p-3 font-bold text-gray-800">{{ $miner->name_miner }}</td>
-                                    <td class="p-3">
-                                        <span class="px-2 py-0.5 text-xs font-medium rounded-md 
-                                            {{ $miner->status === 'breakdown' ? 'bg-red-100 text-red-700' : 
-                                               ($miner->status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') }}">
-                                            {{ \App\Domain\MinerStatus::label($miner->status) }}
-                                        </span>
-                                    </td>
-                                    <td class="p-3">
-                                        @if($miner->currentRock)
-                                            <span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $miner->currentRock->name_rock }}</span>
-                                        @else
-                                            <span class="text-gray-400">—</span>
-                                        @endif
-                                    </td>
-                                    <td class="p-3">
-                                        <span class="px-2 py-0.5 text-xs font-bold rounded-md bg-blue-100 text-blue-700">{{ $miner->active_trucks_count }}</span>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
             </div>
         </div>
 
@@ -862,9 +825,19 @@
                         </thead>
                         <tbody>
                             @foreach($dump->zones as $zone)
+                                    @php 
+                                        $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0; 
+                                        $currentRockId = $zone->rocks->first()?->id;
+                                    @endphp
                                 <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
                                     <td class="p-2">
                                         <input type="text" wire:change="updateZoneField({{ $zone->id }}, 'name_zone', $event.target.value)" value="{{ $zone->name_zone }}" class="border-gray-300 rounded-md text-sm py-1 w-full">
+                                        <div class="flex items-center gap-2">
+                                                <div class="w-24 bg-gray-200 rounded-full h-2.5">
+                                                    <div class="h-2.5 rounded-full {{ $fillPercent > 90 ? 'bg-red-500' : ($fillPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500') }}" style="width: {{ $fillPercent }}%"></div>
+                                                </div>
+                                                <span class="text-xs text-gray-500">{{ round($fillPercent) }}%</span>
+                                            </div>
                                     </td>
                                     <td class="p-2">
                                         <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">

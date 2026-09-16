@@ -196,6 +196,9 @@ class MasterPanel extends Component
         \App\Models\Miner::create($minerData);
 
         $this->reset(['newMinerName', 'newMinerCapacityPerTrip', 'newMinerTargetLoadTime', 'newMinerRockId']);
+        // 3. Автозапуск оптимизации — добавлен новый забой, нужно пересчитать маршруты
+        $this->autoOptimizeRoutes('добавлении забоя');
+
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Экскаватор добавлен и связан с карточкой оборудования']);
     }
 
@@ -210,9 +213,42 @@ class MasterPanel extends Component
                 }
                 $miner->delete();
             }
+
+            // Автозапуск оптимизации — забой удалён, нужно пересчитать маршруты
+            $this->autoOptimizeRoutes('удалении забоя');
+
+
             $this->dispatch('notify', ['type' => 'info', 'message' => 'Забой удален']);
         } catch (\Exception $e) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Невозможно удалить: есть связанные данные']);
+        }
+    }
+
+    /**
+     * Автозапуск оптимизации маршрутов.
+     * Срабатывает при добавлении/удалении забоя или отвала.
+     * Если в auto-режиме — вызывает optimize() (полный пересчёт).
+     * Если в manual-режиме — только syncAllOrders (без пересчёта score).
+     */
+    protected function autoOptimizeRoutes(string $trigger): void
+    {
+        try {
+            if (\App\Models\SystemSetting::isAutoMode()) {
+                $optimizer = app(\App\Services\RouteOptimizerService::class);
+                $optimizer->optimize();
+                \Illuminate\Support\Facades\Log::info("AutoOptimize сработал ({$trigger}) — выполнен полный пересчёт");
+            } else {
+                // В ручном режиме — только пересинхронизация, без пересчёта score
+                app(\App\Services\MiningOrderSyncService::class)->syncAllOrders();
+                \Illuminate\Support\Facades\Log::info("AutoOptimize сработал ({$trigger}) — syncAllOrders (ручной режим)");
+            }
+
+            // Назначаем маршруты свободным самосвалам
+            app(\App\Services\RouteAssignmentService::class)->assignRoutesToAllFree();
+            event(new \App\Events\RoutesUpdated());
+            } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("AutoOptimize error ({$trigger}): " . $e->getMessage());
+
         }
     }
     // === Управление Грузовиками ===
@@ -309,13 +345,23 @@ class MasterPanel extends Component
         $this->reset('newDumpName');
         
         // Автоматически открываем форму создания зоны для нового отвала
-        $this->addZoneDumpId = $dump->id; 
+        $this->addZoneDumpId = $dump->id;
+
+        // Автозапуск оптимизации — добавлен новый отвал, нужно пересчитать маршруты
+        $this->autoOptimizeRoutes('добавлении отвала');
+
+ 
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Перегрузка добавлена. Создайте зону.']);
     }
 
     public function deleteDump($id)
     {
         try { \App\Models\Dump::find($id)->delete(); } catch (\Exception $e) {}
+
+        // Автозапуск оптимизации — отвал удалён, нужно пересчитать маршруты
+        $this->autoOptimizeRoutes('удалении отвала');
+
+
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Перегрузка удалена']);
     }
 
@@ -361,7 +407,7 @@ class MasterPanel extends Component
         if ($field === 'rock_id' && $zone->delivery) {
             $this->dispatch('notify', [
                 'type' => 'error',
-                'message' => 'Нельзя сменить породу в открытой зоне. Сначала закройте зону (delivery=false) и отгрузите остатки горной массы.',
+                'message' => 'Нельзя изменить породу в открытой зоне. Сначала закройте зону и отгрузите остатки горной массы.',
             ]);
             return;
         }
@@ -416,7 +462,7 @@ class MasterPanel extends Component
         
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
         
-        $message = 'Зона обновлена';
+        $message = "Зона {$zone->name_zone} обновлена";
         if ($reassignedCount > 0 && $assignedCount > 0) {
             $message .= " (переназначено: {$reassignedCount}, новых: {$assignedCount})";
         } elseif ($reassignedCount > 0) {

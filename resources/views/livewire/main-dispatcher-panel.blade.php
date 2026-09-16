@@ -1,7 +1,4 @@
 <div class="dispatcher-panel-wrapper" x-data="{ tab: @entangle('activeTab') }">
-    <!-- Toast контейнер для уведомлений -->
-    <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
-    
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
     <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -496,6 +493,13 @@
                     </small>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
+                    <button class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 w-full sm:w-auto" wire:click="generateAllPairs" wire:loading.attr="disabled" wire:confirm="Сгенерировать маршруты для всех пар забой-отвал, которых ещё нет в БД?">
+                        <span wire:loading.remove><i class="fas fa-layer-group mr-1"></i> Сгенерировать все пары</span>
+                        <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Генерация...</span>
+                    </button>
+                    <button class="px-4 py-2 bg-blue-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-blue-700 w-full sm:w-auto" wire:click="openCreateOrderModal">
+                        <i class="fas fa-plus mr-1"></i> Добавить маршрут
+                    </button>
                     @if($this->routeMode === 'auto')
                         <button class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 w-full sm:w-auto" wire:click="optimizeRoutes" wire:loading.attr="disabled">
                             <span wire:loading.remove><i class="fas fa-magic mr-1"></i> Оптимизировать</span>
@@ -506,6 +510,136 @@
                             <i class="fas fa-magic mr-1"></i> Оптимизировать
                         </button>
                     @endif
+                    {{-- Кнопка справки --}}
+                    <button type="button" @click="$dispatch('open-routes-help')" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold uppercase hover:bg-slate-200 hover:text-slate-800 transition" title="Шпаргалка по вкладке «Маршруты»">
+                        <i class="fas fa-question-circle"></i>
+                    </button>
+                </div>
+            </div>
+
+            {{-- Модальное окно «Шпаргалка по вкладке Маршруты» --}}
+            <div
+                x-data="{ open: false }"
+                x-on:open-routes-help.window="open = true"
+                x-on:keydown.escape.window="open = false"
+                x-show="open"
+                x-cloak
+                x-transition.opacity
+                style="display: none;"
+                class="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+            >
+                <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+                <div x-show="open" x-transition class="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
+                    {{-- Шапка --}}
+                    <div class="sticky top-0 z-10 px-6 py-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <i class="fas fa-route text-2xl"></i>
+                            <div>
+                                <h3 class="text-lg font-semibold">Шпаргалка: Маршруты</h3>
+                                <p class="text-sm text-white/90">Управление грузопотоками карьера</p>
+                            </div>
+                        </div>
+                        <button type="button" x-on:click="open = false" class="text-white/80 hover:text-white text-2xl leading-none">&times;</button>
+                    </div>
+
+                    {{-- Тело --}}
+                    <div class="p-6 space-y-5 text-sm text-gray-700">
+
+                        {{-- Режимы --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-toggle-on text-emerald-500"></i> Режимы</h4>
+                            <div class="space-y-1.5 pl-6">
+                                <div><span class="font-mono bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-xs">🤖 Авто</span> — система сама оптимизирует при начале смены и добавлении/удалении забоев/отвалов</div>
+                                <div><span class="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs">✋ Ручной</span> — диспетчер сам активирует маршруты кнопкой ▶️</div>
+                            </div>
+                        </div>
+
+                        {{-- Кнопки --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-mouse-pointer text-blue-500"></i> Кнопки</h4>
+                            <div class="space-y-1.5 pl-6">
+                                <div><strong>🟢 Сгенерировать все пары</strong> — создаёт маршруты забой→отвал для всех возможных комбинаций. Безопасно, дубликаты пропускаются.</div>
+                                <div><strong>🔵 Добавить маршрут</strong> — создать один конкретный маршрут с указанием породы и расстояния.</div>
+                                <div><strong>✨ Оптимизировать</strong> — полный пересчёт: сбрасывает WRR-курсоры, выбирает лучшие отвалы для каждого забоя, активирует раунды. Запускать в начале смены или после структурных изменений.</div>
+                            </div>
+                        </div>
+
+                        {{-- Статусы маршрутов --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-tags text-purple-500"></i> Статусы маршрутов</h4>
+                            <div class="space-y-1.5 pl-6">
+                                <div><span class="font-mono bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-xs">✓ Раунд 1</span> — основной маршрут забоя (лучший). WRR направляет сюда самосвалы.</div>
+                                <div><span class="font-mono bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">↻ Раунд 2</span> — резервный. Если основной недоступен — самосвалы переключаются сюда автоматически.</div>
+                                <div><span class="font-mono bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-xs">Резерв</span> — неактивен, ждёт ручной активации или резервирования.</div>
+                                <div><span class="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs">⚠ Нет зон</span> — активен, но нет доступных зон (закрыты/переполнены).</div>
+                            </div>
+                        </div>
+
+                        {{-- Цвета строк --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-palette text-pink-500"></i> Цвета строк</h4>
+                            <div class="space-y-1.5 pl-6">
+                                <div class="bg-white border-l-4 border-emerald-400 pl-2">Белая — маршрут активен, зоны доступны ✅</div>
+                                <div class="bg-amber-50 border-l-4 border-amber-400 pl-2">Жёлтая — порода забоя не принимается на отвал (проверьте зоны в Панели Мастера)</div>
+                                <div class="bg-red-50 border-l-4 border-red-400 pl-2">Красная — все зоны отвала закрыты (откройте зону или активируйте другой отвал)</div>
+                                <div class="bg-slate-50 border-l-4 border-slate-300 pl-2 opacity-60">Серая — неактивный маршрут (в резерве)</div>
+                            </div>
+                        </div>
+
+                        {{-- Вес маршрута --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-balance-scale text-orange-500"></i> Вес маршрута (WRR)</h4>
+                            <div class="pl-6 space-y-1.5">
+                                <div>Кнопками <span class="font-mono bg-slate-100 px-1.5 rounded">−</span> и <span class="font-mono bg-slate-100 px-1.5 rounded">+</span> меняется на ±10.</div>
+                                <div><span class="font-mono bg-blue-100 text-blue-700 px-1.5 rounded text-xs">100</span> — стандарт (по умолчанию)</div>
+                                <div><span class="font-mono bg-blue-100 text-blue-700 px-1.5 rounded text-xs">200</span> — в 2 раза чаще самосвалы</div>
+                                <div><span class="font-mono bg-blue-100 text-blue-700 px-1.5 rounded text-xs">50</span> — в 2 раза реже</div>
+                                <div class="text-xs text-gray-500 mt-1">Повышай вес ближайшего отвала, чтобы направить туда больше самосвалов. Снижай, чтобы разгрузить.</div>
+                            </div>
+                        </div>
+
+                        {{-- Бизнес-правила --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-exclamation-circle text-red-500"></i> Важные правила</h4>
+                            <div class="pl-6 space-y-1.5 text-xs">
+                                <div>• Зона принимает только <strong>ОДНУ породу</strong> — нельзя смешивать (кроме fallback: руда_ЦПТ → руда → руда_S)</div>
+                                <div>• <strong>Нельзя сменить породу в открытой зоне</strong> — сначала закройте (delivery=false) и отгрузите остатки</div>
+                                <div>• Без <strong>current_rock_id</strong> у забоя маршруты не назначаются</div>
+                                <div>• Без <strong>расстояний</strong> маршрут не участвует в оптимизации (задаются в Панели Мастера → Забои → «Расстояния»)</div>
+                                <div>• <strong>Аварийный режим</strong>: если все активные маршруты забоя недоступны — система сама активирует первый доступный резервный</div>
+                            </div>
+                        </div>
+
+                        {{-- Типичные сценарии --}}
+                        <div>
+                            <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-lightbulb text-yellow-500"></i> Типичные сценарии</h4>
+                            <div class="pl-6 space-y-2 text-xs">
+                                <div class="bg-slate-50 p-2 rounded">
+                                    <strong>Начало смены:</strong> авто-режим → «Планировать смену» → проверь, что у каждого забоя есть «Раунд 1» и «Раунд 2»
+                                </div>
+                                <div class="bg-slate-50 p-2 rounded">
+                                    <strong>Закрылась зона:</strong> система сама деактивирует маршрут и переключит самосвалы на резерв. Проверь, что резерв есть.
+                                </div>
+                                <div class="bg-slate-50 p-2 rounded">
+                                    <strong>Зона переполнилась:</strong> система закроет её, уведомит мастера об обваловке, переключит самосвалы на резерв.
+                                </div>
+                                <div class="bg-slate-50 p-2 rounded">
+                                    <strong>Добавлен забой:</strong> в авто-режиме оптимизация запустится автоматически. Проверь, что у забоя задана порода и расстояния.
+                                </div>
+                                <div class="bg-slate-50 p-2 rounded">
+                                    <strong>Направить больше самосвалов в зону разгрузки:</strong> повысь вес маршрута кнопкой <span class="font-mono bg-slate-200 px-1 rounded">+</span> до 200-300. Не забудь вернуть обратно.
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    {{-- Подвал --}}
+                    <div class="sticky bottom-0 px-6 py-3 bg-slate-50 border-t flex justify-end">
+                        <button type="button" x-on:click="open = false" class="px-4 py-2 bg-slate-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-slate-700">
+                            Понятно
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -630,7 +764,17 @@
                                         </td>
                                         <td class="p-3">
                                             @if($order->active && $order->has_zones)
-                                                <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-100 text-emerald-700">✓ Активен</span>
+                                                @if($order->round === 1)
+                                                    <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-100 text-emerald-700" title="Основной маршрут (раунд 1)">
+                                                        ✓ Раунд 1
+                                                    </span>
+                                                @elseif($order->round)
+                                                    <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-blue-100 text-blue-700" title="Резервный маршрут (раунд {{ $order->round }})">
+                                                        ↻ Раунд {{ $order->round }}
+                                                    </span>
+                                                @else
+                                                    <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-emerald-100 text-emerald-700">✓ Активен</span>
+                                                @endif
                                             @elseif($order->active)
                                                 <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-amber-100 text-amber-700">⚠ Нет зон</span>
                                             @else
@@ -671,6 +815,89 @@
                     <p class="text-sm">Создайте маршруты для забоев.</p>
                 </div>
             @endif
+        </div>
+
+        {{-- Модальное окно «Создать маршрут» --}}
+        <div
+            x-data="{ open: @entangle('showCreateOrderModal') }"
+            x-show="open"
+            x-cloak
+            x-transition.opacity
+            style="display: none;"
+            class="fixed inset-0 z-[99999] flex items-center justify-center"
+            x-on:keydown.escape.window="open = false"
+        >
+            <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+            <div x-show="open" x-transition class="relative w-full max-w-lg mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+                <div class="px-6 py-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-route text-2xl"></i>
+                        <div>
+                            <h3 class="text-lg font-semibold">Новый маршрут</h3>
+                            <p class="text-sm text-white/90">Забой → Отвал</p>
+                        </div>
+                    </div>
+                </div>
+                <form wire:submit.prevent="createNewOrder" class="px-6 py-5 space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Забой *</label>
+                            <select wire:model.live="newOrderMinerId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 @error('newOrderMinerId') border-red-500 @enderror">
+                                <option value="">— Выберите забой —</option>
+                                @foreach(\App\Models\Miner::orderBy('name_miner')->get() as $miner)
+                                    <option value="{{ $miner->id }}">{{ $miner->name_miner }}</option>
+                                @endforeach
+                            </select>
+                            @error('newOrderMinerId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Отвал *</label>
+                            <select wire:model.live="newOrderDumpId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 @error('newOrderDumpId') border-red-500 @enderror">
+                                <option value="">— Выберите отвал —</option>
+                                @foreach(\App\Models\Dump::orderBy('name_dump')->get() as $dump)
+                                    <option value="{{ $dump->id }}">{{ $dump->name_dump }}</option>
+                                @endforeach
+                            </select>
+                            @error('newOrderDumpId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Порода (необязательно)</label>
+                            <select wire:model.live="newOrderRockId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">— Авто (текущая порода забоя) —</option>
+                                @foreach(\App\Models\Rock::all() as $rock)
+                                    <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                @endforeach
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">Если не указать — будет браться текущая порода из забоя</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Расстояние (км)</label>
+                            <input type="number" step="0.01" wire:model.live="newOrderDistanceKm" placeholder="Напр. 2.5" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" min="0" max="500">
+                            <p class="mt-1 text-xs text-gray-500">Если есть в технологическом паспорте — введите</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Вес маршрута (для WRR)</label>
+                        <input type="number" wire:model.live="newOrderWeight" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" min="1" max="1000">
+                        <p class="mt-1 text-xs text-gray-500">Чем выше вес — тем больше самосвалов будет направляться на этот маршрут</p>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-800">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Маршрут создаётся <strong>неактивным</strong>. После создания запустите «Оптимизировать» (в авто-режиме) или активируйте вручную.
+                    </div>
+                    <div class="flex gap-2 pt-2">
+                        <button type="submit" wire:loading.attr="disabled" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-md font-medium transition">
+                            <span wire:loading.remove><i class="fas fa-plus mr-1"></i> Создать маршрут</span>
+                            <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Создание...</span>
+                        </button>
+                        <button type="button" wire:click="closeCreateOrderModal" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition">
+                            Отмена
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
 
         <!-- Назначение маршрута -->
@@ -1069,6 +1296,40 @@
         <!-- Настройки порогов и сервисных постов -->
         <div x-show="tab === 'settingsTab'" x-cloak class="mt-4 space-y-4" id="settingsTab">
             
+            <!-- Алгоритм WRR -->
+            <div class="bg-white rounded-xl border shadow-sm p-6">
+                <h3 class="font-bold text-gray-800 uppercase text-sm mb-4 flex items-center gap-2"><i class="fas fa-route text-blue-500"></i> Алгоритм распределения маршрутов (WRR)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-xs uppercase text-gray-500 mb-2">Количество раундов</label>
+                        <div class="p-3 bg-blue-50 rounded-md text-blue-700 text-sm">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <strong>Динамическое</strong> (до 5 максимум)
+                        </div>
+                        <small class="text-gray-400 block mt-2">
+                            Система автоматически определяет количество раундов для каждого забоя
+                            на основе доступных пар забой→отвал. Раунд 1 = лучший (основной) маршрут,
+                            Раунд 2+ = резервные на другие отвалы. Если основной недоступен —
+                            WRR переключится на резервный автоматически.
+                        </small>
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase text-gray-500 mb-2">Текущий режим</label>
+                        <div class="flex items-center gap-2 p-3 rounded-md {{ $this->routeMode === 'auto' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700' }}">
+                            <i class="fas {{ $this->routeMode === 'auto' ? 'fa-robot' : 'fa-hand-paper' }}"></i>
+                            <span class="font-semibold uppercase text-sm">{{ $this->routeMode === 'auto' ? 'Автоматический' : 'Ручной' }}</span>
+                        </div>
+                        <small class="text-gray-400 block mt-2">
+                            @if($this->routeMode === 'auto')
+                                Система сама выбирает лучшие маршруты при начале смены, добавлении/удалении забоев и отвалов, и по кнопке «Оптимизировать».
+                            @else
+                                Диспетчер вручную активирует нужные маршруты. Оптимизатор недоступен — только пересинхронизация при событиях.
+                            @endif
+                        </small>
+                    </div>
+                </div>
+            </div>
+
             <!-- Пороги перегруженности -->
             <div class="bg-white rounded-xl border shadow-sm p-6">
                 <h3 class="font-bold text-gray-800 uppercase text-sm mb-4 flex items-center gap-2"><i class="fas fa-sliders-h text-emerald-500"></i> Пороги перегруженности</h3>

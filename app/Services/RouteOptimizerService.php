@@ -18,9 +18,38 @@ use Illuminate\Support\Collection;
  * Режимы работы:
  * - auto: система автоматически выбирает лучшие маршруты
  * - manual: диспетчер вручную управляет активностью маршрутов
+ *
+ * Алгоритм выбора (подход C — гибрид):
+ *   1. Деактивируем все маршруты (active=false)
+ *   2. Сбрасываем wrr_cursor (новая смена/оптимизация)
+ *   3. Для каждого активного забоя находим все подходящие маршруты (забой→отвал):
+ *      - у забоя есть текущая порода
+ *      - на отвалe есть доступная зона (delivery=true, volume<capacity, принимает породу
+ *        с учётом fallback-логики: руда_ЦПТ → руда → руда_Sera)
+ *      - есть расстояние (distance_km из MiningOrder ИЛИ из miner_dump_distances)
+ *   4. Рассчитываем score = (distance × 10) × max(volume_in_zones/1000, 0.1)
+ *      Меньше score = лучше (короткое расстояние + мало заполненные зоны)
+ *   5. Распределяем по раундам (Round Robin):
+ *      Раунд 1: каждому забою — его лучший маршрут
+ *      Раунд 2: каждому забою — следующий лучший (резервный)
+ *      ...
+ *      Количество раундов = динамическое (минимум из: N доступных пар, 5 максимум)
+ *      В каждом раунде один отвал обслуживает только один забой (балансировка)
+ *   6. Активируем выбранные маршруты
+ *
+ * ВАЖНО: optimize() вызывается только при:
+ *   - начале новой смены (через ShiftPlanningService)
+ *   - добавлении/удалении забоя или отвала (через MasterPanel)
+ *   - ручном запуске диспетчером (кнопка «Оптимизировать»)
+ *   НЕ вызывается при каждом событии изменения зоны/породы — для этого есть syncAllOrders()
  */
 class RouteOptimizerService
 {
+    /**
+     * Максимальное количество раундов (защита от избыточной активации).
+     */
+    const MAX_ROUNDS = 5;
+
     /**
      * Главная функция - оптимизировать маршруты (только в автоматическом режиме)
      */
@@ -49,7 +78,11 @@ class RouteOptimizerService
         MiningOrder::query()->update(['active' => false]);
         Log::info('Все маршруты деактивированы');
         
-        // 2. Получить все работающие забои
+        // 2. Сбросить WRR-курсоры (новая оптимизация = новая смена)
+        MiningOrder::query()->update(['wrr_cursor' => 0, 'last_assigned_at' => null]);
+        Log::info('WRR-курсоры сброшены');
+        
+        // 3. Получить все работающие забои
         $activeMiners = Miner::where('active', true)
             ->where('status', Miner::STATUS_ACTIVE)
             ->with('currentRock')
@@ -60,14 +93,18 @@ class RouteOptimizerService
             return $result;
         }
         
-        // 3. Получить все маршруты и рассчитать score
+        // 4. Получить все маршруты с рассчитанным score
         $routes = $this->getAllRoutesWithScore($activeMiners);
         Log::info("Маршрутов с score: {$routes->count()}");
         
-        // 4. Распределить по раундам
+        if ($routes->isEmpty()) {
+            return $result;
+        }
+        
+        // 5. Распределить по раундам (динамическое количество, макс. 5)
         $assignments = $this->assignByRounds($routes, $activeMiners);
         
-        // 5. Активировать выбранные маршруты
+        // 6. Активировать выбранные маршруты
         foreach ($assignments as $round => $roundAssignments) {
             $result['rounds'][$round] = count($roundAssignments);
             
@@ -85,7 +122,7 @@ class RouteOptimizerService
             }
         }
         
-        // 6. Статистика
+        // 7. Статистика
         $result['stats'] = [
             'total_miners' => $activeMiners->count(),
             'total_routes' => MiningOrder::count(),
@@ -139,7 +176,7 @@ class RouteOptimizerService
             return ['error' => 'Маршрут не найден'];
         }
         
-        // Проверяем доступность зон
+        // Проверяем доступность зон (с учётом fallback пород)
         $miner = Miner::with('currentRock')->find($minerId);
         if ($miner && $miner->currentRock) {
             $zones = $this->getAvailableZonesForRock($dumpId, $miner->currentRock->id);
@@ -219,11 +256,12 @@ class RouteOptimizerService
                 $miner = $order->miner;
                 $rock = $miner?->currentRock;
                 
+                // Сначала берём distance_km из самого MiningOrder, потом из miner_dump_distances
                 $distance = $order->distance_km ?? MinerDumpDistance::where('miner_id', $order->miner_id)
                     ->where('dump_id', $order->dump_id)
                     ->value('distance_km');
                 
-                // Доступные зоны
+                // Доступные зоны (с учётом fallback пород)
                 $availableZones = $rock ? $this->getAvailableZonesForRock($order->dump_id, $rock->id) : collect();
                 
                 // Score
@@ -253,7 +291,13 @@ class RouteOptimizerService
     }
     
     /**
-     * Получить все маршруты с рассчитанным score
+     * Получить все маршруты с рассчитанным score.
+     *
+     * ВАЖНО: использует distance_km из самого MiningOrder (если задан),
+     * иначе из таблицы miner_dump_distances. Раньше требовалось наличие записи
+     * в miner_dump_distances — теперь нет.
+     *
+     * ВАЖНО: использует fallback-логику пород через getAvailableZonesForRock().
      */
     protected function getAllRoutesWithScore(Collection $activeMiners): Collection
     {
@@ -274,17 +318,28 @@ class RouteOptimizerService
             
             $rockId = $miner->currentRock->id;
             
-            $distance = MinerDumpDistance::where('miner_id', $order->miner_id)
-                ->where('dump_id', $order->dump_id)
-                ->value('distance_km');
+            // Сначала distance_km из MiningOrder, потом из miner_dump_distances
+            $distance = $order->distance_km;
+            if (!$distance) {
+                $distance = MinerDumpDistance::where('miner_id', $order->miner_id)
+                    ->where('dump_id', $order->dump_id)
+                    ->value('distance_km');
+            }
             
             if (!$distance) {
+                // Нет расстояния — пропускаем (нельзя рассчитать score)
+                Log::debug("Маршрут {$order->id} пропущен: нет distance_km", [
+                    'miner_id' => $order->miner_id,
+                    'dump_id' => $order->dump_id,
+                ]);
                 continue;
             }
             
+            // Доступные зоны с учётом fallback пород
             $availableZones = $this->getAvailableZonesForRock($order->dump_id, $rockId);
             
             if ($availableZones->isEmpty()) {
+                Log::debug("Маршрут {$order->id} пропущен: нет доступных зон для породы {$rockId} на отвалe {$order->dump_id}");
                 continue;
             }
             
@@ -308,42 +363,96 @@ class RouteOptimizerService
     }
     
     /**
-     * Получить доступные зоны для породы на отвал
+     * Получить доступные зоны для породы на отвалe.
+     *
+     * ВАЖНО: использует fallback-логику пород через RouteAssignmentService::selectZoneForRock().
+     * Это означает, что для "руда_ЦПТ" (id=5) ищутся зоны, принимающие руду (id=1)
+     * или руду_Sera (id=6), если нет зон именно под руда_ЦПТ.
+     *
+     * Возвращает ВСЕ доступные зоны (не одну), чтобы оптимизатор мог рассчитать
+     * суммарный volume_in_zones для score.
      */
     protected function getAvailableZonesForRock(int $dumpId, int $rockId): Collection
     {
+        // Используем RouteAssignmentService для получения fallback-цепочки пород
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        $acceptableRockIds = $routeService::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
+
+        // Возвращаем ВСЕ зоны на этом отвале, которые:
+        // - delivery = true (открыты)
+        // - volume < capacity (есть место)
+        // - принимают ХОТЯ БЫ ОДНУ из acceptable пород (с учётом fallback)
         return Zone::where('dump_id', $dumpId)
             ->where('delivery', true)
-            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rockId))
             ->whereRaw('volume < capacity')
+            ->whereHas('rocks', function ($q) use ($acceptableRockIds) {
+                $q->whereIn('rocks.id', $acceptableRockIds);
+            })
             ->get();
     }
     
     /**
-     * Распределить маршруты по раундам (балансировка)
+     * Распределить маршруты по раундам (динамическое количество).
+     *
+     * Количество раундов = min(количество_доступных_маршрутов_для_самого_обеспеченного_забоя, MAX_ROUNDS)
+     *
+     * Раунд 1: каждому забою — его ЛУЧШИЙ маршрут (с минимальным score)
+     * Раунд 2: каждому забою — СЛЕДУЮЩИЙ лучший (резервный, на другой отвал)
+     * Раунд N: ...
+     *
+     * Ограничения:
+     *   - В каждом раунде забой может получить только один маршрут
+     *   - В каждом раунде один отвал обслуживает только один забой (балансировка)
+     *   - Один и тот же маршрут не активируется в нескольких раундах
+     *   - Если у забоя больше нет доступных маршрутов — он пропускается в этом раунде
+     *
+     * @param Collection $routes Маршруты с score (отсортированы по возрастанию score)
+     * @param Collection $activeMiners Активные забои
+     * @return array [round_number => [assignments]]
      */
     protected function assignByRounds(Collection $routes, Collection $activeMiners): array
     {
         $assignments = [];
-        $assignedMiners = [];
-        
-        $byMiner = $routes->groupBy('miner_id');
-        
-        $roundAssignments = [];
-        
-        foreach ($byMiner as $minerId => $minerRoutes) {
-            $bestRoute = $minerRoutes->first();
-            
-            if ($bestRoute) {
-                $roundAssignments[] = $bestRoute;
-                $assignedMiners[] = $minerId;
+
+        // Группируем маршруты по забою, сортируя внутри группы по score (возрастание)
+        $byMiner = $routes->groupBy('miner_id')->map(function ($group) {
+            return $group->sortBy('score')->values();
+        });
+
+        // Динамическое количество раундов:
+        // берём max количество маршрутов у одного забоя, но не больше MAX_ROUNDS
+        $maxRoutesPerMiner = $byMiner->map(fn($r) => $r->count())->max() ?: 0;
+        $roundsCount = min($maxRoutesPerMiner, self::MAX_ROUNDS);
+
+        for ($round = 1; $round <= $roundsCount; $round++) {
+            $roundAssignments = [];
+            $usedDumpsInThisRound = []; // один отвал не должен повторяться в одном раунде
+
+            foreach ($byMiner as $minerId => $minerRoutes) {
+                // Ищем первый маршрут, чей отвал ещё не использовался в этом раунде
+                foreach ($minerRoutes as $route) {
+                    if (!in_array($route['dump_id'], $usedDumpsInThisRound)) {
+                        $roundAssignments[] = $route;
+                        $usedDumpsInThisRound[] = $route['dump_id'];
+
+                        // Удаляем этот маршрут из доступных для следующих раундов
+                        $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($route) {
+                            return $r['dump_id'] === $route['dump_id'];
+                        })->values();
+
+                        break;
+                    }
+                }
+            }
+
+            if (!empty($roundAssignments)) {
+                $assignments[$round] = $roundAssignments;
+            } else {
+                // Если раунд пуст — заканчиваем (больше маршрутов нет)
+                break;
             }
         }
-        
-        if (!empty($roundAssignments)) {
-            $assignments[1] = $roundAssignments;
-        }
-        
+
         return $assignments;
     }
     
@@ -364,17 +473,13 @@ class RouteOptimizerService
             ->with(['miner.currentRock', 'dump.zones'])
             ->get()
             ->map(function($order) {
-                $distance = MinerDumpDistance::where('miner_id', $order->miner_id)
+                $distance = $order->distance_km ?? MinerDumpDistance::where('miner_id', $order->miner_id)
                     ->where('dump_id', $order->dump_id)
                     ->value('distance_km');
                 
                 $rock = $order->miner?->currentRock;
                 
-                $zones = $rock ? Zone::where('dump_id', $order->dump_id)
-                    ->where('delivery', true)
-                    ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
-                    ->whereRaw('volume < capacity')
-                    ->get() : collect();
+                $zones = $rock ? $this->getAvailableZonesForRock($order->dump_id, $rock->id) : collect();
                 
                 return [
                     'id' => $order->id,

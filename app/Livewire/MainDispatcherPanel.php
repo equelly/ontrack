@@ -61,6 +61,14 @@ class MainDispatcherPanel extends Component
     public ?int $editWeight = null; // Вес маршрута
     public array $editDistances = []; // Расстояния от забоя до перегрузок
 
+    // Создание нового маршрута
+    public bool $showCreateOrderModal = false;
+    public ?int $newOrderMinerId = null;
+    public ?int $newOrderDumpId = null;
+    public ?int $newOrderRockId = null;
+    public ?float $newOrderDistanceKm = null;
+    public int $newOrderWeight = 100;
+
     // Принудительная смена статуса
     public ?int $forceStatusTruckId = null;
     public ?string $forceStatusNew = null;
@@ -540,19 +548,149 @@ class MainDispatcherPanel extends Component
 
     public function createNewOrder(): void
     {
-        // Создаём новый маршрут (потребуется выбрать miner, dump, rock)
-        // Для простоты - открываем модальное окно с формой
-        // Можно расширить позже
+        $this->validate([
+            'newOrderMinerId'   => 'required|exists:miners,id',
+            'newOrderDumpId'    => 'required|exists:dumps,id',
+            'newOrderRockId'    => 'nullable|exists:rocks,id',
+            'newOrderDistanceKm' => 'nullable|numeric|min:0|max:500',
+            'newOrderWeight'    => 'integer|min:1|max:1000',
+        ]);
+
+        // Проверяем, нет ли уже такого маршрута
+        $exists = MiningOrder::where('miner_id', $this->newOrderMinerId)
+            ->where('dump_id', $this->newOrderDumpId)
+            ->exists();
+
+        if ($exists) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Маршрут «забой → отвал» уже существует. Отредактируйте существующий.',
+            ]);
+            return;
+        }
+
+        $order = MiningOrder::create([
+            'miner_id'    => $this->newOrderMinerId,
+            'dump_id'     => $this->newOrderDumpId,
+            'rock_id'     => $this->newOrderRockId,
+            'distance_km' => $this->newOrderDistanceKm,
+            'weight'      => $this->newOrderWeight,
+            'active'      => false, // По умолчанию неактивен — пусть оптимизатор решит
+            'wrr_cursor'  => 0,
+        ]);
+
+        $this->loadData();
+        $this->closeCreateOrderModal();
+
+        $minerName = $order->miner?->name_miner ?? '#'.$order->miner_id;
+        $dumpName  = $order->dump?->name_dump ?? '#'.$order->dump_id;
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Маршрут создан: {$minerName} → {$dumpName}",
+        ]);
+    }
+
+    /**
+     * Открыть модальное окно создания маршрута.
+     */
+    public function openCreateOrderModal(): void
+    {
+        $this->reset(['newOrderMinerId', 'newOrderDumpId', 'newOrderRockId', 'newOrderDistanceKm']);
+        $this->newOrderWeight = 100;
+        $this->showCreateOrderModal = true;
+    }
+
+    /**
+     * Закрыть модальное окно создания маршрута.
+     */
+    public function closeCreateOrderModal(): void
+    {
+        $this->showCreateOrderModal = false;
+        $this->reset(['newOrderMinerId', 'newOrderDumpId', 'newOrderRockId', 'newOrderDistanceKm', 'newOrderWeight']);
+    }
+
+    /**
+     * Сгенерировать маршруты для всех пар забой-отвал, которых ещё нет в БД.
+     * Полезно при первом запуске или при добавлении нового забоя/отвала.
+     */
+    public function generateAllPairs(): void
+    {
+        $miners = Miner::where('active', true)->get();
+        $dumps  = \App\Models\Dump::all();
+
+        if ($miners->isEmpty() || $dumps->isEmpty()) {
+            $this->dispatch('notify', [
+                'type' => 'warning',
+                'message' => 'Нет активных забоев или отвалов для генерации маршрутов',
+            ]);
+            return;
+        }
+
+        $created = 0;
+        $skipped = 0;
+
+        foreach ($miners as $miner) {
+            foreach ($dumps as $dump) {
+                $exists = MiningOrder::where('miner_id', $miner->id)
+                    ->where('dump_id', $dump->id)
+                    ->exists();
+
+                if ($exists) {
+                    $skipped++;
+                    continue;
+                }
+
+                // Расстояние из таблицы miner_dump_distances (если есть)
+                $distance = \App\Models\MinerDumpDistance::where('miner_id', $miner->id)
+                    ->where('dump_id', $dump->id)
+                    ->value('distance_km');
+
+                MiningOrder::create([
+                    'miner_id'    => $miner->id,
+                    'dump_id'     => $dump->id,
+                    'rock_id'     => $miner->current_rock_id,
+                    'distance_km' => $distance,
+                    'weight'      => 100,
+                    'active'      => false,
+                    'wrr_cursor'  => 0,
+                ]);
+                $created++;
+            }
+        }
+
+        $this->loadData();
+
+        $message = "Сгенерировано маршрутов: {$created}";
+        if ($skipped > 0) {
+            $message .= ", пропущено (уже существуют): {$skipped}";
+        }
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => $message,
+        ]);
     }
 
     public function getOrdersForManagementProperty()
     {
+        // Получаем активные маршруты с информацией о том, в каком раунде они были выбраны
+        // (определяем по score: чем меньше score — тем раньше раунд)
+        $activeRounds = \App\Models\MiningOrder::where('active', true)
+            ->orderBy('miner_id')
+            ->get()
+            ->groupBy('miner_id')
+            ->map(function ($group) {
+                // Сортируем по distance_km (если есть) или по id
+                return $group->sortBy('distance_km')->values();
+            });
+
         return MiningOrder::with(['miner.currentRock', 'dump.zones.rocks'])
             ->orderBy('miner_id')
             ->orderBy('active', 'desc') // Активные первыми
             ->orderBy('weight', 'desc')
             ->get()
-            ->map(function ($order) {
+            ->map(function ($order) use ($activeRounds) {
                 // Текущая порода в забое
                 $currentRock = $order->miner?->currentRock;
 
@@ -570,10 +708,19 @@ class MainDispatcherPanel extends Component
                     ]);
                 }
 
-                // Расстояние из miner_dump_distances
-                $distance = \App\Models\MinerDumpDistance::where('miner_id', $order->miner_id)
+                // Расстояние: сначала из MiningOrder, потом из miner_dump_distances
+                $distance = $order->distance_km ?? \App\Models\MinerDumpDistance::where('miner_id', $order->miner_id)
                     ->where('dump_id', $order->dump_id)
                     ->value('distance_km');
+
+                // Номер раунда (если маршрут активен) — индекс в отсортированном списке активных маршрутов забоя
+                $round = null;
+                if ($order->active && isset($activeRounds[$order->miner_id])) {
+                    $roundIndex = $activeRounds[$order->miner_id]->search(function ($o) use ($order) {
+                        return $o->id === $order->id;
+                    });
+                    $round = $roundIndex !== false ? $roundIndex + 1 : null;
+                }
 
                 return (object)[
                     'id' => $order->id,
@@ -583,6 +730,7 @@ class MainDispatcherPanel extends Component
                     'distance_km' => $distance,
                     'weight' => $order->weight ?? 100,
                     'active' => $order->active,
+                    'round' => $round,
                     'available_zones' => $availableZones,
                     'has_zones' => $availableZones->isNotEmpty(),
                 ];
@@ -1259,7 +1407,8 @@ class MainDispatcherPanel extends Component
             'message' => "Обновлено время погрузки забоя «{$minerName}»: {$data['target_load_time']} сек",
         ]);
     }
- /**
+
+    /**
      * Обработчик вебсокет-события ZoneNeedsBerm.
      * Зона заполнена до предела — требуется обваловка.
      *
@@ -1281,6 +1430,7 @@ class MainDispatcherPanel extends Component
         // Перезагружаем данные — зоны могли измениться (delivery=false)
         $this->loadData();
     }
+
     // =========================================
     // УПРАВЛЕНИЕ ВКЛАДКАМИ
     // =========================================

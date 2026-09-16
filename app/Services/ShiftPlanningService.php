@@ -17,7 +17,10 @@ class ShiftPlanningService
     const PRIORITY_FUELING = 10;     // Низший приоритет
 
     /**
-     * Выполнить планирование обслуживания на смену
+     * Выполнить планирование обслуживания на смену.
+     *
+     * ВКЛЮЧАЕТ автозапуск оптимизации маршрутов — начало новой смены
+     * это правильный момент для пересчёта лучших маршрутов (подход C).
      */
     public function planShift(): array
     {
@@ -27,6 +30,27 @@ class ShiftPlanningService
             'errors' => [],
             'details' => [],
         ];
+
+        // === АВТОЗАПУСК ОПТИМИЗАЦИИ МАРШРУТОВ ===
+        // Начало новой смены = новая оптимизация маршрутов (полный пересчёт).
+        // Сбрасывает WRR-курсоры, пересчитывает лучшие пары забой→отвал.
+        try {
+            $optimizer = app(\App\Services\RouteOptimizerService::class);
+            $optimizeResult = $optimizer->optimize();
+
+            if (isset($optimizeResult['error'])) {
+                $result['errors'][] = 'Оптимизация: ' . $optimizeResult['error'];
+                Log::info('ShiftPlanning: оптимизация пропущена (ручной режим)');
+            } else {
+                Log::info('ShiftPlanning: оптимизация выполнена', [
+                    'active_routes' => $optimizeResult['stats']['active_routes'] ?? 0,
+                    'rounds' => $optimizeResult['stats']['rounds_count'] ?? 0,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('ShiftPlanning: ошибка оптимизации: ' . $e->getMessage());
+            $result['errors'][] = 'Оптимизация: ' . $e->getMessage();
+        }
 
         // Получаем настройки
         $toBufferHours = SystemSetting::getServiceToBufferHours();
