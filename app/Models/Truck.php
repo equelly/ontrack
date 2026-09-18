@@ -82,6 +82,45 @@ class Truck extends Model
             ->latest();
     }
 
+    /**
+     * Текущее местоположение самосвала (для расчёта холостого пробега).
+     *
+     * Логика:
+     *   - Если есть завершённый trip — возвращаем dump_id последнего (место разгрузки)
+     *   - Если самосвал в статусе free и нет истории — возвращаем null (в отстое)
+     *   - Если самосвал только что загрузился (status=to_miner, loading) —
+     *     возвращаем dump_id текущего trip (он же destination)
+     *
+     * @return int|null dump_id (отвал, где находится самосвал) или null если в отстое
+     */
+    public function getCurrentLocationDumpId(): ?int
+    {
+        // Если самосвал в рейсе (to_miner, loading, transporting, unloading) —
+        // его "отправная точка" для следующего рейса будет = dump_id текущего trip
+        $currentTrip = $this->currentTrip;
+        if ($currentTrip && $currentTrip->dump_id) {
+            return $currentTrip->dump_id;
+        }
+
+        // Иначе берём последний завершённый trip — это место последней разгрузки
+        $lastCompletedTrip = $this->trips()
+            ->whereNotNull('completed_at')
+            ->latest('completed_at')
+            ->first();
+
+        return $lastCompletedTrip?->dump_id;
+    }
+
+    /**
+     * Проверить, находится ли самосвал в отстое (без истории рейсов).
+     *
+     * @return bool true если в отстое (нет истории), false если есть история
+     */
+    public function isInParking(): bool
+    {
+        return $this->getCurrentLocationDumpId() === null;
+    }
+
     // Геттеры для топлива
     public function getFuelCapacityAttribute()
     {

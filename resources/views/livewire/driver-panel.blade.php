@@ -1,8 +1,5 @@
 <div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'route' }">
-    <!-- Toast контейнер для уведомлений -->
-    <div id="global-toast-container" class="fixed top-0 right-0 p-3" style="z-index: 9999;"></div>
-
-    <!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ГРУЗОВИКА (Адаптивная) -->
+<!-- ТЕМНАЯ ШАПКА С ВЫБОРОМ ГРУЗОВИКА (Адаптивная) -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
             <h1 class="text-lg font-bold uppercase tracking-wider">Панель водителя</h1> 
@@ -122,8 +119,15 @@
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 pt-4 border-t">
                     <div>
-                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Расстояние</p>
+                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Расстояние (гружёное)</p>
                         <p class="text-base sm:text-xl font-bold text-gray-800">{{ $currentTrip->miningOrder->distance_km ?? '-' }} км</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Холостой пробег</p>
+                        <p class="text-base sm:text-xl font-bold {{ $emptyRunKm > 0 ? 'text-amber-600' : 'text-emerald-600' }}">
+                            {{ $emptyRunKm > 0 ? $emptyRunKm . ' км' : '0 км' }}
+                        </p>
+                        <p class="text-[10px] text-gray-400">от пред. разгрузки до забоя</p>
                     </div>
                     <div>
                         <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время в пути</p>

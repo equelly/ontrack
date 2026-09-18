@@ -28,17 +28,6 @@ class RouteAssignmentService
     const DEFAULT_LOADING_TIME_MINUTES = 5;
     const BUFFER_COEFFICIENT = 1.5;
 
-    /**
-     * Бизнес-правила совместимости пород при выгрузке.
-     *
-     * Каждая зона принимает только ОДНУ породу (смешивание запрещено).
-     * Исключение: "руда_ЦПТ" (id=5) может быть выгружена также в зоны,
-     * принимающие "руда" (id=1), а при их отсутствии — "руда_Sera" (id=6).
-     */
-    const ROCK_FALLBACK_CHAIN = [
-        5 => [5, 1, 6], // "руда_ЦПТ" → "руда" → "руда_Sera"
-    ];
-
     protected RouteOptimizerService $optimizer;
 
     public function __construct(RouteOptimizerService $optimizer)
@@ -52,31 +41,26 @@ class RouteAssignmentService
      */
     protected function getLoadingTimeForMiner(Miner $miner): float
     {
+        // Сначала пробуем фактическое среднее время
         $avgLoadTime = $miner->getAvgLoadTime(5);
         if ($avgLoadTime && $avgLoadTime > 0) {
             return $avgLoadTime;
         }
 
+        // Затем целевое время (установленное оператором) - в секундах, конвертируем в минуты
         if ($miner->target_load_time && $miner->target_load_time > 0) {
             return (float) $miner->target_load_time / 60;
         }
 
+        // Дефолт
         return self::DEFAULT_LOADING_TIME_MINUTES;
     }
 
     /**
-     * Возвращает приоритетный список пород, которые могут быть выгружены
-     * на ту же зону, что и запрошенная порода.
-     *
-     * @return int[] Список rock_id в порядке убывания приоритета
-     */
-    protected function getAcceptableRockIds(int $rockId): array
-    {
-        return self::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
-    }
-
-    /**
      * Назначить маршрут грузовику.
+     *
+     * Вызывается из TruckStatusService::onToMiner() после смены статуса на 'to_miner'
+     * Также может вызываться для грузовиков в статусе 'free' или 'completed'.
      *
      * @throws \App\Exceptions\NoRouteAvailableException если нет доступных маршрутов
      *         (содержит диагностику причин в getDiagnostics())
@@ -86,6 +70,7 @@ class RouteAssignmentService
     {
         Log::info('assignForTruck START', ['truck_id' => $truck->id, 'status' => $truck->status]);
 
+        // Разрешаем назначение для статусов: free, completed, to_miner
         if (!in_array($truck->status, ['free', 'completed', 'to_miner'])) {
             throw new \RuntimeException("Грузовик занят (статус: {$truck->status})");
         }
@@ -109,8 +94,8 @@ class RouteAssignmentService
             Log::error('assignForTruck: berm assignment failed', ['error' => $e->getMessage()]);
         }
 
-
         DB::transaction(function () use ($truck) {
+            // Получаем только АКТИВНЫЕ маршруты
             $activeOrders = MiningOrder::where('active', true)
                 ->with(['miner.currentRock', 'dump.zones.rocks', 'zone'])
                 ->get();
@@ -126,6 +111,7 @@ class RouteAssignmentService
                 throw new NoRouteAvailableException('Нет активных маршрутов', $diagnostics);
             }
 
+            // Фильтруем маршруты с диагностикой причин отказа
             $filterResult = $this->filterRoutesWithAvailableZones($activeOrders, $truck);
             $availableRoutes = $filterResult['available'];
             $diagnostics = $filterResult['diagnostics'];
@@ -139,7 +125,8 @@ class RouteAssignmentService
                 throw new NoRouteAvailableException('Нет доступных маршрутов', $diagnostics);
             }
 
-            $selectedRoute = $this->selectByWeightedWRR($availableRoutes);
+            // Выбираем маршрут по WRR с учётом весов, холостого пробега и состояния забоя
+            $selectedRoute = $this->selectByWeightedWRR($availableRoutes, $truck);
 
             Log::info('Выбран маршрут', [
                 'order_id' => $selectedRoute['order']->id,
@@ -147,6 +134,8 @@ class RouteAssignmentService
                 'dump_id' => $selectedRoute['order']->dump_id,
                 'zone_id' => $selectedRoute['zone']->id,
                 'weight' => $selectedRoute['order']->weight,
+                'empty_run_km' => $selectedRoute['empty_run_km'] ?? 0,
+                'miner_priority' => $selectedRoute['miner_priority'] ?? 0,
             ]);
 
             $this->createTripAndAssign(
@@ -166,12 +155,24 @@ class RouteAssignmentService
 
     /**
      * Диагностика причин, по которым грузовику не может быть назначен маршрут.
-     * НЕ делает назначение — только возвращает массив причин.
      *
-     * @return array
+     * НЕ делает назначение — только возвращает массив причин.
+     * Используется в DriverPanel (для показа водителю) и MainDispatcherPanel
+     * (для показа во вкладке «Самосвалы» для свободных машин без маршрута).
+     *
+     * @return array Формат как в NoRouteAvailableException::diagnostics:
+     *     [
+     *         'can_assign' => bool,
+     *         'primary_reason' => string|null,        // RouteBlockReason::*
+     *         'summary' => [reason_code => count],    // сводка
+     *         'orders' => [                          // детали по каждому маршруту
+     *             ['order_id', 'miner_id', 'miner_name', 'dump_id', 'rock_id', 'reason'],
+     *         ],
+     *     ]
      */
     public function diagnoseForTruck(Truck $truck): array
     {
+        // Если грузовик занят — это и есть причина
         if (!in_array($truck->status, ['free', 'completed', 'to_miner'])) {
             return [
                 'can_assign' => false,
@@ -216,6 +217,10 @@ class RouteAssignmentService
 
     /**
      * Фильтруем маршруты с доступными зонами + собираем диагностику причин отказа.
+     *
+     * Возвращает и доступные маршруты, и детали по каждому заблокированному.
+     * Эта информация показывается водителю (точная причина «маршрутов нет»)
+     * и диспетчеру (вкладка «Самосвалы» → для свободных машин без маршрута).
      *
      * @return array{available: array, diagnostics: array}
      */
@@ -352,78 +357,200 @@ class RouteAssignmentService
     }
 
     /**
-     * Выбор маршрута по Weighted WRR
+     * Выбор маршрута по Weighted WRR.
+     *
+     * Учитывает:
+     *   1. last_assigned_at — если прошло меньше времени погрузки, повышаем score
+     *   2. wrr_cursor / weight — базовый WRR
+     *   3. Динамическое время погрузки для каждого забоя
+     *   4. Холостой пробег от текущего места самосвала до забоя × 0.7
+     *   5. Состояние забоя (active / underloaded / overloaded)
+     *
+     * @param array $routes Доступные маршруты (с ключами order, zone, rock_id, weight, loading_time)
+     * @param Truck $truck Самосвал, которому назначается маршрут
+     * @return array Выбранный маршрут с доп. полями: empty_run_km, miner_priority
      */
-    protected function selectByWeightedWRR(array $routes): array
+    protected function selectByWeightedWRR(array $routes, Truck $truck): array
     {
         if (count($routes) === 0) {
             return null;
         }
 
         if (count($routes) === 1) {
+            // Дополняем единственный маршрут информацией для логирования
+            $routes[0]['empty_run_km'] = $this->calculateEmptyRun($truck, $routes[0]['order']->miner_id);
+            $routes[0]['miner_priority'] = $this->calculateMinerPriority($routes[0]['order']->miner_id);
             return $routes[0];
         }
 
-        usort($routes, function($a, $b) {
+        // Сортируем по общей сумме score
+        usort($routes, function($a, $b) use ($truck) {
             $baseScoreA = ($a['order']->wrr_cursor ?? 0) / max($a['weight'], 1);
             $baseScoreB = ($b['order']->wrr_cursor ?? 0) / max($b['weight'], 1);
-            
+
+            // Динамическое время погрузки в секундах для каждого маршрута
             $loadingTimeSecondsA = $a['loading_time'] * 60;
             $loadingTimeSecondsB = $b['loading_time'] * 60;
-            
+
+            // Штраф за недавнее назначение (чтобы не отправлять один за другим)
             $lastAssignedA = $a['order']->last_assigned_at;
             $lastAssignedB = $b['order']->last_assigned_at;
-            
+
             $secondsSinceA = $lastAssignedA ? now()->diffInSeconds($lastAssignedA) : $loadingTimeSecondsA;
             $secondsSinceB = $lastAssignedB ? now()->diffInSeconds($lastAssignedB) : $loadingTimeSecondsB;
-            
-            $penaltyA = ($secondsSinceA < $loadingTimeSecondsA) ? ($loadingTimeSecondsA - $secondsSinceA) * 10 : 0;
-            $penaltyB = ($secondsSinceB < $loadingTimeSecondsB) ? ($loadingTimeSecondsB - $secondsSinceB) * 10 : 0;
-            
-            $scoreA = $baseScoreA + $penaltyA;
-            $scoreB = $baseScoreB + $penaltyB;
-            
+
+            $recentPenaltyA = ($secondsSinceA < $loadingTimeSecondsA) ? ($loadingTimeSecondsA - $secondsSinceA) * 10 : 0;
+            $recentPenaltyB = ($secondsSinceB < $loadingTimeSecondsB) ? ($loadingTimeSecondsB - $secondsSinceB) * 10 : 0;
+
+            // Холостой пробег: от текущего места самосвала до забоя × 0.7
+            $emptyRunA = $this->calculateEmptyRunPenalty($truck, $a['order']->miner_id);
+            $emptyRunB = $this->calculateEmptyRunPenalty($truck, $b['order']->miner_id);
+
+            // Приоритет забоя (отрицательный = лучше): недозагруженный забой имеет преимущество
+            $minerPriorityA = $this->calculateMinerPriority($a['order']->miner_id);
+            $minerPriorityB = $this->calculateMinerPriority($b['order']->miner_id);
+
+            // Общий score = base + recent_penalty + empty_run_penalty + miner_priority
+            // Минус miner_priority, потому что недозагруженный забой имеет отрицательный приоритет
+            // (хочется, чтобы он выбирался раньше)
+            $scoreA = $baseScoreA + $recentPenaltyA + $emptyRunA - $minerPriorityA;
+            $scoreB = $baseScoreB + $recentPenaltyB + $emptyRunB - $minerPriorityB;
+
             return $scoreA <=> $scoreB;
         });
+
+        // Дополняем выбранный маршрут информацией для логирования
+        $routes[0]['empty_run_km'] = $this->calculateEmptyRun($truck, $routes[0]['order']->miner_id);
+        $routes[0]['miner_priority'] = $this->calculateMinerPriority($routes[0]['order']->miner_id);
+
+        Log::info('WRR: выбран маршрут', [
+            'truck_id'        => $truck->id,
+            'truck_location'  => $truck->getCurrentLocationDumpId(),
+            'order_id'        => $routes[0]['order']->id,
+            'miner_id'        => $routes[0]['order']->miner_id,
+            'empty_run_km'    => $routes[0]['empty_run_km'],
+            'empty_run_penalty' => $routes[0]['empty_run_km'] * self::EMPTY_RUN_COEFFICIENT,
+            'miner_priority'  => $routes[0]['miner_priority'],
+        ]);
 
         return $routes[0];
     }
 
     /**
-     * Выбрать доступную зону для конкретной породы на отвалe.
-     * Использует приоритетный список пород через getAcceptableRockIds().
+     * Рассчитать приоритет забоя для учёта в score WRR.
+     *
+     * Логика:
+     *   - Забой active → базовый приоритет 0
+     *   - Забой недозагруженный (current < recommended - 1) → -20 (хочется направить туда самосвалы)
+     *   - Забой перегруженный (current >= recommended) → +50 (не направлять)
+     *   - Забой в non-active статусе → +999 (исключается, но уже отфильтровано в filterRoutes)
+     *
+     * ВАЖНО: отрицательный приоритет = лучше (хочется выбрать)
+     *        положительный приоритет = хуже (не хочется выбирать)
+     *
+     * @param int $minerId
+     * @return float Приоритет (отрицательный = лучше)
+     */
+    protected function calculateMinerPriority(int $minerId): float
+    {
+        $miner = Miner::find($minerId);
+        if (!$miner) {
+            return 999.0; // Не существует — большой штраф
+        }
+
+        // Если забой не active — не должно сюда попасть (отфильтровано в filterRoutes)
+        if (!$miner->isWorking()) {
+            return 999.0;
+        }
+
+        // Получаем рекомендации по количеству самосвалов
+        $recommendations = $miner->getRecommendedTruckCount();
+        if (!$recommendations) {
+            return 0.0; // Нет данных — нейтральный приоритет
+        }
+
+        $recommended = $recommendations['recommended'] ?? 2;
+        $current = $recommendations['current'] ?? 0;
+
+        // Недозагруженный — направить туда самосвалы (отрицательный приоритет)
+        if ($current < $recommended - 1) {
+            return -20.0;
+        }
+
+        // Перегруженный — не направлять (положительный приоритет)
+        if ($current >= $recommended) {
+            return 50.0;
+        }
+
+        // В норме — нейтрально
+        return 0.0;
+    }
+
+    /**
+     * Рассчитать холостой пробег самосвала от его текущего местоположения до забоя.
+     *
+     * Логика:
+     *   - Получаем dump_id текущего местоположения самосвала (последний отвал разгрузки)
+     *   - Если самосвал в отстое (нет истории) — возвращаем 0
+     *   - Иначе ищем расстояние отвал_текущий → забой в miner_dump_distances
+     *     (используем симметричную запись: расстояние miner→dump = dump→miner)
+     *   - Если записи нет — возвращаем 0 (не можем рассчитать, не штрафуем)
+     *
+     * @param Truck $truck Самосвал, которому назначается маршрут
+     * @param int $minerId ID забоя, куда направляется самосвал
+     * @return float Расстояние холостого пробега (км), 0 если самосвал в отстое или нет данных
+     */
+    public function calculateEmptyRun(Truck $truck, int $minerId): float
+    {
+        // Текущее местоположение самосвала (отвал, где он находится)
+        $currentDumpId = $truck->getCurrentLocationDumpId();
+
+        // Самосвал в отстое — холостого пробега нет
+        if (!$currentDumpId) {
+            return 0.0;
+        }
+
+        // Если самосвал уже на месте (например, после разгрузки на отвалe, куда едет снова)
+        // — холостой пробег = 0 (физически он там же)
+        // Это особый случай: truck разгрузился на отвалe X, и следующий маршрут ведёт
+        // к забою, который выгружает на отвал X. Холостой = 0.
+
+        // Ищем расстояние от текущего отвала до забоя.
+        // Таблица miner_dump_distances хранит пары (miner_id, dump_id, distance_km).
+        // Симметрия: расстояние отвал→забой = забой→отвал.
+        $distance = MinerDumpDistance::where('miner_id', $minerId)
+            ->where('dump_id', $currentDumpId)
+            ->value('distance_km');
+
+        return $distance ? (float) $distance : 0.0;
+    }
+
+    /**
+     * Коэффициент для холостого пробега (типичный для карьеров).
+     * Холостой пробег "дешевле" гружёного, потому что самосвал без груза
+     * расходует меньше топлива и быстрее едет.
+     */
+    const EMPTY_RUN_COEFFICIENT = 0.7;
+
+    /**
+     * Рассчитать штраф за холостой пробег для использования в score WRR.
+     *
+     * @param Truck $truck Самосвал
+     * @param int $minerId ID забоя
+     * @return float Штраф (км × коэффициент), 0 если самосвал в отстое
+     */
+    public function calculateEmptyRunPenalty(Truck $truck, int $minerId): float
+    {
+        $emptyRun = $this->calculateEmptyRun($truck, $minerId);
+        return $emptyRun * self::EMPTY_RUN_COEFFICIENT;
+    }
+
+    /**
+     * Выбрать зону для конкретной породы
      */
     public function selectZoneForRock(int $dumpId, int $rockId): ?Zone
     {
-        $acceptableRockIds = $this->getAcceptableRockIds($rockId);
-
-        foreach ($acceptableRockIds as $acceptableRockId) {
-            $zone = Zone::where('dump_id', $dumpId)
-                ->where('delivery', true)
-                ->whereRaw('volume < capacity')
-                ->whereHas('rocks', fn($q) => $q->where('rocks.id', $acceptableRockId))
-                ->orderBy('volume', 'asc')
-                ->first();
-
-            if ($zone) {
-                if ($acceptableRockId !== $rockId) {
-                    Log::info("selectZoneForRock: fallback породы", [
-                        'dump_id' => $dumpId,
-                        'requested_rock_id' => $rockId,
-                        'used_rock_id' => $acceptableRockId,
-                        'zone_id' => $zone->id,
-                        'zone_name' => $zone->name_zone,
-                    ]);
-                }
-                return $zone;
-            }
-        }
-
-        Log::info("selectZoneForRock: нет зон для всех fallback-пород", [
-            'dump_id' => $dumpId,
-            'checked_rock_ids' => $acceptableRockIds,
-        ]);
-
+        // Этот метод больше не используется для поиска зон, так как zone_id теперь хранится в MiningOrder
         return null;
     }
 
@@ -432,6 +559,7 @@ class RouteAssignmentService
      */
     public function assignRoutesToAllFree(): int
     {
+        // Ищем грузовики в статусе free (в отстое) или completed (ждут назначения)
         $freeTrucks = Truck::whereIn('status', ['free', 'completed'])->get();
         $count = 0;
 
@@ -441,11 +569,6 @@ class RouteAssignmentService
                 if ($truck->fresh()->status !== 'free') {
                     $count++;
                 }
-            } catch (NoRouteAvailableException $e) {
-                // Это нормальная ситуация — просто нет маршрутов, не логируем как ошибку
-                Log::debug("assignRoutesToAllFree: нет маршрута для грузовика {$truck->id}", [
-                    'reason' => $e->getPrimaryReason(),
-                ]);
             } catch (\Exception $e) {
                 Log::error("Ошибка назначения для грузовика {$truck->id}: " . $e->getMessage());
             }
@@ -525,6 +648,7 @@ class RouteAssignmentService
         ]);
 
         try {
+            // Завершаем старые незавершённые trip
             TruckTrip::where('truck_id', $truck->id)
                 ->whereNull('completed_at')
                 ->update([
@@ -532,6 +656,7 @@ class RouteAssignmentService
                     'load_volume' => 0,
                 ]);
 
+            // Создаём новый trip
             $trip = TruckTrip::create([
                 'truck_id' => $truck->id,
                 'driver_id' => $truck->driver_id,
@@ -545,16 +670,19 @@ class RouteAssignmentService
 
             Log::info('TruckTrip created', ['trip_id' => $trip->id]);
 
+            // Обновляем породу в miningOrder (чтобы водитель видел правильную породу)
             if ($rockId) {
                 $order->update(['rock_id' => $rockId]);
             }
 
+            // Обновляем wrr_cursor и last_assigned_at
             $newCursor = ($order->wrr_cursor ?? 0) + 1;
             $order->update([
                 'wrr_cursor' => $newCursor,
                 'last_assigned_at' => now(),
             ]);
 
+            // Обновляем статус грузовика
             $truck->update(['status' => Truck::STATUS_TO_MINER]);
 
             Log::info("Маршрут назначен: грузовик {$truck->id} → забой {$order->miner_id} → зона {$zone->id}");
@@ -654,6 +782,7 @@ class RouteAssignmentService
 
     /**
      * Проверка: можно ли назначить на miner
+     * Использует динамический расчёт на основе целевого/фактического времени погрузки
      */
     protected function canAssignToMiner(MiningOrder $order): bool
     {
@@ -663,10 +792,12 @@ class RouteAssignmentService
             return false;
         }
 
+        // Пробуем использовать рекомендации из модели Miner
         $recommendations = $miner->getRecommendedTruckCount();
         
         if ($recommendations) {
-            $maxCount = ($recommendations['recommended'] ?? 2) + 1;
+            // Используем рассчитанное оптимальное количество + буфер
+            $maxCount = ($recommendations['recommended'] ?? 2) + 1; // +1 буфер
             $currentCount = $recommendations['current'] ?? $this->getCountOnMiner($miner->id);
             
             Log::debug('canAssignToMiner using recommendations', [
@@ -679,11 +810,13 @@ class RouteAssignmentService
             return $currentCount < $maxCount;
         }
 
+        // Fallback: старый метод расчёта если нет данных для рекомендаций
         $travelTime = MinerDumpDistance::where('miner_id', $order->miner_id)
             ->where('dump_id', $order->dump_id)
             ->value('travel_time_hours');
 
         if (!$travelTime) {
+            // Если нет данных о расстоянии - разрешаем назначение
             return true;
         }
 
@@ -694,7 +827,7 @@ class RouteAssignmentService
     }
 
     /**
-     * Количество грузовиков на miner
+     * Количество грузовиков на miner (включая ожидающих)
      */
     protected function getCountOnMiner(int $minerId): int
     {
@@ -710,12 +843,14 @@ class RouteAssignmentService
 
     /**
      * Максимальное количество грузовиков на miner
+     * Теперь учитывает динамическое время погрузки
      */
     protected function getMaxCountForMiner(float $travelTimeHours, Miner $miner): int
     {
         $travelTimeMinutes = $travelTimeHours * 60;
         $loadingTime = $this->getLoadingTimeForMiner($miner);
         
+        // Формула: T_рейса / T_погрузки * буфер
         $maxCount = ($travelTimeMinutes / $loadingTime) * self::BUFFER_COEFFICIENT;
         
         return (int) round($maxCount);

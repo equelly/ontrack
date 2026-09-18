@@ -34,6 +34,7 @@ class DriverPanel extends Component
     public ?int $selectedTruckId = null;
     public array $trucks = [];
     public ?TruckTrip $currentTrip = null;
+    public float $emptyRunKm = 0; // Холостой пробег от текущего места до забоя (км)
     public ?TripPause $activePause = null;
     public array $stats = [
         'shift_name' => '-',
@@ -193,6 +194,18 @@ class DriverPanel extends Component
             ->with(['miner.rocks', 'dump', 'zone.rocks', 'miningOrder.rock', 'rock', 'pauses'])
             ->latest()
             ->first();
+
+        // Расчёт холостого пробега (для отображения в карточке маршрута)
+        // От текущего местоположения самосвала (предыдущая разгрузка) до забоя текущего trip
+        $this->emptyRunKm = 0;
+        if ($this->currentTrip && $this->currentTrip->miner_id) {
+            try {
+                $routeService = app(\App\Services\RouteAssignmentService::class);
+                $this->emptyRunKm = $routeService->calculateEmptyRun($this->truck, $this->currentTrip->miner_id);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('DriverPanel: calculateEmptyRun failed: ' . $e->getMessage());
+            }
+        }
 
         // Находим активную паузу
         $this->activePause = null;
