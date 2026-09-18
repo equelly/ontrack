@@ -33,10 +33,6 @@
                 class="px-4 py-2 rounded-md font-semibold uppercase">
                 Перегрузки
             </button>
-            <button @click="tab='zones'" 
-                :class="tab === 'zones' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
-                class="px-4 py-2 rounded-md font-semibold uppercase">
-                Зоны</button>
             <button @click="tab='dashboard'"
                 :class="{ 'bg-emerald-600 text-white': tab === 'dashboard', 'text-gray-600 hover:bg-gray-100': tab !== 'dashboard' }"
                 class="px-4 py-2 rounded-md font-semibold uppercase">
@@ -214,82 +210,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-        <!-- ВКЛАДКА: Зоны разгрузки -->
-        <div x-show="tab === 'zones'" x-cloak class="mt-4 space-y-4">
-            @foreach($dumps as $dump)
-                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                    <div class="p-4 border-b bg-slate-50">
-                        <h3 class="font-bold text-gray-800 uppercase text-sm">Перегрузка: {{ $dump->name_dump }}</h3>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead class="bg-slate-50 border-b">
-                                <tr>
-                                    <th class="text-left p-3 font-semibold text-gray-600 w-1/4">Зона</th>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Текущий объем</th>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Вместимость</th>
-                                    <th class="text-left p-3 font-semibold text-gray-600">Заполнение</th>
-                                    <th class="text-center p-3 font-semibold text-gray-600">Принимает</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach($dump->zones as $zone)
-                                    @php 
-                                        $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0; 
-                                        $currentRockId = $zone->rocks->first()?->id;
-                                    @endphp
-                                    <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
-                                        <td class="p-3 font-medium text-gray-800">{{ $zone->name_zone }}</td>
-                                        <td class="p-3">
-                                            <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
-                                                <option value="">Не указана</option>
-                                                @foreach($rocks as $rock)
-                                                    <option value="{{ $rock->id }}" @if($currentRockId == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
-                                                @endforeach
-                                            </select>
-                                        </td>
-                                        <td class="p-3">
-                                            <div class="flex items-center gap-2">
-                                                <!-- Вводим количество вертушек, отправляем в базу кубометры (value * 380) -->
-                                                <input type="number" 
-                                                       wire:change="updateZoneField({{ $zone->id }}, 'volume', $event.target.value * 380)" 
-                                                       value="{{ round($zone->volume / 380) }}" 
-                                                       class="border-gray-300 rounded-md text-sm py-1 w-20 text-center" 
-                                                       step="1" min="0">
-                                                <span class="text-xs text-gray-500 whitespace-nowrap">({{ number_format($zone->volume, 0, '.', ' ') }} м³)</span>
-                                            </div>
-                                        </td>
-                                        <td class="p-3">
-                                            <div class="flex items-center gap-2">
-                                                <!-- Вводим количество вертушек, отправляем в базу кубометры (value * 380) -->
-                                                <input type="number" 
-                                                       wire:change="updateZoneField({{ $zone->id }}, 'capacity', $event.target.value * 380)" 
-                                                       value="{{ round($zone->capacity / 380) }}" 
-                                                       class="border-gray-300 rounded-md text-sm py-1 w-20 text-center" 
-                                                       step="1" min="0">
-                                                <span class="text-xs text-gray-500 whitespace-nowrap">({{ number_format($zone->capacity, 0, '.', ' ') }} м³)</span>
-                                            </div>
-                                        </td>
-                                        <td class="p-3">
-                                            <div class="flex items-center gap-2">
-                                                <div class="w-24 bg-gray-200 rounded-full h-2.5">
-                                                    <div class="h-2.5 rounded-full {{ $fillPercent > 90 ? 'bg-red-500' : ($fillPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500') }}" style="width: {{ $fillPercent }}%"></div>
-                                                </div>
-                                                <span class="text-xs text-gray-500">{{ round($fillPercent) }}%</span>
-                                            </div>
-                                        </td>
-                                        <td class="p-3 text-center">
-                                            <input type="checkbox" wire:change="updateZoneField({{ $zone->id }}, 'delivery', $event.target.checked)" {{ $zone->delivery ? 'checked' : '' }} class="rounded text-emerald-600 h-5 w-5 cursor-pointer">
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            @endforeach
         </div>
         <!-- ВКЛАДКА: Оборудование -->
         <div x-show="tab === 'equipment'" x-cloak class="mt-4 space-y-6">
