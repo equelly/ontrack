@@ -119,7 +119,7 @@ class MainDispatcherPanel extends Component
         SystemSetting::setZoneSharingThreshold($value);
         $this->dispatch('notify', [
             'type' => 'info',
-            'message' => "Порог адаптивной балансировки зон: {$value}%. Будет применен при следующей оптимизации.",
+            'message' => "Порог адаптивной балансировки: {$value}%. Применится при следующей оптимизации.",
         ]);
     }
 
@@ -642,23 +642,30 @@ class MainDispatcherPanel extends Component
 
         $created = 0;
         $skipped = 0;
+        $updated = 0; // ← НОВОЕ: счётчик обновлённых distance_km
 
         foreach ($miners as $miner) {
             foreach ($dumps as $dump) {
-                $exists = MiningOrder::where('miner_id', $miner->id)
+                $order = MiningOrder::where('miner_id', $miner->id)
                     ->where('dump_id', $dump->id)
-                    ->exists();
-
-                if ($exists) {
-                    $skipped++;
-                    continue;
-                }
+                    ->first();
 
                 // Расстояние из таблицы miner_dump_distances (если есть)
                 $distance = \App\Models\MinerDumpDistance::where('miner_id', $miner->id)
                     ->where('dump_id', $dump->id)
                     ->value('distance_km');
 
+                if ($order) {
+                    // Маршрут существует — проверяем, нужно ли обновить distance_km
+                    if ($distance !== null && (float) $order->distance_km !== (float) $distance) {
+                        $order->update(['distance_km' => $distance]);
+                        $updated++;
+                    }
+                    $skipped++;
+                    continue;
+                }
+
+                // Маршрута нет — создаём
                 MiningOrder::create([
                     'miner_id'    => $miner->id,
                     'dump_id'     => $dump->id,
@@ -674,9 +681,12 @@ class MainDispatcherPanel extends Component
 
         $this->loadData();
 
-        $message = "Сгенерировано маршрутов: {$created}";
+        $message = "Создано: {$created}";
         if ($skipped > 0) {
-            $message .= ", пропущено (уже существуют): {$skipped}";
+            $message .= ", пропущено: {$skipped}";
+        }
+        if ($updated > 0) {
+            $message .= ", обновлено расстояний: {$updated}";
         }
 
         $this->dispatch('notify', [
@@ -685,6 +695,15 @@ class MainDispatcherPanel extends Component
         ]);
     }
 
+    /**
+     * Получить все маршруты с информацией для управления (UI вкладка «Маршруты»).
+     *
+     * Для каждого маршрута:
+     *   - Текущая порода забоя
+     *   - Доступные зоны (с fallback-логикой)
+     *   - Расстояние (сначала из MiningOrder.distance_km, потом из miner_dump_distances)
+     *   - Номер раунда (если активен) — для отображения «Раунд 1» / «Раунд 2»
+     */
     public function getOrdersForManagementProperty()
     {
         // Получаем активные маршруты с информацией о том, в каком раунде они были выбраны

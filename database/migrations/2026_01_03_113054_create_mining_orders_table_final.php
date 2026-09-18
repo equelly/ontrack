@@ -26,6 +26,9 @@ return new class extends Migration
             
             $table->index(['miner_id', 'dump_id']);
             $table->index(['active', 'created_at']);
+            // КРИТИЧЕСКИ ВАЖНО: Защита от дубликатов маршрутов
+            // База данных сама отклонит запрос, если попытаться создать второй маршрут для одной и той же пары
+            $table->unique(['miner_id', 'dump_id']);
         });
     }
 

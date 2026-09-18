@@ -1,4 +1,7 @@
 <div class="dispatcher-panel-wrapper" x-data="{ tab: @entangle('activeTab') }">
+    <!-- Toast контейнер для уведомлений -->
+    <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+    
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
     <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -492,8 +495,8 @@
                         @endif
                     </small>
                 </div>
-                <div class="flex gap-2 w-full sm:w-auto">
-                    <button class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 w-full sm:w-auto" wire:click="generateAllPairs" wire:loading.attr="disabled" wire:confirm="Сгенерировать маршруты для всех пар забой-отвал, которых ещё нет в БД?">
+                <div class="flex gap-2 w-full sm:w-auto flex-wrap">
+                    <button class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 w-full sm:w-auto" wire:click="generateAllPairs" wire:loading.attr="disabled" wire:confirm="Сгенерировать маршруты для всех пар забой-отвал, которых ещё нет в БД? Существующие маршруты с пустым distance_km будут обновлены.">
                         <span wire:loading.remove><i class="fas fa-layer-group mr-1"></i> Сгенерировать все пары</span>
                         <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Генерация...</span>
                     </button>
@@ -609,7 +612,7 @@
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-exclamation-circle text-red-500"></i> Важные правила</h4>
                             <div class="pl-6 space-y-1.5 text-xs">
                                 <div>• Зона принимает только <strong>ОДНУ породу</strong> — нельзя смешивать (кроме fallback: руда_ЦПТ → руда → руда_S)</div>
-                                <div>• <strong>Нельзя сменить породу в открытой зоне</strong> — сначала закройте (delivery=false) и отгрузите остатки</div>
+                                <div>• <strong>Нельзя сменить породу в открытой зоне</strong> — сначала закройте зону для завозки и отгрузите остатки</div>
                                 <div>• Без <strong>current_rock_id</strong> у забоя маршруты не назначаются</div>
                                 <div>• Без <strong>расстояний</strong> маршрут не участвует в оптимизации (задаются в Панели Мастера → Забои → «Расстояния»)</div>
                                 <div>• <strong>Аварийный режим</strong>: если все активные маршруты забоя недоступны — система сама активирует первый доступный резервный</div>
@@ -662,14 +665,33 @@
                     $firstOrder = $orders->first();
                     $currentRock = $firstOrder?->current_rock;
                     $minerId = $firstOrder?->miner?->id;
+                    $miner = $firstOrder?->miner;
                     $activeCount = $orders->where('active', true)->count();
+                    $minerStatus = $miner?->status ?? 'unknown';
+                    $minerIsActive = $minerStatus === \App\Domain\MinerStatus::ACTIVE;
                 @endphp
                 <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
                     <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <strong class="text-gray-800">
                                 <i class="fas fa-mountain mr-1 text-gray-400"></i>{{ $minerName }}
                             </strong>
+                            {{-- Бейдж статуса забоя --}}
+                            @if($miner)
+                                @php
+                                    $statusLabel = \App\Domain\MinerStatus::label($minerStatus);
+                                    $statusColor = $minerIsActive
+                                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                        : 'bg-amber-100 text-amber-700 border-amber-300';
+                                @endphp
+                                <span class="px-2 py-0.5 text-xs font-medium rounded-md border {{ $statusColor }}" title="Статус забоя: {{ $statusLabel }}">
+                                    @if($minerIsActive)
+                                        <i class="fas fa-check-circle mr-0.5"></i>{{ $statusLabel }}
+                                    @else
+                                        <i class="fas fa-exclamation-triangle mr-0.5"></i>{{ $statusLabel }}
+                                    @endif
+                                </span>
+                            @endif
                             @if($currentRock)
                                 <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-cyan-100 text-cyan-700">
                                     <i class="fas fa-gem mr-1"></i>{{ $currentRock->name_rock }}
@@ -677,6 +699,11 @@
                             @else
                                 <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-amber-100 text-amber-700">
                                     <i class="fas fa-exclamation-triangle mr-1"></i>Нет породы
+                                </span>
+                            @endif
+                            @if(!$minerIsActive && $miner)
+                                <span class="text-xs text-amber-700">
+                                    <i class="fas fa-info-circle"></i> Маршруты в резерве — забой не активен
                                 </span>
                             @endif
                         </div>
