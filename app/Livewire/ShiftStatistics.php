@@ -13,9 +13,11 @@ class ShiftStatistics extends Component
     {
         $shift = $shiftService->getCurrentShift();
         $position = Auth::user()->position ?? null;
-        
+
         $tripsCount = 0;
         $totalVolume = 0;
+        $totalDistance = 0;
+        $totalEmptyRun = 0;
         $avgSpeed = 0;
 
         // Базовый запрос: рейсы за время текущей смены (используем created_at)
@@ -26,10 +28,12 @@ class ShiftStatistics extends Component
         if ($position === 'driver') {
             // Для водителя: фильтруем по driver_id
             $query->where('driver_id', Auth::id());
-            
+
             $tripsCount = $query->count();
             $totalVolume = $query->sum('load_volume');
-            
+            $totalDistance = $query->sum('distance_km');
+            $totalEmptyRun = $query->sum('empty_run_km');
+
         } elseif ($position === 'excavator_operator') {
             // Для экскаваторщика: фильтруем по miner_id (привязка к забою)
             $userMinerId = Auth::user()->miner_id;
@@ -37,17 +41,31 @@ class ShiftStatistics extends Component
                 $query->where('miner_id', $userMinerId);
                 $tripsCount = $query->count();
                 $totalVolume = $query->sum('load_volume');
+                $totalDistance = $query->sum('distance_km');
+                $totalEmptyRun = $query->sum('empty_run_km');
             }
         } else {
             // Для диспетчера и админа: считаем всё за смену
             $tripsCount = $query->count();
             $totalVolume = $query->sum('load_volume');
+            $totalDistance = $query->sum('distance_km');
+            $totalEmptyRun = $query->sum('empty_run_km');
         }
 
+        // Коэффициент эффективности: отношение гружёного пробега к общему
+        // (гружёный + холостой). Чем выше — тем лучше.
+        $totalAll = $totalDistance + $totalEmptyRun;
+        $efficiency = $totalAll > 0
+            ? round(($totalDistance / $totalAll) * 100, 1)
+            : 0;
+
         return view('livewire.shift-statistics', [
-            'tripsCount' => $tripsCount,
-            'totalVolume' => $totalVolume,
-            'avgSpeed' => $this->calculateAvgSpeed($shift),
+            'tripsCount'     => $tripsCount,
+            'totalVolume'    => $totalVolume,
+            'totalDistance'  => $totalDistance,
+            'totalEmptyRun'  => $totalEmptyRun,
+            'efficiency'     => $efficiency,
+            'avgSpeed'       => $this->calculateAvgSpeed($shift),
         ]);
     }
     

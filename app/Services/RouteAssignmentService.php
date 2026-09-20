@@ -27,6 +27,18 @@ class RouteAssignmentService
 {
     const DEFAULT_LOADING_TIME_MINUTES = 5;
     const BUFFER_COEFFICIENT = 1.5;
+    /**
+     * Бизнес-правила совместимости пород при выгрузке.
+     *
+     * Каждая зона принимает только ОДНУ породу (смешивание запрещено).
+     * Исключение: "руда_ЦПТ" (id=5) может быть выгружена также в зоны,
+     * принимающие "руда" (id=1), а при их отсутствии — "руда_Sera" (id=6).
+     *
+     * Формат: [исходная_порода => [приоритетный_список_допустимых_пород]]
+     */
+    const ROCK_FALLBACK_CHAIN = [
+        5 => [5, 1, 6], // "руда_ЦПТ" → "руда" → "руда_Sera"
+    ];
 
     protected RouteOptimizerService $optimizer;
 
@@ -95,6 +107,37 @@ class RouteAssignmentService
         }
 
         DB::transaction(function () use ($truck) {
+            // Блокируем самосвал от параллельного назначения.
+            // Два вызова assignForTruck() для одного самосвала — второй будет ждать.
+            $lockedTruck = Truck::where('id', $truck->id)->lockForUpdate()->first();
+
+            if (!$lockedTruck) {
+                throw new \RuntimeException("Грузовик {$truck->id} не найден");
+            }
+
+            // Проверяем статус ПОСЛЕ блокировки — мог измениться параллельным вызовом
+            if (!in_array($lockedTruck->status, ['free', 'completed', 'to_miner'])) {
+                Log::info('assignForTruck: грузовик уже назначен параллельным вызовом', [
+                    'truck_id' => $truck->id,
+                    'status' => $lockedTruck->status,
+                ]);
+                throw new \RuntimeException("Грузовик занят (статус: {$lockedTruck->status})");
+            }
+
+            // Проверяем, нет ли уже активного trip (защита от дублей)
+            $existingTrip = TruckTrip::where('truck_id', $truck->id)
+                ->whereNull('completed_at')
+                ->lockForUpdate()
+                ->exists();
+
+            if ($existingTrip) {
+                Log::info('assignForTruck: у грузовика уже есть активный trip', ['truck_id' => $truck->id]);
+                throw new \RuntimeException("У грузовика {$truck->id} уже есть активный trip");
+            }
+
+            // Обновляем самосвал в памяти, чтобы использовать заблокированную версию
+            $truck = $lockedTruck;
+
             // Получаем только АКТИВНЫЕ маршруты
             $activeOrders = MiningOrder::where('active', true)
                 ->with(['miner.currentRock', 'dump.zones.rocks', 'zone'])
@@ -555,24 +598,40 @@ class RouteAssignmentService
     }
 
     /**
-     * Назначить маршруты всем свободным грузовикам (free или completed)
+     * Назначить маршруты всем свободным грузовикам (free или completed).
+     *
+     * Использует lockForUpdate() для списка самосвалов — два параллельных вызова
+     * assignRoutesToAllFree() не выберут один и тот же самосвал дважды.
      */
     public function assignRoutesToAllFree(): int
     {
-        // Ищем грузовики в статусе free (в отстое) или completed (ждут назначения)
-        $freeTrucks = Truck::whereIn('status', ['free', 'completed'])->get();
         $count = 0;
 
-        foreach ($freeTrucks as $truck) {
-            try {
-                $this->assignForTruck($truck);
-                if ($truck->fresh()->status !== 'free') {
-                    $count++;
+        DB::transaction(function () use (&$count) {
+            // Блокируем свободные самосвалы от параллельного назначения
+            $freeTrucks = Truck::whereIn('status', ['free', 'completed'])
+                ->orderBy('updated_at', 'asc')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($freeTrucks as $truck) {
+                try {
+                    $this->assignForTruck($truck);
+                    if ($truck->fresh()->status !== 'free') {
+                        $count++;
+                    }
+                } catch (\Exception $e) {
+                    // NoRouteAvailableException — нормальная ситуация, не логируем как ошибку
+                    if ($e instanceof NoRouteAvailableException) {
+                        Log::debug("assignRoutesToAllFree: нет маршрута для грузовика {$truck->id}", [
+                            'reason' => $e->getPrimaryReason(),
+                        ]);
+                    } else {
+                        Log::error("Ошибка назначения для грузовика {$truck->id}: " . $e->getMessage());
+                    }
                 }
-            } catch (\Exception $e) {
-                Log::error("Ошибка назначения для грузовика {$truck->id}: " . $e->getMessage());
             }
-        }
+        });
 
         return $count;
     }
@@ -637,10 +696,25 @@ class RouteAssignmentService
     }
 
     /**
-     * Создать trip и назначить маршрут
+     * Создать trip и назначить маршрут.
+     *
+     * ВАЖНО: этот метод должен вызываться ТОЛЬКО внутри транзакции,
+     * потому что использует lockForUpdate() для MiningOrder. Если вызвать
+     * без транзакции — lockForUpdate() сработает в auto-commit режиме и
+     * блокировка сразу снимется (не будет защиты от race condition).
+     *
+     * @throws \RuntimeException если метод вызван без активной транзакции
      */
     protected function createTripAndAssign(Truck $truck, MiningOrder $order, Zone $zone, ?int $rockId = null): void
     {
+        // Защита от вызова без транзакции — lockForUpdate() без транзакции бесполезен
+        if (DB::transactionLevel() === 0) {
+            throw new \RuntimeException(
+                'createTripAndAssign должен вызываться внутри DB::transaction() — ' .
+                'иначе lockForUpdate() не обеспечивает защиту от race condition'
+            );
+        }
+
         Log::info('createTripAndAssign START', [
             'truck_id' => $truck->id,
             'order_id' => $order->id,
@@ -657,6 +731,10 @@ class RouteAssignmentService
                 ]);
 
             // Создаём новый trip
+            // Сохраняем холостой пробег и гружёное расстояние для статистики
+            $emptyRunKm = $this->calculateEmptyRun($truck, $order->miner_id);
+            $loadedDistance = (float) ($order->distance_km ?? 0);
+
             $trip = TruckTrip::create([
                 'truck_id' => $truck->id,
                 'driver_id' => $truck->driver_id,
@@ -665,22 +743,41 @@ class RouteAssignmentService
                 'zone_id' => $zone->id,
                 'rock_id' => $rockId,
                 'mining_order_id' => $order->id,
+                'distance_km' => $loadedDistance,
                 'started_at' => now(),
+                'empty_run_km' => $emptyRunKm,
             ]);
 
-            Log::info('TruckTrip created', ['trip_id' => $trip->id]);
+            Log::info('TruckTrip created', [
+                'trip_id' => $trip->id,
+                'distance_km' => $loadedDistance,
+                'empty_run_km' => $emptyRunKm,
+            ]);
 
             // Обновляем породу в miningOrder (чтобы водитель видел правильную породу)
             if ($rockId) {
                 $order->update(['rock_id' => $rockId]);
             }
 
-            // Обновляем wrr_cursor и last_assigned_at
-            $newCursor = ($order->wrr_cursor ?? 0) + 1;
-            $order->update([
-                'wrr_cursor' => $newCursor,
-                'last_assigned_at' => now(),
-            ]);
+            // Блокируем MiningOrder для безопасного обновления wrr_cursor
+            $lockedOrder = MiningOrder::where('id', $order->id)->lockForUpdate()->first();
+            if ($lockedOrder) {
+                $newCursor = ($lockedOrder->wrr_cursor ?? 0) + 1;
+                $lockedOrder->update([
+                    'wrr_cursor' => $newCursor,
+                    'last_assigned_at' => now(),
+                ]);
+                // Обновляем в памяти для последующих вызовов
+                $order->wrr_cursor = $newCursor;
+                $order->last_assigned_at = now();
+            } else {
+                // Если не удалось заблокировать — всё равно обновляем (fallback)
+                $newCursor = ($order->wrr_cursor ?? 0) + 1;
+                $order->update([
+                    'wrr_cursor' => $newCursor,
+                    'last_assigned_at' => now(),
+                ]);
+            }
 
             // Обновляем статус грузовика
             $truck->update(['status' => Truck::STATUS_TO_MINER]);

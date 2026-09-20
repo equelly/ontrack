@@ -17,18 +17,6 @@ use Illuminate\Support\Facades\Log;
  *
  * Обваловка — это отсыпка предохранительного вала для безопасности
  * ведения горных работ.
- *
- * Логика приоритета:
- *   1. Если есть активный BermRequest на зону — обычные маршруты на эту
- *      зону не назначаются.
- *   2. Свободные самосвалы сначала направляются на обваловку, потом на
- *      обычные маршруты.
- *   3. Маршрут обваловки использует ту же логику, что и обычный:
- *      забой → отвал → зона, просто зона может быть delivery=false.
- *
- * Завершение:
- *   - trucks_completed достиг trucks_needed → completed
- *   - мастер вручную отменяет → cancelled
  */
 class BermService
 {
@@ -38,27 +26,24 @@ class BermService
 
     /**
      * Создать запрос на обваловку зоны.
-     *
-     * @param int $zoneId Зона, которую нужно обваловать
-     * @param int $trucksNeeded Сколько самосвалов нужно
-     * @param int|null $rockId Порода для обваловки (null — любая подходящая)
-     * @param int|null $createdBy ID мастера
      */
     public function createRequest(int $zoneId, int $trucksNeeded, ?int $rockId = null, ?int $createdBy = null): BermRequest
     {
         $zone = Zone::with('dump')->findOrFail($zoneId);
 
-        // Проверяем, нет ли уже активного запроса на эту зону
-        $existing = BermRequest::activeForZone($zoneId)->first();
-        if ($existing) {
-            throw new \RuntimeException("На зону «{$zone->name_zone}» уже есть активный запрос обваловки");
-        }
-
         if ($trucksNeeded < 1 || $trucksNeeded > 50) {
             throw new \RuntimeException('Количество самосвалов должно быть от 1 до 50');
         }
 
+        // Защищаем зону от создания дубликатов запросов через блокировку
         return DB::transaction(function () use ($zone, $zoneId, $trucksNeeded, $rockId, $createdBy) {
+            
+            // Проверяем и блокируем запись активного запроса для этой зоны
+            $existing = BermRequest::activeForZone($zoneId)->lockForUpdate()->first();
+            if ($existing) {
+                throw new \RuntimeException("На зону «{$zone->name_zone}» уже есть активный запрос обваловки");
+            }
+
             $request = BermRequest::create([
                 'zone_id'        => $zoneId,
                 'dump_id'        => $zone->dump_id,
@@ -76,7 +61,7 @@ class BermService
                 'rock_id'        => $rockId,
             ]);
 
-            // Сразу пытаемся назначить самосвалы
+            // Пытаемся сразу назначить самосвалы внутри текущей транзакции
             $this->assignTrucks($request);
 
             return $request;
@@ -88,17 +73,22 @@ class BermService
      */
     public function cancelRequest(int $requestId, ?int $cancelledBy = null): BermRequest
     {
-        $request = BermRequest::findOrFail($requestId);
+        $request = DB::transaction(function () use ($requestId, $cancelledBy) {
+            // Блокируем строку от параллельных изменений счетчиков разгрузки
+            $req = BermRequest::where('id', $requestId)->lockForUpdate()->firstOrFail();
 
-        if (!$request->isActive()) {
-            throw new \RuntimeException('Запрос уже неактивен');
-        }
+            if (!$req->isActive()) {
+                throw new \RuntimeException('Запрос уже неактивен');
+            }
 
-        $request->update([
-            'status'       => BermRequest::STATUS_CANCELLED,
-            'completed_at' => now(),
-            'completed_by' => $cancelledBy,
-        ]);
+            $req->update([
+                'status'       => BermRequest::STATUS_CANCELLED,
+                'completed_at' => now(),
+                'completed_by' => $cancelledBy,
+            ]);
+
+            return $req;
+        });
 
         Log::info('BermRequest cancelled', [
             'request_id' => $request->id,
@@ -106,7 +96,6 @@ class BermService
             'by'         => $cancelledBy,
         ]);
 
-        // После отмены — пересинхронизируем маршруты
         try {
             $this->routeService->assignRoutesToAllFree();
             event(new RoutesUpdated());
@@ -119,13 +108,6 @@ class BermService
 
     /**
      * Назначить самосвалы на активный запрос обваловки.
-     *
-     * Используется:
-     * - При создании запроса
-     * - При освобождении самосвалов (кто-то завершил рейс)
-     * - При обновлении панели мастера
-     *
-     * @return int Колько назначенных самосвалов
      */
     public function assignTrucks(?BermRequest $request = null): int
     {
@@ -133,51 +115,59 @@ class BermService
             return 0;
         }
 
-        // Если запрос не указан — обрабатываем все активные запросы
-        $requests = $request
-            ? collect([$request])
-            : BermRequest::active()->orderBy('created_at')->get();
-
-        if ($requests->isEmpty()) {
-            return 0;
-        }
-
-        $assigned = 0;
-
-        foreach ($requests as $req) {
-            $remaining = $req->remainingToAssign();
-            if ($remaining <= 0) {
-                continue;
+        return DB::transaction(function () use ($request) {
+            // Блокируем строки запросов для точного расчета remainingToAssign()
+            if ($request) {
+                $reqModel = BermRequest::where('id', $request->id)->lockForUpdate()->first();
+                if (!$reqModel || !$reqModel->isActive()) {
+                    return 0;
+                }
+                $requests = collect([$reqModel]);
+            } else {
+                $requests = BermRequest::active()->orderBy('created_at')->lockForUpdate()->get();
             }
 
-            // Ищем свободные самосвалы
-            $freeTrucks = Truck::whereIn('status', ['free', 'completed'])
-                ->orderBy('updated_at', 'asc')
-                ->limit($remaining)
-                ->get();
-
-            if ($freeTrucks->isEmpty()) {
-                continue;
+            if ($requests->isEmpty()) {
+                return 0;
             }
 
-            foreach ($freeTrucks as $truck) {
-                if ($req->remainingToAssign() <= 0) {
-                    break;
+            $assigned = 0;
+
+            foreach ($requests as $req) {
+                $remaining = $req->remainingToAssign();
+                if ($remaining <= 0) {
+                    continue;
                 }
 
-                try {
-                    $this->assignTruckToBerm($truck, $req);
-                    $assigned++;
-                } catch (\Exception $e) {
-                    Log::debug("BermService: не удалось назначить грузовик {$truck->id} на обваловку: " . $e->getMessage());
+                // ВАЖНО: Блокируем выбранные самосвалы от параллельного обычного распределения
+                $freeTrucks = Truck::whereIn('status', ['free', 'completed'])
+                    ->orderBy('updated_at', 'asc')
+                    ->limit($remaining)
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($freeTrucks->isEmpty()) {
+                    continue;
+                }
+
+                foreach ($freeTrucks as $truck) {
+                    if ($req->remainingToAssign() <= 0) {
+                        break;
+                    }
+
+                    try {
+                        $this->assignTruckToBerm($truck, $req);
+                        $assigned++;
+                    } catch (\Exception $e) {
+                        Log::debug("BermService: не удалось назначить грузовик {$truck->id} на обваловку: " . $e->getMessage());
+                    }
                 }
             }
-        }
 
-        return $assigned;
+            return $assigned;
+        });
     }
-
-    /**
+ /**
      * Назначить конкретный самосвал на запрос обваловки.
      *
      * Использует тот же механизм, что и обычный маршрут:
@@ -187,9 +177,24 @@ class BermService
      *
      * ВАЖНО: для обваловки зона может быть delivery=false (она закрыта для
      * обычных маршрутов, но принимает самосвалы обваловки).
+     *
+     * ВАЖНО: этот метод должен вызываться ТОЛЬКО внутри транзакции,
+     * потому что использует lockForUpdate() для MiningOrder. Если вызвать
+     * без транзакции — lockForUpdate() сработает в auto-commit режиме и
+     * блокировка сразу снимется (не будет защиты от race condition).
+     *
+     * @throws \RuntimeException если метод вызван без активной транзакции
      */
     protected function assignTruckToBerm(Truck $truck, BermRequest $request): void
     {
+        // Защита от вызова без транзакции — lockForUpdate() без транзакции бесполезен
+        if (DB::transactionLevel() === 0) {
+            throw new \RuntimeException(
+                'assignTruckToBerm должен вызываться внутри DB::transaction() — ' .
+                'иначе lockForUpdate() не обеспечивает защиту от race condition'
+            );
+        }
+
         Log::info('assignTruckToBerm START', [
             'truck_id'    => $truck->id,
             'request_id'  => $request->id,
@@ -201,14 +206,13 @@ class BermService
             ->where('dump_id', $request->dump_id)
             ->with(['miner.currentRock', 'dump.zones.rocks']);
 
-        // Если в запросе указана порода — ищем забой именно с этой породой
         if ($request->rock_id) {
             $query->whereHas('miner', function ($q) use ($request) {
                 $q->where('current_rock_id', $request->rock_id);
             });
         }
 
-        $order = $query->first();
+        $order = $query->lockForUpdate()->first();
 
         if (!$order) {
             throw new \RuntimeException('Нет подходящего маршрута для обваловки');
@@ -224,13 +228,8 @@ class BermService
             throw new \RuntimeException('У забоя не задана порода');
         }
 
-        // Зона обваловки — берём из запроса
         $zone = $request->zone;
 
-        // Создаём trip и назначаем — используем внутренний метод RouteAssignmentService
-        // через reflection, чтобы получить доступ к protected createTripAndAssign.
-        // Альтернатива — вынести createTripAndAssign в public, но это сломает инкапсуляцию.
-        // Поэтому идём через assignForTruck с модифицированным order:
         DB::transaction(function () use ($truck, $order, $zone, $currentRock, $request) {
             // Завершаем старые незавершённые trip самосвала
             TruckTrip::where('truck_id', $truck->id)
@@ -241,6 +240,11 @@ class BermService
                 ]);
 
             // Создаём новый trip с zone_id = зоне обваловки
+            // Сохраняем холостой пробег и гружёное расстояние для статистики
+            $routeService = app(\App\Services\RouteAssignmentService::class);
+            $emptyRunKm = $routeService->calculateEmptyRun($truck, $order->miner_id);
+            $loadedDistance = (float) ($order->distance_km ?? 0);
+
             $trip = TruckTrip::create([
                 'truck_id'        => $truck->id,
                 'driver_id'       => $truck->driver_id,
@@ -249,7 +253,9 @@ class BermService
                 'zone_id'         => $zone->id,
                 'rock_id'         => $currentRock->id,
                 'mining_order_id' => $order->id,
+                'distance_km'     => $loadedDistance,
                 'started_at'      => now(),
+                'empty_run_km'    => $emptyRunKm,
             ]);
 
             // Обновляем mining_order: привязываем к зоне обваловки
@@ -292,31 +298,35 @@ class BermService
      */
     public function onTruckUnloaded(int $truckId, int $zoneId): void
     {
-        $request = BermRequest::activeForZone($zoneId)->first();
-        if (!$request) {
-            return;
-        }
+        // Используем транзакцию и блокировку, чтобы инкремент выполненных рейсов 
+        // при одновременной выгрузке двух машин не привел к потере данных счетчика
+        DB::transaction(function () use ($zoneId) {
+            $request = BermRequest::activeForZone($zoneId)->lockForUpdate()->first();
+            if (!$request) {
+                return;
+            }
 
-        $request->increment('trucks_completed');
-        $request->refresh();
+            $request->increment('trucks_completed');
+            $request->refresh();
 
-        Log::info('BermRequest progress', [
-            'request_id'        => $request->id,
-            'zone_id'           => $zoneId,
-            'trucks_completed'  => $request->trucks_completed,
-            'trucks_needed'     => $request->trucks_needed,
-            'remaining'         => $request->remainingToComplete(),
-        ]);
+            Log::info('BermRequest progress', [
+                'request_id'        => $request->id,
+                'zone_id'           => $zoneId,
+                'trucks_completed'  => $request->trucks_completed,
+                'trucks_needed'     => $request->trucks_needed,
+                'remaining'         => $request->remainingToComplete(),
+            ]);
 
-        // Если достаточно самосвалов отсыпали — завершаем
-        if ($request->trucks_completed >= $request->trucks_needed) {
-            $this->completeRequest($request);
-        } else {
-            // Иначе пытаемся назначить ещё самосвалов (если ещё нужно)
-            $this->assignTrucks($request);
-        }
+            // Если достаточно самосвалов отсыпали — завершаем
+            if ($request->trucks_completed >= $request->trucks_needed) {
+                $this->completeRequest($request);
+            } else {
+                // Иначе пытаемся назначить ещё самосвалов (если ещё нужно)
+                $this->assignTrucks($request);
+            }
 
-        $this->broadcastProgress($request);
+            $this->broadcastProgress($request);
+        });
     }
 
     /**
@@ -347,9 +357,6 @@ class BermService
 
     /**
      * Проверить, находится ли зона под обваловкой.
-     *
-     * Используется в RouteAssignmentService, чтобы запретить обычные
-     * маршруты на эту зону, пока идёт обваловка.
      */
     public function isZoneUnderBerm(int $zoneId): bool
     {

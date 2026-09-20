@@ -41,6 +41,15 @@
                     <i class="fas fa-route text-cyan-400"></i>
                     <div><span class="text-gray-400 block text-[10px] uppercase">Ср. расстояние</span><strong class="text-cyan-400">{{ $distStats['avg_distance'] }} км</strong></div>
                 </div>
+                @php $emptyRunStats = $this->empty_run_stats; @endphp
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-arrow-left text-amber-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Холостой</span><strong class="text-amber-400">{{ $emptyRunStats['total_empty_run'] }} км</strong></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-balance-scale text-emerald-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Эффективность</span><strong class="text-emerald-400">{{ $emptyRunStats['efficiency'] }}%</strong></div>
+                </div>
                 @php $queueStats = $this->queue_stats; @endphp
                 <div class="flex items-center gap-2">
                     <i class="fas fa-tools text-emerald-400"></i>

@@ -1654,6 +1654,45 @@ class MainDispatcherPanel extends Component
         ];
     }
 
+    /**
+     * Статистика холостого пробега по парку за смену.
+     *
+     * Считает:
+     *   - total_empty_run — суммарный холостой пробег всех самосвалов (км)
+     *   - total_loaded — суммарный гружёный пробег (км)
+     *   - efficiency — коэффициент эффективности (% гружёного от общего)
+     *   - trips_count — количество завершённых рейсов
+     */
+    public function getEmptyRunStatsProperty(): array
+    {
+        $shiftService = app(\App\Services\ShiftService::class);
+        $shift = $shiftService->getCurrentShift();
+
+        if (!is_array($shift)) {
+            return [
+                'total_empty_run' => 0,
+                'total_loaded'    => 0,
+                'efficiency'      => 0,
+                'trips_count'     => 0,
+            ];
+        }
+
+        $trips = \App\Models\TruckTrip::whereBetween('created_at', [$shift['start_time'], $shift['end_time']])
+            ->whereNotNull('completed_at')
+            ->get();
+
+        $totalEmpty = $trips->sum('empty_run_km');
+        $totalLoaded = $trips->sum('distance_km');
+        $totalAll = $totalEmpty + $totalLoaded;
+
+        return [
+            'total_empty_run' => round($totalEmpty, 1),
+            'total_loaded'    => round($totalLoaded, 1),
+            'efficiency'      => $totalAll > 0 ? round(($totalLoaded / $totalAll) * 100, 1) : 0,
+            'trips_count'     => $trips->count(),
+        ];
+    }
+
     // =========================================
     // ПРОСТОИ И ЗАДЕРЖКИ
     // =========================================
