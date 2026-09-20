@@ -27,18 +27,34 @@ class RouteAssignmentService
 {
     const DEFAULT_LOADING_TIME_MINUTES = 5;
     const BUFFER_COEFFICIENT = 1.5;
+
     /**
      * Бизнес-правила совместимости пород при выгрузке.
      *
      * Каждая зона принимает только ОДНУ породу (смешивание запрещено).
-     * Исключение: "руда_ЦПТ" (id=5) может быть выгружена также в зоны,
-     * принимающие "руда" (id=1), а при их отсутствии — "руда_Sera" (id=6).
+     * Исключение: "руда_ЦПТ" может быть выгружена также в зоны,
+     * принимающие "руда", а при их отсутствии — "руда_Sera".
      *
-     * Формат: [исходная_порода => [приоритетный_список_допустимых_пород]]
+     * ВАЖНО: используются НАЗВАНИЯ пород (name_rock), а не ID —
+     * это устойчиво к изменению ID при пересоздании таблицы rocks.
+     *
+     * Формат: ['исходная_порода' => ['приоритетный_список_допустимых_пород']]
      */
     const ROCK_FALLBACK_CHAIN = [
-        5 => [5, 1, 6], // "руда_ЦПТ" → "руда" → "руда_Sera"
+        'руда_ЦПТ' => ['руда_ЦПТ', 'руда', 'руда_Sera'],
     ];
+
+    /**
+     * Возвращает приоритетный список НАЗВАНИЙ пород, которые могут быть
+     * выгружены на ту же зону, что и запрошенная порода.
+     *
+     * @param string $rockName Название породы (name_rock)
+     * @return array Список названий пород в порядке убывания приоритета
+     */
+    protected function getAcceptableRockNames(string $rockName): array
+    {
+        return self::ROCK_FALLBACK_CHAIN[$rockName] ?? [$rockName];
+    }
 
     protected RouteOptimizerService $optimizer;
 
@@ -589,11 +605,53 @@ class RouteAssignmentService
     }
 
     /**
-     * Выбрать зону для конкретной породы
+     * Выбрать доступную зону для конкретной породы на отвалe.
+     * Использует приоритетный список пород через getAcceptableRockNames().
+     *
+     * ВАЖНО: ищет по НАЗВАНИЮ породы (name_rock), а не по ID —
+     * устойчив к изменению ID при пересоздании таблицы rocks.
+     *
+     * @param int $dumpId ID отвалa
+     * @param int $rockId ID породы (берём из него name_rock через модель Rock)
+     * @return Zone|null Первая наименее заполненная зона, или null
      */
     public function selectZoneForRock(int $dumpId, int $rockId): ?Zone
     {
-        // Этот метод больше не используется для поиска зон, так как zone_id теперь хранится в MiningOrder
+        // Получаем название породы по ID
+        $rock = \App\Models\Rock::find($rockId);
+        if (!$rock) {
+            return null;
+        }
+
+        $acceptableRockNames = $this->getAcceptableRockNames($rock->name_rock);
+
+        foreach ($acceptableRockNames as $acceptableRockName) {
+            $zone = Zone::where('dump_id', $dumpId)
+                ->where('delivery', true)
+                ->whereRaw('volume < capacity')
+                ->whereHas('rocks', fn($q) => $q->where('rocks.name_rock', $acceptableRockName))
+                ->orderBy('volume', 'asc')
+                ->first();
+
+            if ($zone) {
+                if ($acceptableRockName !== $rock->name_rock) {
+                    Log::info("selectZoneForRock: fallback породы", [
+                        'dump_id' => $dumpId,
+                        'requested_rock' => $rock->name_rock,
+                        'used_rock' => $acceptableRockName,
+                        'zone_id' => $zone->id,
+                        'zone_name' => $zone->name_zone,
+                    ]);
+                }
+                return $zone;
+            }
+        }
+
+        Log::info("selectZoneForRock: нет зон для всех fallback-пород", [
+            'dump_id' => $dumpId,
+            'checked_rock_names' => $acceptableRockNames,
+        ]);
+
         return null;
     }
 

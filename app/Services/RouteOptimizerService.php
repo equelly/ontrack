@@ -365,18 +365,27 @@ class RouteOptimizerService
     /**
      * Получить доступные зоны для породы на отвалe.
      *
-     * ВАЖНО: использует fallback-логику пород через RouteAssignmentService::selectZoneForRock().
-     * Это означает, что для "руда_ЦПТ" (id=5) ищутся зоны, принимающие руду (id=1)
-     * или руду_Sera (id=6), если нет зон именно под руда_ЦПТ.
+     * ВАЖНО: использует fallback-логику пород через RouteAssignmentService::ROCK_FALLBACK_CHAIN.
+     * Для "руда_ЦПТ" ищутся зоны, принимающие "руда" или "руда_Sera",
+     * если нет зон именно под "руда_ЦПТ".
+     *
+     * ВАЖНО: ищет по НАЗВАНИЮ породы (name_rock), а не по ID —
+     * устойчив к изменению ID при пересоздании таблицы rocks.
      *
      * Возвращает ВСЕ доступные зоны (не одну), чтобы оптимизатор мог рассчитать
      * суммарный volume_in_zones для score.
      */
     protected function getAvailableZonesForRock(int $dumpId, int $rockId): Collection
     {
-        // Используем RouteAssignmentService для получения fallback-цепочки пород
+        // Получаем название породы по ID
+        $rock = \App\Models\Rock::find($rockId);
+        if (!$rock) {
+            return collect();
+        }
+
+        // Используем RouteAssignmentService для получения fallback-цепочки НАЗВАНИЙ пород
         $routeService = app(\App\Services\RouteAssignmentService::class);
-        $acceptableRockIds = $routeService::ROCK_FALLBACK_CHAIN[$rockId] ?? [$rockId];
+        $acceptableRockNames = $routeService::ROCK_FALLBACK_CHAIN[$rock->name_rock] ?? [$rock->name_rock];
 
         // Возвращаем ВСЕ зоны на этом отвале, которые:
         // - delivery = true (открыты)
@@ -385,8 +394,8 @@ class RouteOptimizerService
         return Zone::where('dump_id', $dumpId)
             ->where('delivery', true)
             ->whereRaw('volume < capacity')
-            ->whereHas('rocks', function ($q) use ($acceptableRockIds) {
-                $q->whereIn('rocks.id', $acceptableRockIds);
+            ->whereHas('rocks', function ($q) use ($acceptableRockNames) {
+                $q->whereIn('rocks.name_rock', $acceptableRockNames);
             })
             ->get();
     }
