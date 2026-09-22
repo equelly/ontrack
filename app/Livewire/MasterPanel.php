@@ -786,6 +786,9 @@ class MasterPanel extends Component
      *
      * Если позиция есть в mashine_sets — удаляем (сняли галочку: завезли/не требуется).
      * Если позиции нет — добавляем (установили галочку: требуется).
+     *
+     * Без toast-уведомления — чекбокс визуально переключается,
+     * этого достаточно для обратной связи (модалка перекрывает toast).
      */
     public function toggleSet(int $mashineId, int $setId): void
     {
@@ -796,28 +799,22 @@ class MasterPanel extends Component
         if ($existing) {
             // Снимаем галочку — позиция не требуется
             $existing->delete();
-            $this->dispatch('notify', [
-                'type'    => 'info',
-                'message' => 'Расходник снят с комплектации',
-            ]);
         } else {
             // Устанавливаем галочку — позиция требуется
             \App\Models\MashineSet::create([
                 'mashine_id' => $mashineId,
                 'set_id'     => $setId,
             ]);
-            $this->dispatch('notify', [
-                'type'    => 'success',
-                'message' => 'Расходник добавлен в комплектацию',
-            ]);
         }
 
         // Обновляем viewingOrder, чтобы чекбоксы перерисовались
+        // Визуальное переключение (зелёный ↔ серый) — это и есть обратная связь
         if ($this->viewingOrderId) {
             $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
                 ->find($this->viewingOrderId);
         }
     }
+
 
     public function render(ShiftService $shiftService)
     {
@@ -837,7 +834,7 @@ class MasterPanel extends Component
                   $q->where('category_id', $this->categoryId);
               })
               ->when($this->userId, function($q) {
-                  $q->where('user_id', $this->userId);
+                  $q->where('user_id_req', $this->userId);
               })
               ->when($this->createdAt, function($q) {
                   $q->whereDate('created_at', $this->createdAt);
