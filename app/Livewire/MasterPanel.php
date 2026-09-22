@@ -3,12 +3,12 @@
 namespace App\Livewire;
 
 use Livewire\Component;
+use Livewire\Attributes\On;
 use App\Services\ShiftService;
 use App\Models\TruckTrip;
 use App\Models\Truck;
 use App\Models\Miner;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 
 
@@ -34,15 +34,22 @@ class MasterPanel extends Component
     public $createdAt = '';
     public $contentSearch = '';
     public $newMinerName;
-    public $newMinerCapacityPerTrip;
-    public $newMinerTargetLoadTime;
-    public $newMinerRockId;
     public $newRockName;
     public $newDumpName;
     public $editingMinerId = null;
     public $addZoneDumpId = null;
     public $newZoneName = 'Зона 1';
     public $newZoneRockId;
+
+    // === Заявки (Order) ===
+    public bool $showCreateOrderModal = false;
+    public bool $showOrderDetailsModal = false;
+    public ?int $viewingOrderId = null;
+    public ?int $newOrderMashineId = null;
+    public array $newOrderSets = [];          // чекбоксы расходников
+    public string $newOrderContent = '';
+    public $viewingOrder = null;
+    public ?int $editOrderCategoryId = null;   // для смены категории в деталях
     public $newZoneCapacity = 10000;
     public $newZoneVolume = 0;
     public $newTruckNumber;
@@ -55,9 +62,6 @@ class MasterPanel extends Component
         'newTruckModelId' => 'Модель',
         'newTruckFuel' => 'Топливо',
         'newMinerName' => 'Название забоя',
-        'newMinerCapacityPerTrip' => 'Ёмкость ковша (т)',
-        'newMinerTargetLoadTime'  => 'Норма погрузки (сек)',
-        'newMinerRockId' => 'Текущая порода',
         'newRockName' => 'Название породы',
         'newDumpName' => 'Название перегрузки',
         'newZoneName' => 'Название зоны',
@@ -155,51 +159,28 @@ class MasterPanel extends Component
             ->get();
     }
 
-    // === Управление Забоями (экскаваторами) ===
+    // === Управление Забоями ===
     public function addMiner()
     {
-        $validated = $this->validate([
-            'newMinerName'           => 'required|string|max:255',
-            'newMinerCapacityPerTrip' => 'nullable|numeric|min:0|max:500',
-            'newMinerTargetLoadTime'  => 'nullable|integer|min:25|max:3600',
-            'newMinerRockId'          => 'nullable|exists:rocks,id',
-        ]);
-
-        // 1. Создаем карточку оборудования (Mashine)
+        $this->validate(['newMinerName' => 'required|string|max:255']);
+        
+        // 1. Сначала создаем карточку оборудования (Mashine)
         $mashine = \App\Models\Mashine::create([
-            'number' => $this->newMinerName
+            'number' => $this->newMinerName // Название забоя будет номером карточки
         ]);
 
-        // 2. Создаем забой с расширенными полями
-        $minerData = [
-            'name_miner'         => $this->newMinerName,
-            'mashine_id'         => $mashine->id,
-            'active'             => true,
-            'status'             => \App\Models\Miner::STATUS_ACTIVE,
-            'status_changed_at'  => now(),
-            'status_changed_by'  => auth()->id(),
-            'last_updated_at'    => now(),
-            'last_updated_by'    => auth()->id(),
-        ];
+        // 2. Создаем забой и сразу привязываем к карточке
+        \App\Models\Miner::create([
+            'name_miner' => $this->newMinerName,
+            'mashine_id' => $mashine->id
+        ]);
 
-        // Опциональные поля — добавляем только если заполнены
-        if ($this->newMinerCapacityPerTrip !== null && $this->newMinerCapacityPerTrip !== '') {
-            $minerData['capacity_per_trip'] = $this->newMinerCapacityPerTrip;
-        }
-        if ($this->newMinerTargetLoadTime !== null && $this->newMinerTargetLoadTime !== '') {
-            $minerData['target_load_time'] = $this->newMinerTargetLoadTime;
-        }
-        if ($this->newMinerRockId) {
-            $minerData['current_rock_id'] = $this->newMinerRockId;
-        }
+        $this->reset('newMinerName');
 
-        \App\Models\Miner::create($minerData);
-
-        $this->reset(['newMinerName', 'newMinerCapacityPerTrip', 'newMinerTargetLoadTime', 'newMinerRockId']);
         // 3. Автозапуск оптимизации — добавлен новый забой, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('добавлении забоя');
 
-        $this->dispatch('notify', ['type' => 'success', 'message' => 'Экскаватор добавлен и связан с карточкой оборудования']);
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Забой добавлен и связан с оборудованием']);
     }
 
     public function deleteMiner($id)
@@ -216,7 +197,6 @@ class MasterPanel extends Component
 
             // Автозапуск оптимизации — забой удалён, нужно пересчитать маршруты
             $this->autoOptimizeRoutes('удалении забоя');
-
 
             $this->dispatch('notify', ['type' => 'info', 'message' => 'Забой удален']);
         } catch (\Exception $e) {
@@ -246,9 +226,8 @@ class MasterPanel extends Component
             // Назначаем маршруты свободным самосвалам
             app(\App\Services\RouteAssignmentService::class)->assignRoutesToAllFree();
             event(new \App\Events\RoutesUpdated());
-            } catch (\Exception $e) {
+        } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error("AutoOptimize error ({$trigger}): " . $e->getMessage());
-
         }
     }
     // === Управление Грузовиками ===
@@ -350,7 +329,6 @@ class MasterPanel extends Component
         // Автозапуск оптимизации — добавлен новый отвал, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('добавлении отвала');
 
- 
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Перегрузка добавлена. Создайте зону.']);
     }
 
@@ -360,7 +338,6 @@ class MasterPanel extends Component
 
         // Автозапуск оптимизации — отвал удалён, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('удалении отвала');
-
 
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Перегрузка удалена']);
     }
@@ -399,23 +376,6 @@ class MasterPanel extends Component
         $zone = \App\Models\Zone::find($zoneId);
         if (!$zone) return;
 
-        // ===== ЗАЩИТА: нельзя менять породу в открытой зоне (delivery=true) =====
-        // Бизнес-правило: перед сменой породы зона должна быть «вычищена»
-        // (вся горная масса отгружена) и закрыта для приёма (delivery=false).
-        // Это предотвращает сценарий, когда самосвалы едут на зону,
-        // которая уже не принимает их породу.
-        if ($field === 'rock_id' && $zone->delivery) {
-            $this->dispatch('notify', [
-                'type' => 'error',
-                'message' => 'Нельзя изменить породу в открытой зоне. Сначала закройте зону и отгрузите остатки горной массы.',
-            ]);
-            return;
-        }
-
-        // Сохраняем старое состояние для проверки, изменилась ли доступность зоны
-        $wasDelivery = (bool) $zone->delivery;
-        $wasRockId = $zone->rocks->first()?->id;
-
         if ($field === 'delivery') {
             $zone->delivery = filter_var($value, FILTER_VALIDATE_BOOLEAN);
         } elseif (in_array($field, ['volume', 'capacity', 'name_zone'])) {
@@ -424,101 +384,38 @@ class MasterPanel extends Component
             $zone->rocks()->sync([$value]);
         }
         
+        // Фиксируем, кто изменил зону
         $zone->last_updated_by = auth()->id();
         $zone->save();
         
-        $isDeliveryNow = (bool) $zone->fresh()->delivery;
-        $isRockIdNow = $zone->fresh()->rocks->first()?->id;
+        app(\App\Services\MiningOrderSyncService::class)->syncActiveStatusForZone($zone->id);
         
-        try {
-            $syncService = app(\App\Services\MiningOrderSyncService::class);
-            $syncService->syncAllOrders();
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel syncAllOrders: ' . $e->getMessage());
-        }
-        
-        $routeService = app(\App\Services\RouteAssignmentService::class);
-        $reassignedCount = 0;
-        $assignedCount = 0;
-        
-        try {
-            // Если зона стала недоступной или изменилась порода — переназначаем
-            // самосвалов, которые к ней едут, на другие зоны
-            if ((!$isDeliveryNow && $wasDelivery) || ($isRockIdNow !== $wasRockId)) {
-                $reassignedCount = $routeService->reassignOnZoneClose($zone);
-            }
-            
-            // Назначаем маршруты всем свободным/ожидающим самосвалам
-            $assignedCount = $routeService->assignRoutesToAllFree();
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel route reassignment: ' . $e->getMessage());
-        }
-        
-        try {
-            event(new \App\Events\RoutesUpdated());
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel RoutesUpdated: ' . $e->getMessage());
-        }
+        // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
+        event(new \App\Events\RoutesUpdated());
         
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
-        
-        $message = "Зона {$zone->name_zone} обновлена";
-        if ($reassignedCount > 0 && $assignedCount > 0) {
-            $message .= " (переназначено: {$reassignedCount}, новых: {$assignedCount})";
-        } elseif ($reassignedCount > 0) {
-            $message .= " (переназначено: {$reassignedCount})";
-        } elseif ($assignedCount > 0) {
-            $message .= " (назначено: {$assignedCount})";
-        }
-        $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
+        $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона обновлена']);
     }
-
-    public function deleteZone($zoneId)
+        public function deleteZone($zoneId)
     {
         $zone = \App\Models\Zone::find($zoneId);
         if (!$zone) return;
 
-        // 1. Снимаем привязку зоны с маршрутами (но не деактивируем — syncAllOrders разберётся)
+        // 1. Снимаем привязку зоны с маршрутами и делаем их неактивными
         \App\Models\MiningOrder::where('zone_id', $zoneId)->update([
             'zone_id' => null,
+            'active' => false
         ]);
 
         // 2. Удаляем саму зону
         $zone->delete();
 
-        // 3. Синхронизируем все маршруты
-        try {
-            $syncService = app(\App\Services\MiningOrderSyncService::class);
-            $syncService->syncAllOrders();
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel syncAllOrders (delete): ' . $e->getMessage());
-        }
-        
-        // 4. Назначаем маршруты свободным самосвалам
-        $assignedCount = 0;
-        try {
-            $routeService = app(\App\Services\RouteAssignmentService::class);
-            $assignedCount = $routeService->assignRoutesToAllFree();
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel assignRoutesToAllFree (delete): ' . $e->getMessage());
-        }
-        
-        // 5. Сигнал водителям
-        try {
-            event(new \App\Events\RoutesUpdated());
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('MasterPanel RoutesUpdated (delete): ' . $e->getMessage());
-        }
-        
+        // 3. Обновляем данные в интерфейсе
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
-        
-        $message = 'Зона удалена';
-        if ($assignedCount > 0) {
-            $message .= " (переназначено маршрутов: {$assignedCount})";
-        }
-        $this->dispatch('notify', ['type' => 'info', 'message' => $message]);
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Зона удалена']);
     }
-        /**
+
+    /**
      * Обработчик вебсокет-события ZoneNeedsBerm.
      * Зона заполнена до предела — требуется обваловка
      * (предохранительный вал для безопасности горных работ).
@@ -547,7 +444,6 @@ class MasterPanel extends Component
         // нужно перерисовать список зон
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
     }
-    
 
     /**
      * Обработчик вебсокет-события BermProgress.
@@ -696,7 +592,180 @@ class MasterPanel extends Component
             ->orderBy('created_at')
             ->get();
     }
-    
+
+    // ==========================================
+    // ЗАЯВКИ (ORDER)
+    // ==========================================
+
+    /**
+     * Открыть модальное окно создания заявки.
+     */
+    public function openCreateOrderModal(): void
+    {
+        $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent']);
+        $this->showCreateOrderModal = true;
+    }
+
+    /**
+     * Закрыть модальное окно создания заявки.
+     */
+    public function closeCreateOrderModal(): void
+    {
+        $this->showCreateOrderModal = false;
+        $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent']);
+    }
+
+    /**
+     * Создать новую заявку.
+     * Категория НЕ выбирается — автоматически "текущие".
+     * Чекбоксы расходников сохраняются в mashine_sets.
+     */
+    public function createOrder(): void
+    {
+        $this->validate([
+            'newOrderMashineId'  => 'required|exists:mashines,id',
+            'newOrderContent'    => 'required|string|max:2000',
+            'newOrderSets'       => 'array',
+            'newOrderSets.*'     => 'exists:sets,id',
+        ]);
+
+        // Находим или создаём категорию "текущие"
+        $currentCategory = \App\Models\Category::firstOrCreate(['title' => 'текущие']);
+
+        // Создаём заявку
+        $order = \App\Models\Order::create([
+            'content'     => $this->newOrderContent,
+            'mashine_id'  => $this->newOrderMashineId,
+            'category_id' => $currentCategory->id,
+            'user_id_req' => auth()->id(),
+        ]);
+
+        // Сохраняем выбранные расходники в mashine_sets
+        foreach ($this->newOrderSets as $setId) {
+            \App\Models\MashineSet::firstOrCreate([
+                'mashine_id' => $this->newOrderMashineId,
+                'set_id'     => $setId,
+            ]);
+        }
+
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Заявка создана и направлена мастеру',
+        ]);
+
+        $this->closeCreateOrderModal();
+    }
+
+    /**
+     * Открыть модальное окно с деталями заявки.
+     */
+    public function viewOrder(int $orderId): void
+    {
+        $this->viewingOrderId = $orderId;
+        $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
+            ->find($orderId);
+        $this->editOrderCategoryId = $this->viewingOrder?->category_id;
+        $this->showOrderDetailsModal = true;
+    }
+
+    /**
+     * Закрыть модальное окно деталей заявки.
+     */
+    public function closeOrderDetailsModal(): void
+    {
+        $this->showOrderDetailsModal = false;
+        $this->viewingOrderId = null;
+        $this->viewingOrder = null;
+        $this->editOrderCategoryId = null;
+    }
+
+    /**
+     * Удалить заявку (soft delete).
+     * Может удалить только автор заявки.
+     */
+    public function deleteOrder(int $orderId): void
+    {
+        $order = \App\Models\Order::find($orderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        // Проверка: только автор может удалить
+        if ($order->user_id_req !== auth()->id() && auth()->user()?->role !== 'admin') {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Удалить заявку может только её автор']);
+            return;
+        }
+
+        $order->delete();
+
+        $this->dispatch('notify', [
+            'type'    => 'info',
+            'message' => 'Заявка удалена',
+        ]);
+
+        if ($this->viewingOrderId === $orderId) {
+            $this->closeOrderDetailsModal();
+        }
+    }
+
+    /**
+     * Отметить заявку как выполненную.
+     */
+    public function completeOrder(int $orderId): void
+    {
+        $order = \App\Models\Order::find($orderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        $order->update([
+            'user_exec' => auth()->id(),
+        ]);
+
+        // Сменить категорию на "выполненные"
+        $doneCategory = \App\Models\Category::firstOrCreate(['title' => 'выполненные']);
+        $order->update(['category_id' => $doneCategory->id]);
+
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Заявка отмечена как выполненная',
+        ]);
+
+        if ($this->viewingOrderId === $orderId) {
+            $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
+                ->find($orderId);
+        }
+    }
+
+    /**
+     * Сменить категорию заявки (мастер в деталях).
+     */
+    public function changeOrderCategory(int $orderId): void
+    {
+        $order = \App\Models\Order::find($orderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        $this->validate([
+            'editOrderCategoryId' => 'nullable|exists:categories,id',
+        ]);
+
+        $order->update(['category_id' => $this->editOrderCategoryId]);
+
+        $this->dispatch('notify', [
+            'type'    => 'info',
+            'message' => 'Категория заявки изменена',
+        ]);
+
+        // Обновляем viewingOrder
+        $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
+            ->find($orderId);
+    }
+
     public function render(ShiftService $shiftService)
     {
         // 1. Данные для выпадающих списков фильтра

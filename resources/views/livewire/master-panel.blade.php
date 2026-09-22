@@ -512,9 +512,9 @@
                 </div>
                 <div class="flex justify-between items-center mt-4 pt-4 border-t">
                     <h3 class="font-bold text-gray-800 uppercase text-sm">Всего заявок: <span class="text-emerald-600">{{ $ordersCount }}</span></h3>
-                    <a href="{{ route('order.create') }}" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-xs hover:bg-emerald-700">
+                    <button wire:click="openCreateOrderModal" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-xs hover:bg-emerald-700">
                         <i class="fas fa-plus mr-1"></i> Создать заявку
-                    </a>
+                    </button>
                 </div>
             </div>
 
@@ -534,9 +534,9 @@
                                                 {{ $order->created_at->translatedFormat('d F Y') }} ({{ $order->created_at->diffForHumans() }})
                                             </small>
                                             <p class="text-sm text-gray-700">{{ $order->content }}</p>
-                                            <a href="{{ route('order.show', $order->id) }}" class="text-xs text-emerald-600 hover:text-emerald-800 mt-2 inline-block font-semibold">
+                                            <button wire:click="viewOrder({{ $order->id }})" class="text-xs text-emerald-600 hover:text-emerald-800 mt-2 inline-block font-semibold">
                                                 Смотреть подробнее <i class="fas fa-arrow-right ml-1"></i>
-                                            </a>
+                                            </button>
                                         </div>
                                     @endforeach
                                     @if(count($mashine->orders) == 0)
@@ -904,6 +904,153 @@
         </form>
     </div>
 </div>
+{{-- Модальное окно «Создать заявку» --}}
+<div
+    x-data="{ open: @entangle('showCreateOrderModal') }"
+    x-show="open"
+    x-cloak
+    x-transition.opacity
+    style="display: none;"
+    class="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+    x-on:keydown.escape.window="open = false"
+>
+    <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+    <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-clipboard-list text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Новая заявка</h3>
+                    <p class="text-sm text-white/90">Заявка на обслуживание / ремонт</p>
+                </div>
+            </div>
+        </div>
+        <form wire:submit.prevent="createOrder" class="px-6 py-5 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Оборудование *</label>
+                <select wire:model.live="newOrderMashineId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 @error('newOrderMashineId') border-red-500 @enderror">
+                    <option value="">— Выберите оборудование —</option>
+                    @foreach(\App\Models\Mashine::orderBy('number')->get() as $mashine)
+                        <option value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
+                    @endforeach
+                </select>
+                @error('newOrderMashineId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            {{-- Чекбоксы расходников --}}
+            @php $allSets = \App\Models\Set::all(); @endphp
+            @if($allSets->isNotEmpty())
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Комплектация (расходники)</label>
+                <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
+                    @foreach($allSets as $set)
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input type="checkbox" value="{{ $set->id }}" wire:model="newOrderSets" class="rounded text-emerald-600 border-gray-300 focus:ring-emerald-500">
+                            {{ $set->name }}
+                        </label>
+                    @endforeach
+                </div>
+                <p class="mt-1 text-xs text-gray-500">Отметьте нужные расходники — они сохранятся в комплектации оборудования</p>
+            </div>
+            @endif
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Описание заявки *</label>
+                <textarea wire:model.live="newOrderContent" rows="4" placeholder="Опишите неисправность или потребность..." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 @error('newOrderContent') border-red-500 @enderror" maxlength="2000"></textarea>
+                @error('newOrderContent') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div class="bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Заявка автоматически попадёт в категорию «текущие». Категорию можно сменить в деталях заявки.
+
+                </div>
+            <div class="flex gap-2 pt-2">
+                <button type="submit" wire:loading.attr="disabled" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-md font-medium transition">
+                    <span wire:loading.remove><i class="fas fa-paper-plane mr-1"></i> Создать заявку</span>
+                    <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Создание...</span>
+                </button>
+                <button type="button" wire:click="closeCreateOrderModal" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition">
+                    Отмена
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{{-- Модальное окно «Детали заявки» --}}
+<div
+    x-data="{ open: @entangle('showOrderDetailsModal') }"
+    x-show="open"
+    x-cloak
+    x-transition.opacity
+    style="display: none;"
+    class="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+    x-on:keydown.escape.window="open = false"
+>
+    <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+    <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-file-alt text-2xl"></i>
+                    <div>
+                        <h3 class="text-lg font-semibold">Заявка #{{ $viewingOrderId }}</h3>
+                        <p class="text-sm text-white/90">Детали заявки</p>
+                    </div>
+                </div>
+                <button type="button" x-on:click="open = false" class="text-white/80 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+        </div>
+        @if($viewingOrder)
+        <div class="p-6 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Оборудование</p>
+                    <p class="text-sm font-medium text-gray-800">ЭКГ №{{ $viewingOrder->mashine?->number ?? '—' }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Категория</p>
+                    <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->category?->title ?? 'Без категории' }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Автор</p>
+                    <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->user?->name ?? '—' }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Создана</p>
+                    <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->created_at?->translatedFormat('d F Y, H:i') }}</p>
+                </div>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Описание</p>
+                <div class="bg-slate-50 p-4 rounded-md border border-slate-200">
+                    <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ $viewingOrder->content }}</p>
+                </div>
+            </div>
+            <div class="flex gap-2 pt-2">
+                @if(!$viewingOrder->user_exec)
+                    <button wire:click="completeOrder({{ $viewingOrder->id }})" wire:loading.attr="disabled" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium text-sm transition">
+                        <i class="fas fa-check mr-1"></i> Отметить выполненной
+                    </button>
+                @else
+                    <div class="flex-1 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-md font-medium text-sm text-center">
+                        <i class="fas fa-check-circle mr-1"></i> Выполнена: {{ $viewingOrder->userExec?->name ?? '—' }}
+                    </div>
+                @endif
+                {{-- Удалить — только для автора --}}
+                @if($viewingOrder->user_id_req === auth()->id() || auth()->user()?->role === 'admin')
+                    <button wire:click="deleteOrder({{ $viewingOrder->id }})" wire:confirm="Удалить заявку?" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-medium text-sm transition">
+                        <i class="fas fa-trash mr-1"></i> Удалить
+                    </button>
+                @else
+                    <span class="px-4 py-2 bg-gray-100 text-gray-400 rounded-md font-medium text-sm cursor-not-allowed" title="Удалить может только автор заявки">
+                        <i class="fas fa-lock mr-1"></i> Только автор
+                    </span>
+                @endif
+            </div>
+        </div>
+        @endif
+    </div>
+</div>
+
 
 <!-- Модальное окно интерактивной карты -->
 <div x-data="{ showMap: false, initMap() { 

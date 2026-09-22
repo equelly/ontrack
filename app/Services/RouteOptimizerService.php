@@ -339,7 +339,8 @@ class RouteOptimizerService
             $availableZones = $this->getAvailableZonesForRock($order->dump_id, $rockId);
             
             if ($availableZones->isEmpty()) {
-                Log::debug("Маршрут {$order->id} пропущен: нет доступных зон для породы {$rockId} на отвалe {$order->dump_id}");
+                $rockName = $miner->currentRock?->name_rock ?? "id={$rockId}";
+                Log::debug("Маршрут {$order->id} пропущен: нет доступных зон для породы «{$rockName}» на отвалe {$order->dump_id}");
                 continue;
             }
             
@@ -380,6 +381,7 @@ class RouteOptimizerService
         // Получаем название породы по ID
         $rock = \App\Models\Rock::find($rockId);
         if (!$rock) {
+            Log::debug("getAvailableZonesForRock: порода id={$rockId} не найдена в таблице rocks");
             return collect();
         }
 
@@ -391,13 +393,23 @@ class RouteOptimizerService
         // - delivery = true (открыты)
         // - volume < capacity (есть место)
         // - принимают ХОТЯ БЫ ОДНУ из acceptable пород (с учётом fallback)
-        return Zone::where('dump_id', $dumpId)
+        $zones = Zone::where('dump_id', $dumpId)
             ->where('delivery', true)
             ->whereRaw('volume < capacity')
             ->whereHas('rocks', function ($q) use ($acceptableRockNames) {
                 $q->whereIn('rocks.name_rock', $acceptableRockNames);
             })
             ->get();
+
+        if ($zones->isEmpty()) {
+            Log::debug("getAvailableZonesForRock: нет зон", [
+                'dump_id' => $dumpId,
+                'rock_name' => $rock->name_rock,
+                'checked_rock_names' => $acceptableRockNames,
+            ]);
+        }
+
+        return $zones;
     }
     
     /**
