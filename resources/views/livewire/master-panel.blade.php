@@ -858,7 +858,7 @@
     x-on:keydown.escape.window="open = false"
 >
     <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
-    <div x-show="open" x-transition class="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div x-show="open" x-transition class="relative w-full max-w-md mx-4 max-h-[calc(100vh-2rem)] my-8 flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden">
         <div class="px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
             <div class="flex items-center gap-3">
                 <i class="fas fa-mountain text-2xl"></i>
@@ -1020,7 +1020,7 @@
             </div>
         </div>
         @if($viewingOrder)
-        <div class="p-6 space-y-4">
+        <div class="p-6 space-y-4 max-h-[calc(100vh-8rem)] overflow-y-auto">
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Оборудование</p>
@@ -1044,17 +1044,31 @@
                 </div>
             </div>
 
-            {{-- Комплектация (расходники оборудования) --}}
-            @if($viewingOrder->mashine?->sets?->isNotEmpty())
+            {{-- Комплектация (расходники оборудования) — с чекбоксами --}}
+            @php $allSets = \App\Models\Set::all(); @endphp
+            @if($allSets->isNotEmpty())
             <div>
                 <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Комплектация</p>
-                <div class="flex flex-wrap gap-2">
-                    @foreach($viewingOrder->mashine->sets as $set)
-                        <span class="px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs border border-slate-200">
-                            <i class="fas fa-cube mr-1 text-gray-400"></i>{{ $set->name }}
-                        </span>
+                <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
+                    @php
+                        $equipmentSets = $viewingOrder->mashine?->sets?->pluck('id')?->toArray() ?? [];
+                    @endphp
+                    @foreach($allSets as $set)
+                        @php $isChecked = in_array($set->id, $equipmentSets); @endphp
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer rounded-md px-2 py-1 {{ $isChecked ? 'bg-emerald-50 border border-emerald-200' : 'border border-transparent' }} hover:bg-slate-100 transition">
+                            <input type="checkbox"
+                                @if($viewingOrder->mashine_id) wire:click="toggleSet({{ $viewingOrder->mashine_id }}, {{ $set->id }})" @endif
+                                {{ $isChecked ? 'checked' : '' }}
+                                class="rounded text-emerald-600 border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                            />
+                            <span class="{{ $isChecked ? 'text-emerald-700 font-medium' : 'text-gray-500' }}">
+                                {{ $set->name }}
+                            </span>
+                        </label>
                     @endforeach
                 </div>
+                <p class="mt-1 text-xs text-gray-400">Отмечено = требуется завезти. Снять галочку = завезли / не требуется.</p>
+
             </div>
             @endif
 
@@ -1067,11 +1081,28 @@
 
             {{-- Фото заявки --}}
             @if($viewingOrder->image)
-            <div>
+            <div x-data="{ zoomed: false }">
                 <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Фото</p>
-                <div class="rounded-md border border-slate-200 overflow-hidden">
-                    <img src="{{ asset('storage/' . $viewingOrder->image) }}" alt="Фото заявки" class="w-full max-h-80 object-cover" />
+                {{-- Превью — кликабельное --}}
+                <div class="rounded-md border border-slate-200 overflow-hidden cursor-zoom-in hover:opacity-80 transition" x-on:click="zoomed = true">
+                    <img src="{{ asset('storage/' . $viewingOrder->image) }}" alt="Фото заявки" class="w-full max-h-48 object-cover" />
                 </div>
+                <p class="mt-1 text-xs text-gray-400"><i class="fas fa-search-plus mr-1"></i>Кликните для увеличения</p>
+
+                {{-- Полноэкранный просмотр при клике --}}
+                <template x-if="zoomed">
+                    <div class="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+                         x-on:click="zoomed = false"
+                         x-on:keydown.escape.window="zoomed = false"
+                         style="display: flex;">
+                        <div class="relative max-w-4xl max-h-[90vh]" x-on:click.stop>
+                            <img src="{{ asset('storage/' . $viewingOrder->image) }}" alt="Фото заявки" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+                            <button type="button" x-on:click="zoomed = false" class="absolute -top-3 -right-3 w-8 h-8 bg-white text-gray-800 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-200 transition">
+                                <i class="fas fa-times text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
             </div>
             @endif
 

@@ -781,6 +781,44 @@ class MasterPanel extends Component
             ->find($orderId);
     }
 
+        /**
+     * Переключить расходник в комплектации оборудования.
+     *
+     * Если позиция есть в mashine_sets — удаляем (сняли галочку: завезли/не требуется).
+     * Если позиции нет — добавляем (установили галочку: требуется).
+     */
+    public function toggleSet(int $mashineId, int $setId): void
+    {
+        $existing = \App\Models\MashineSet::where('mashine_id', $mashineId)
+            ->where('set_id', $setId)
+            ->first();
+
+        if ($existing) {
+            // Снимаем галочку — позиция не требуется
+            $existing->delete();
+            $this->dispatch('notify', [
+                'type'    => 'info',
+                'message' => 'Расходник снят с комплектации',
+            ]);
+        } else {
+            // Устанавливаем галочку — позиция требуется
+            \App\Models\MashineSet::create([
+                'mashine_id' => $mashineId,
+                'set_id'     => $setId,
+            ]);
+            $this->dispatch('notify', [
+                'type'    => 'success',
+                'message' => 'Расходник добавлен в комплектацию',
+            ]);
+        }
+
+        // Обновляем viewingOrder, чтобы чекбоксы перерисовались
+        if ($this->viewingOrderId) {
+            $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
+                ->find($this->viewingOrderId);
+        }
+    }
+
     public function render(ShiftService $shiftService)
     {
         // 1. Данные для выпадающих списков фильтра
