@@ -48,6 +48,7 @@ class MasterPanel extends Component
     public ?int $newOrderMashineId = null;
     public array $newOrderSets = [];          // чекбоксы расходников
     public string $newOrderContent = '';
+    public $newOrderImage = null;               // загруженное фото (Livewire TemporaryUploadedFile)
     public $viewingOrder = null;
     public ?int $editOrderCategoryId = null;   // для смены категории в деталях
     public $newZoneCapacity = 10000;
@@ -602,23 +603,29 @@ class MasterPanel extends Component
      */
     public function openCreateOrderModal(): void
     {
-        $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent']);
+        $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent', 'newOrderImage']);
         $this->showCreateOrderModal = true;
     }
 
     /**
      * Закрыть модальное окно создания заявки.
+     * Удаляем временное загруженное фото, если заявка не создана.
      */
     public function closeCreateOrderModal(): void
     {
+        // Если фото загружено во временное хранилище — очищаем
+        if ($this->newOrderImage) {
+            $this->newOrderImage = null;
+        }
         $this->showCreateOrderModal = false;
-        $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent']);
+        $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent', 'newOrderImage']);
     }
 
     /**
      * Создать новую заявку.
      * Категория НЕ выбирается — автоматически "текущие".
      * Чекбоксы расходников сохраняются в mashine_sets.
+     * Фото сохраняется в storage/app/public/orders/.
      */
     public function createOrder(): void
     {
@@ -626,11 +633,18 @@ class MasterPanel extends Component
             'newOrderMashineId'  => 'required|exists:mashines,id',
             'newOrderContent'    => 'required|string|max:2000',
             'newOrderSets'       => 'array',
-            'newOrderSets.*'     => 'exists:sets,id',
+            'newOrderSets.*'    => 'exists:sets,id',
+            'newOrderImage'     => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
         // Находим или создаём категорию "текущие"
         $currentCategory = \App\Models\Category::firstOrCreate(['title' => 'текущие']);
+
+        // Сохраняем фото, если загружено
+        $imagePath = null;
+        if ($this->newOrderImage) {
+            $imagePath = $this->newOrderImage->store('orders', 'public');
+        }
 
         // Создаём заявку
         $order = \App\Models\Order::create([
@@ -638,6 +652,7 @@ class MasterPanel extends Component
             'mashine_id'  => $this->newOrderMashineId,
             'category_id' => $currentCategory->id,
             'user_id_req' => auth()->id(),
+            'image'       => $imagePath,
         ]);
 
         // Сохраняем выбранные расходники в mashine_sets

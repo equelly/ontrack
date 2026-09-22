@@ -307,61 +307,61 @@
 
             <!-- Экскаваторы (Забои) -->
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden" x-data="{ showAddMiner: false }">
-                    <div class="p-4 border-b flex justify-between items-center">
-                        <span class="font-bold text-gray-800 uppercase text-sm">Экскаваторы (Забои)</span>
-                        <button @click="showAddMiner = !showAddMiner" class="text-emerald-600 hover:text-emerald-800 text-xs font-semibold uppercase">
-                            + Добавить
+                <div class="p-4 border-b flex justify-between items-center">
+                    <span class="font-bold text-gray-800 uppercase text-sm">Экскаваторы (Забои)</span>
+                    <button @click="showAddMiner = !showAddMiner" class="text-emerald-600 hover:text-emerald-800 text-xs font-semibold uppercase">
+                        + Добавить
+                    </button>
+                </div>
+
+                {{-- Форма добавления экскаватора --}}
+                <div x-show="showAddMiner" x-cloak class="p-4 bg-slate-50 border-b">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        <!-- Название -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Название *</label>
+                            <input type="text" wire:model="newMinerName" placeholder="Напр. ЭКГ-10" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerName') border-red-500 bg-red-50 @enderror">
+                            @error('newMinerName')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <!-- Ёмкость ковша -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Ёмкость ковша (т)</label>
+                            <input type="number" step="0.1" wire:model="newMinerCapacityPerTrip" placeholder="Напр. 25" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerCapacityPerTrip') border-red-500 bg-red-50 @enderror" min="0" max="500">
+                            @error('newMinerCapacityPerTrip')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <!-- Норма погрузки -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Норма погрузки (сек)</label>
+                            <input type="number" wire:model="newMinerTargetLoadTime" placeholder="Напр. 180" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerTargetLoadTime') border-red-500 bg-red-50 @enderror" min="25" max="3600">
+                            @error('newMinerTargetLoadTime')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <!-- Текущая порода -->
+                        <div>
+                            <label class="block text-xs text-gray-500 uppercase mb-1">Текущая порода</label>
+                            <select wire:model="newMinerRockId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerRockId') border-red-500 bg-red-50 @enderror">
+                                <option value="">— Не указана —</option>
+                                @foreach(\App\Models\Rock::all() as $rock)
+                                    <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                @endforeach
+                            </select>
+                            @error('newMinerRockId')
+                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
+                    <div class="mt-3 flex justify-end">
+                        <button wire:click="addMiner" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 disabled:bg-emerald-300">
+                            <span wire:loading.remove><i class="fas fa-plus mr-1"></i> Создать</span>
+                            <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Создание...</span>
                         </button>
                     </div>
-
-                    {{-- Форма добавления экскаватора --}}
-                    <div x-show="showAddMiner" x-cloak class="p-4 bg-slate-50 border-b">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                            <!-- Название -->
-                            <div>
-                                <label class="block text-xs text-gray-500 uppercase mb-1">Название *</label>
-                                <input type="text" wire:model="newMinerName" placeholder="Напр. ЭКГ-10" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerName') border-red-500 bg-red-50 @enderror">
-                                @error('newMinerName')
-                                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                                @enderror
-                            </div>
-                            <!-- Ёмкость ковша -->
-                            <div>
-                                <label class="block text-xs text-gray-500 uppercase mb-1">Ёмкость ковша (т)</label>
-                                <input type="number" step="0.1" wire:model="newMinerCapacityPerTrip" placeholder="Напр. 25" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerCapacityPerTrip') border-red-500 bg-red-50 @enderror" min="0" max="500">
-                                @error('newMinerCapacityPerTrip')
-                                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                                @enderror
-                            </div>
-                            <!-- Норма погрузки -->
-                            <div>
-                                <label class="block text-xs text-gray-500 uppercase mb-1">Норма погрузки (сек)</label>
-                                <input type="number" wire:model="newMinerTargetLoadTime" placeholder="Напр. 180" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerTargetLoadTime') border-red-500 bg-red-50 @enderror" min="25" max="3600">
-                                @error('newMinerTargetLoadTime')
-                                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                                @enderror
-                            </div>
-                            <!-- Текущая порода -->
-                            <div>
-                                <label class="block text-xs text-gray-500 uppercase mb-1">Текущая порода</label>
-                                <select wire:model="newMinerRockId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerRockId') border-red-500 bg-red-50 @enderror">
-                                    <option value="">— Не указана —</option>
-                                    @foreach(\App\Models\Rock::all() as $rock)
-                                        <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
-                                    @endforeach
-                                </select>
-                                @error('newMinerRockId')
-                                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        </div>
-                        <div class="mt-3 flex justify-end">
-                            <button wire:click="addMiner" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 disabled:bg-emerald-300">
-                                <span wire:loading.remove><i class="fas fa-plus mr-1"></i> Создать</span>
-                                <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Создание...</span>
-                            </button>
-                        </div>
-                    </div>
+                </div>
 
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
@@ -773,12 +773,11 @@
                                             {{-- Класс whitespace-nowrap не даст тексту разорваться на две строки --}}
                                             <span class="text-xs text-gray-400 whitespace-nowrap">({{ number_format($zone->volume / 1000, 0, '.', ' ') }}&nbsp;т.м³)</span>
                                         </div>
-
                                     </td>
                                     <td class="p-2">
                                         <div class="flex items-center gap-1">
                                             <input type="number" wire:change="updateZoneField({{ $zone->id }}, 'capacity', $event.target.value * 380)" value="{{ round($zone->capacity / 380) }}" class="border-gray-300 rounded-md text-sm py-1 w-16 text-center" step="1">
-                                            <span class="text-xs text-gray-400  whitespace-nowrap">({{ number_format($zone->capacity / 1000, 0, '.', ' ') }}&nbsp; т.м³)</span>
+                                            <span class="text-xs text-gray-400">({{ number_format($zone->capacity, 0) }})</span>
                                         </div>
                                     </td>
                                     <td class="p-2 text-center">
@@ -844,7 +843,6 @@
                         </div>
                     </div>
                     @endif
-
                 </div>
             @endforeach
         </div>
@@ -904,6 +902,7 @@
         </form>
     </div>
 </div>
+
 {{-- Модальное окно «Создать заявку» --}}
 <div
     x-data="{ open: @entangle('showCreateOrderModal') }"
@@ -935,10 +934,10 @@
                     @endforeach
                 </select>
                 @error('newOrderMashineId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
             {{-- Чекбоксы расходников --}}
             @php $allSets = \App\Models\Set::all(); @endphp
             @if($allSets->isNotEmpty())
-            </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Комплектация (расходники)</label>
                 <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
@@ -956,12 +955,33 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Описание заявки *</label>
                 <textarea wire:model.live="newOrderContent" rows="4" placeholder="Опишите неисправность или потребность..." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 @error('newOrderContent') border-red-500 @enderror" maxlength="2000"></textarea>
                 @error('newOrderContent') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            {{-- Загрузка фото --}}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Фото (необязательно)</label>
+                <div class="flex items-center gap-3">
+                    <input type="file" wire:model="newOrderImage" accept="image/jpeg,image/png,image/webp" class="block w-full text-sm text-gray-500
+                           id="order-image-upload"
+                           onchange="document.getElementById('order-image-preview').src = window.URL.createObjectURL(this.files[0])" />
+                    @if($newOrderImage)
+                        <img id="order-image-preview" src="{{ $newOrderImage->temporaryUrl() }}" alt="preview" class="w-20 h-20 object-cover rounded-md border border-gray-300" />
+                        <button type="button" wire:click="$set('newOrderImage', null)" class="text-red-500 hover:text-red-700 text-xs" title="Убрать фото">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    @else
+                        <img id="order-image-preview" src="" alt="" class="w-20 h-20 object-cover rounded-md border border-gray-200 bg-slate-50" style="display:none;" />
+                    @endif
                 </div>
-                <div class="bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Заявка автоматически попадёт в категорию «текущие». Категорию можно сменить в деталях заявки.
-
+                @error('newOrderImage') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                <p class="mt-1 text-xs text-gray-500">JPG, PNG, WebP — до 5 МБ</p>
+                <div wire:loading wire:target="newOrderImage" class="text-xs text-emerald-600 mt-1">
+                    <i class="fas fa-spinner fa-spin mr-1"></i> Загрузка фото...
                 </div>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-700">
+                <i class="fas fa-info-circle mr-1"></i>
+                Заявка автоматически попадёт в категорию «текущие». Категорию можно сменить в деталях заявки.
+            </div>
             <div class="flex gap-2 pt-2">
                 <button type="submit" wire:loading.attr="disabled" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-md font-medium transition">
                     <span wire:loading.remove><i class="fas fa-paper-plane mr-1"></i> Создать заявку</span>
@@ -1007,10 +1027,6 @@
                     <p class="text-sm font-medium text-gray-800">ЭКГ №{{ $viewingOrder->mashine?->number ?? '—' }}</p>
                 </div>
                 <div>
-                    <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Категория</p>
-                    <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->category?->title ?? 'Без категории' }}</p>
-                </div>
-                <div>
                     <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Автор</p>
                     <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->user?->name ?? '—' }}</p>
                 </div>
@@ -1018,14 +1034,64 @@
                     <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Создана</p>
                     <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->created_at?->translatedFormat('d F Y, H:i') }}</p>
                 </div>
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Исполнитель</p>
+                    @if($viewingOrder->user_exec)
+                        <p class="text-sm font-medium text-emerald-600">{{ $viewingOrder->userExec?->name ?? '—' }}</p>
+                    @else
+                        <p class="text-sm text-gray-400">Не назначен</p>
+                    @endif
+                </div>
             </div>
+
+            {{-- Комплектация (расходники оборудования) --}}
+            @if($viewingOrder->mashine?->sets?->isNotEmpty())
+            <div>
+                <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Комплектация</p>
+                <div class="flex flex-wrap gap-2">
+                    @foreach($viewingOrder->mashine->sets as $set)
+                        <span class="px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs border border-slate-200">
+                            <i class="fas fa-cube mr-1 text-gray-400"></i>{{ $set->name }}
+                        </span>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
             <div>
                 <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Описание</p>
                 <div class="bg-slate-50 p-4 rounded-md border border-slate-200">
                     <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ $viewingOrder->content }}</p>
                 </div>
             </div>
-            <div class="flex gap-2 pt-2">
+
+            {{-- Фото заявки --}}
+            @if($viewingOrder->image)
+            <div>
+                <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Фото</p>
+                <div class="rounded-md border border-slate-200 overflow-hidden">
+                    <img src="{{ asset('storage/' . $viewingOrder->image) }}" alt="Фото заявки" class="w-full max-h-80 object-cover" />
+                </div>
+            </div>
+            @endif
+
+            {{-- Смена категории (мастер) --}}
+            <div>
+                <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Категория</p>
+                <div class="flex gap-2">
+                    <select wire:model.live="editOrderCategoryId" class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Без категории</option>
+                        @foreach(\App\Models\Category::orderBy('title')->get() as $cat)
+                            <option value="{{ $cat->id }}" @selected($viewingOrder->category_id === $cat->id)>{{ $cat->title }}</option>
+                        @endforeach
+                    </select>
+                    <button wire:click="changeOrderCategory({{ $viewingOrder->id }})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition">
+                        <i class="fas fa-edit mr-1"></i> Сменить
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-2 border-t">
                 @if(!$viewingOrder->user_exec)
                     <button wire:click="completeOrder({{ $viewingOrder->id }})" wire:loading.attr="disabled" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium text-sm transition">
                         <i class="fas fa-check mr-1"></i> Отметить выполненной
@@ -1035,7 +1101,7 @@
                         <i class="fas fa-check-circle mr-1"></i> Выполнена: {{ $viewingOrder->userExec?->name ?? '—' }}
                     </div>
                 @endif
-                {{-- Удалить — только для автора --}}
+                {{-- Удалить — только автору --}}
                 @if($viewingOrder->user_id_req === auth()->id() || auth()->user()?->role === 'admin')
                     <button wire:click="deleteOrder({{ $viewingOrder->id }})" wire:confirm="Удалить заявку?" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-medium text-sm transition">
                         <i class="fas fa-trash mr-1"></i> Удалить
@@ -1050,7 +1116,6 @@
         @endif
     </div>
 </div>
-
 
 <!-- Модальное окно интерактивной карты -->
 <div x-data="{ showMap: false, initMap() { 
