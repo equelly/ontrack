@@ -281,7 +281,7 @@
         <div x-show="tab === 'requests'" x-cloak class="mt-4 space-y-6">
             <!-- Панель фильтрации -->
             <div class="bg-white rounded-xl border shadow-sm p-4 mb-6">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Категория</label>
                         <select wire:model.live="categoryId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
@@ -301,15 +301,6 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Оборудование</label>
-                        <select wire:model.live="mashineId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
-                            <option value="">Все</option>
-                            @foreach($allMashines as $mashine)
-                                <option value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
                         <label class="block text-xs uppercase font-semibold text-gray-500 mb-1">Дата</label>
                         <input type="date" wire:model.live="createdAt" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
                     </div>
@@ -320,9 +311,9 @@
                 </div>
                 <div class="flex justify-between items-center mt-4 pt-4 border-t">
                     <h3 class="font-bold text-gray-800 uppercase text-sm">Всего заявок: <span class="text-emerald-600">{{ $ordersCount }}</span></h3>
-                    <a href="{{ route('order.create') }}" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-xs hover:bg-emerald-700">
+                    <button wire:click="openCreateOrderModal" class="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold uppercase text-xs hover:bg-emerald-700">
                         <i class="fas fa-plus mr-1"></i> Создать заявку
-                    </a>
+                    </button>
                 </div>
             </div>
 
@@ -342,7 +333,7 @@
                                                 {{ $order->created_at->translatedFormat('d F Y') }} ({{ $order->created_at->diffForHumans() }})
                                             </small>
                                             <p class="text-sm text-gray-700">{{ $order->content }}</p>
-                                            <a href="{{ route('order.show', $order->id) }}" class="text-xs text-emerald-600 hover:text-emerald-800 mt-2 inline-block font-semibold">
+                                            <a href="javascript:void(0)" wire:click="viewOrder({{ $order->id }})" class="text-xs text-emerald-600 hover:text-emerald-800 mt-2 inline-block font-semibold">
                                                 Смотреть подробнее <i class="fas fa-arrow-right ml-1"></i>
                                             </a>
                                         </div>
@@ -452,4 +443,221 @@
             });
         });
     </script>
+
+    {{-- Модальное окно «Создать заявку» --}}
+    <div
+        x-data="{ open: @entangle('showCreateOrderModal') }"
+        x-show="open" x-cloak x-transition.opacity
+        style="display: none;"
+        class="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+        x-on:keydown.escape.window="open = false"
+    >
+        <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+        <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
+                <div class="flex items-center gap-3">
+                    <i class="fas {{ $editingOrderId ? 'fa-edit' : 'fa-clipboard-list' }} text-2xl"></i>
+                    <div>
+                        <h3 class="text-lg font-semibold">{{ $editingOrderId ? 'Редактировать заявку #' . $editingOrderId : 'Новая заявка' }}</h3>
+                        <p class="text-sm text-white/90">Оборудование: {{ $minerMashineNumber ?? '—' }}</p>
+                    </div>
+                </div>
+            </div>
+            <form wire:submit.prevent="saveOrder" class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                @php $allSets = \App\Models\Set::all(); @endphp
+                @if($allSets->isNotEmpty())
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Комплектация (расходники)</label>
+                    <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
+                        @foreach($allSets as $set)
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" value="{{ $set->id }}" wire:model="newOrderSets" class="rounded text-emerald-600 border-gray-300 focus:ring-emerald-500">
+                                {{ $set->name }}
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Описание заявки *</label>
+                    <textarea wire:model.live="newOrderContent" rows="4" placeholder="Опишите неисправность..." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 @error('newOrderContent') border-red-500 @enderror" maxlength="2000"></textarea>
+                    @error('newOrderContent') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Фото (необязательно)</label>
+                    <div class="flex items-center gap-3">
+                        <input type="file" wire:model="newOrderImage" accept="image/jpeg,image/png,image/webp" class="block w-full text-sm text-gray-500" />
+                        @if($newOrderImage)
+                            <img src="{{ $newOrderImage->temporaryUrl() }}" alt="preview" class="w-20 h-20 object-cover rounded-md border border-gray-300" />
+                            <button type="button" wire:click="$set('newOrderImage', null)" class="text-red-500 hover:text-red-700 text-xs"><i class="fas fa-times"></i></button>
+                        @endif
+                    </div>
+                    @error('newOrderImage') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    <p class="mt-1 text-xs text-gray-500">JPG, PNG, WebP — до 5 МБ</p>
+                    <div wire:loading wire:target="newOrderImage" class="text-xs text-emerald-600 mt-1"><i class="fas fa-spinner fa-spin mr-1"></i> Загрузка фото...</div>
+                </div>
+                <div class="bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i> Заявка автоматически попадёт в категорию «текущие».
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" wire:loading.attr="disabled" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-md font-medium transition">
+                        <span wire:loading.remove><i class="fas {{ $editingOrderId ? 'fa-save' : 'fa-paper-plane' }} mr-1"></i> {{ $editingOrderId ? 'Сохранить' : 'Создать заявку' }}</span>
+                        <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> {{ $editingOrderId ? 'Сохранение...' : 'Создание...' }}</span>
+                    </button>
+                    <button type="button" wire:click="closeCreateOrderModal" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Модальное окно «Детали заявки» --}}
+    <div
+        x-data="{ open: @entangle('showOrderDetailsModal') }"
+        x-show="open" x-cloak x-transition.opacity
+        style="display: none;"
+        class="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+        x-on:keydown.escape.window="open = false"
+    >
+        <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
+        <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-file-alt text-2xl"></i>
+                        <div>
+                            <h3 class="text-lg font-semibold">Заявка №{{ $viewingOrderId }}</h3>
+                            <p class="text-sm text-white/90">Детали заявки</p>
+                        </div>
+                    </div>
+                    <button type="button" x-on:click="open = false" class="text-white/80 hover:text-white text-2xl leading-none">&times;</button>
+                </div>
+            </div>
+            @if($viewingOrder)
+            <div class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Оборудование</p>
+                        <p class="text-sm font-medium text-gray-800">ЭКГ №{{ $viewingOrder->mashine?->number ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Автор</p>
+                        <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->user?->name ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Создана</p>
+                        <p class="text-sm font-medium text-gray-800">{{ $viewingOrder->created_at?->translatedFormat('d F Y, H:i') }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase font-semibold mb-1">Исполнитель</p>
+                        @if($viewingOrder->user_exec)
+                            <p class="text-sm font-medium text-emerald-600">{{ $viewingOrder->userExec?->name ?? '—' }}</p>
+                        @else
+                            <p class="text-sm text-gray-400">Не назначен</p>
+                        @endif
+                    </div>
+                </div>
+                @php $allSets = \App\Models\Set::all(); @endphp
+                @if($allSets->isNotEmpty())
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Комплектация</p>
+                    <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
+                        @php $equipmentSets = $viewingOrder->mashine?->sets?->pluck('id')?->toArray() ?? []; @endphp
+                        @foreach($allSets as $set)
+                            @php $isChecked = in_array($set->id, $equipmentSets); @endphp
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer rounded-md px-2 py-1 {{ $isChecked ? 'bg-emerald-50 border border-emerald-200' : 'border border-transparent' }} hover:bg-slate-100 transition">
+                                <input type="checkbox"
+                                    @if($viewingOrder->mashine_id) wire:click="toggleSet({{ $viewingOrder->mashine_id }}, {{ $set->id }})" @endif
+                                    {{ $isChecked ? 'checked' : '' }}
+                                    class="rounded text-emerald-600 border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <span class="{{ $isChecked ? 'text-emerald-700 font-medium' : 'text-gray-500' }}">{{ $set->name }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400">Отмечено = требуется завезти. Снять галочку = завезли / не требуется.</p>
+                </div>
+                @endif
+                <div>
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Описание</p>
+                    <div class="bg-slate-50 p-4 rounded-md border border-slate-200">
+                        <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ $viewingOrder->content }}</p>
+                    </div>
+                </div>
+                @if($viewingOrder->image)
+                <div x-data="{ zoomed: false }">
+                    <p class="text-xs text-gray-500 uppercase font-semibold mb-2">Фото</p>
+                    <div class="rounded-md border border-slate-200 overflow-hidden cursor-zoom-in hover:opacity-80 transition" x-on:click="zoomed = true">
+                        <img src="{{ asset('storage/' . $viewingOrder->image) }}" alt="Фото заявки" class="w-full max-h-48 object-cover" />
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400"><i class="fas fa-search-plus mr-1"></i>Кликните для увеличения</p>
+                    <template x-if="zoomed">
+                        <div class="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" x-on:click="zoomed = false" x-on:keydown.escape.window="zoomed = false" style="display: flex;">
+                            <div class="relative max-w-4xl max-h-[90vh]" x-on:click.stop>
+                                <img src="{{ asset('storage/' . $viewingOrder->image) }}" alt="Фото заявки" class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+                                <button type="button" x-on:click="zoomed = false" class="absolute -top-3 -right-3 w-8 h-8 bg-white text-gray-800 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-200 transition"><i class="fas fa-times text-sm"></i></button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                @endif
+                <div class="flex gap-2 pt-2 border-t">
+                    @if($viewingOrder->user_id_req === auth()->id() || auth()->user()?->role === 'admin')
+                        <button wire:click="deleteOrder({{ $viewingOrder->id }})" wire:confirm="Удалить заявку?" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-medium text-sm transition">
+                            <i class="fas fa-trash mr-1"></i> Удалить
+                        </button>
+                    @else
+                        <span class="px-4 py-2 bg-gray-100 text-gray-400 rounded-md font-medium text-sm cursor-not-allowed" title="Удалить может только автор заявки">
+                            <i class="fas fa-lock mr-1"></i> Только автор
+                        </span>
+                    @endif
+                    {{-- Редактировать — только автору --}}
+                    @if($viewingOrder->user_id_req === auth()->id() || auth()->user()?->role === 'admin')
+                        <button wire:click="editOrder({{ $viewingOrder->id }})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition">
+                            <i class="fas fa-edit mr-1"></i> Редактировать
+                        </button>
+                    @endif
+                </div>
+            </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- Локальный toast-контейнер — внутри компонента, после модалок.
+         z-index выше модалок (99999), гарантированно поверх. --}}
+    <div id="excavator-toast-container" class="fixed top-4 right-4 p-4 flex flex-col items-end gap-2 pointer-events-none" style="z-index: 100000 !important;"></div>
+
+    <!-- <script>
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('notify', (data) => {
+                const event = Array.isArray(data) ? data[0] : data;
+                if (!event || !event.message) return;
+
+                // Сначала пробуем локальный контейнер, потом глобальный
+                let container = document.getElementById('excavator-toast-container');
+                if (!container) container = document.getElementById('global-toast-container');
+                if (!container) return;
+
+                const toast = document.createElement('div');
+                const bgClass = event.type === 'success' ? 'bg-emerald-500' :
+                               event.type === 'error'   ? 'bg-red-500'    :
+                               event.type === 'warning' ? 'bg-amber-500'  :
+                               'bg-blue-500';
+                const icon = event.type === 'success' ? 'fa-check-circle'       :
+                             event.type === 'error'   ? 'fa-exclamation-circle' :
+                             event.type === 'warning' ? 'fa-exclamation-triangle' :
+                             'fa-info-circle';
+
+                toast.className = bgClass + ' text-white px-4 py-3 rounded-md shadow-lg flex items-center gap-2 text-sm max-w-xs pointer-events-auto';
+                toast.innerHTML = '<i class="fas ' + icon + ' text-lg flex-shrink-0"></i><span class="flex-1">' + event.message + '</span><button onclick="this.parentElement.remove()" class="ml-2 text-xl leading-none hover:opacity-70">&times;</button>';
+                container.appendChild(toast);
+
+                // Авто-удаление
+                setTimeout(() => {
+                    toast.style.transition = 'opacity 0.5s';
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 500);
+                }, 5000);
+            });
+        });
+    </script> -->
 </div>

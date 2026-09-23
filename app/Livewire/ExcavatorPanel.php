@@ -33,7 +33,18 @@ class ExcavatorPanel extends Component
     public $categoryId;
     public $userId;
     public $createdAt;
-    public $mashineId;
+
+    // === Заявки (Order) ===
+    public bool $showCreateOrderModal = false;
+    public bool $showOrderDetailsModal = false;
+    public ?int $viewingOrderId = null;
+    public string $newOrderContent = '';
+    public $newOrderImage = null;
+    public array $newOrderSets = [];
+    public $viewingOrder = null;
+    public ?int $editOrderCategoryId = null;
+    public ?string $minerMashineNumber = null;
+    public ?int $editingOrderId = null; // ID заявки при редактировании (null = создание)
 
     // Выбор экскаватора
     public ?int $selectedMinerId = null;
@@ -100,11 +111,14 @@ class ExcavatorPanel extends Component
             return;
         }
 
-        $this->miner = Miner::with(['rocks', 'currentRock'])->find($this->selectedMinerId);
+        $this->miner = Miner::with(['rocks', 'currentRock', 'mashine'])->find($this->selectedMinerId);
 
         if (!$this->miner) {
             return;
         }
+
+        // Сохраняем номер оборудования как строку (надёжно в Livewire, не теряется при сериализации)
+        $this->minerMashineNumber = $this->miner->mashine?->number ?? $this->miner->name_miner;
 
         // Если есть текущая порода — устанавливаем в селект
         if ($this->miner->currentRock) {
@@ -869,6 +883,238 @@ class ExcavatorPanel extends Component
     ];
     }
 
+    // ==========================================
+    // ЗАЯВКИ (ORDER)
+    // ==========================================
+
+    /**
+     * Открыть модальное окно создания заявки.
+     */
+    public function openCreateOrderModal(): void
+    {
+        $this->editingOrderId = null; // Создание, не редактирование
+        $this->reset(['newOrderContent', 'newOrderImage', 'newOrderSets']);
+        $this->showCreateOrderModal = true;
+    }
+
+    public function closeCreateOrderModal(): void
+    {
+        $this->showCreateOrderModal = false;
+        $this->editingOrderId = null;
+        $this->reset(['newOrderContent', 'newOrderImage', 'newOrderSets']);
+    }
+
+    /**
+     * Открыть модалку редактирования заявки (только для автора).
+     * Закрывает модалку деталей и открывает модалку создания с заполненными данными.
+     */
+    public function editOrder(int $orderId): void
+    {
+        $order = \App\Models\Order::find($orderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        // Только автор может редактировать
+        if ($order->user_id_req !== auth()->id() && auth()->user()?->role !== 'admin') {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Редактировать может только автор']);
+            return;
+        }
+
+        // Заполняем поля формы
+        $this->editingOrderId = $orderId;
+        $this->newOrderContent = $order->content ?? '';
+        $this->newOrderImage = null; // Фото не перезагружаем, оставляем старое
+        $this->newOrderSets = $order->mashine?->sets?->pluck('id')?->toArray() ?? [];
+
+        // Закрываем модалку деталей, открываем модалку редактирования
+        $this->showOrderDetailsModal = false;
+        $this->showCreateOrderModal = true;
+    }
+
+    /**
+     * Сохранить заявку (создать новую или обновить существующую).
+     */
+    public function saveOrder(): void
+    {
+        if ($this->editingOrderId) {
+            $this->updateOrder();
+        } else {
+            $this->createOrder();
+        }
+    }
+
+    /**
+     * Обновить существующую заявку.
+     */
+    public function updateOrder(): void
+    {
+        $order = \App\Models\Order::find($this->editingOrderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        // Только автор
+        if ($order->user_id_req !== auth()->id() && auth()->user()?->role !== 'admin') {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Редактировать может только автор']);
+            return;
+        }
+
+        $this->validate([
+            'newOrderContent' => 'required|string|max:2000',
+            'newOrderImage'   => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        // Обновляем текст
+        $order->update(['content' => $this->newOrderContent]);
+
+        // Если загружено новое фото — сохраняем
+        if ($this->newOrderImage) {
+            $imagePath = $this->newOrderImage->store('orders', 'public');
+            $order->update(['image' => $imagePath]);
+        }
+
+        // Обновляем комплектацию
+        $mashineId = Miner::where('id', $this->selectedMinerId)->value('mashine_id');
+        if ($mashineId) {
+            // Удаляем старые, добавляем новые
+            \App\Models\MashineSet::where('mashine_id', $mashineId)->delete();
+            foreach ($this->newOrderSets as $setId) {
+                \App\Models\MashineSet::firstOrCreate([
+                    'mashine_id' => $mashineId,
+                    'set_id'     => $setId,
+                ]);
+            }
+        }
+
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Заявка обновлена',
+        ]);
+
+        $this->closeCreateOrderModal();
+    }
+
+    /**
+     * Создать новую заявку.
+     * mashine_id = текущий экскаватор машиниста (из miner->mashine_id).
+     * Используем selectedMinerId (простое число, не теряется в Livewire)
+     * и прямой запрос к БД для получения mashine_id.
+     */
+    public function createOrder(): void
+    {
+        if (!$this->selectedMinerId) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Сначала выберите экскаватор']);
+            return;
+        }
+
+        // Получаем mashine_id прямым запросом — НЕ через $this->miner,
+        // потому что Livewire теряет модель при сериализации
+        $mashineId = Miner::where('id', $this->selectedMinerId)->value('mashine_id');
+
+        if (!$mashineId) {
+            // Автоматически создаём карточку оборудования и привязываем к забою
+            $minerName = Miner::where('id', $this->selectedMinerId)->value('name_miner');
+            $mashine = \App\Models\Mashine::create([
+                'number' => $minerName ?? 'ЭКГ-' . $this->selectedMinerId,
+            ]);
+            Miner::where('id', $this->selectedMinerId)->update(['mashine_id' => $mashine->id]);
+            $mashineId = $mashine->id;
+
+            \Illuminate\Support\Facades\Log::info('Автосоздание mashine для забоя', [
+                'miner_id' => $this->selectedMinerId,
+                'mashine_id' => $mashineId,
+            ]);
+        }
+
+        $this->validate([
+            'newOrderContent' => 'required|string|max:2000',
+            'newOrderSets'    => 'array',
+            'newOrderSets.*'  => 'exists:sets,id',
+            'newOrderImage'   => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        $currentCategory = \App\Models\Category::firstOrCreate(['title' => 'текущие']);
+
+        $imagePath = null;
+        if ($this->newOrderImage) {
+            $imagePath = $this->newOrderImage->store('orders', 'public');
+        }
+
+        \App\Models\Order::create([
+            'content'     => $this->newOrderContent,
+            'mashine_id'  => $mashineId,
+            'category_id' => $currentCategory->id,
+            'user_id_req' => auth()->id(),
+            'image'       => $imagePath,
+        ]);
+
+        foreach ($this->newOrderSets as $setId) {
+            \App\Models\MashineSet::firstOrCreate([
+                'mashine_id' => $mashineId,
+                'set_id'     => $setId,
+            ]);
+        }
+
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Заявка создана и направлена мастеру',
+        ]);
+
+        $this->closeCreateOrderModal();
+    }
+
+    public function viewOrder(int $orderId): void
+    {
+        $this->viewingOrderId = $orderId;
+        $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
+            ->find($orderId);
+        $this->editOrderCategoryId = $this->viewingOrder?->category_id;
+        $this->showOrderDetailsModal = true;
+    }
+
+    public function closeOrderDetailsModal(): void
+    {
+        $this->showOrderDetailsModal = false;
+        $this->viewingOrderId = null;
+        $this->viewingOrder = null;
+        $this->editOrderCategoryId = null;
+    }
+
+    public function deleteOrder(int $orderId): void
+    {
+        $order = \App\Models\Order::find($orderId);
+        if (!$order) return;
+
+        if ($order->user_id_req !== auth()->id() && auth()->user()?->role !== 'admin') {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Удалить заявку может только её автор']);
+            return;
+        }
+
+        $order->delete();
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Заявка удалена']);
+        if ($this->viewingOrderId === $orderId) $this->closeOrderDetailsModal();
+    }
+
+    public function toggleSet(int $mashineId, int $setId): void
+    {
+        $existing = \App\Models\MashineSet::where('mashine_id', $mashineId)
+            ->where('set_id', $setId)->first();
+
+        if ($existing) {
+            $existing->delete();
+        } else {
+            \App\Models\MashineSet::create(['mashine_id' => $mashineId, 'set_id' => $setId]);
+        }
+
+        if ($this->viewingOrderId) {
+            $this->viewingOrder = \App\Models\Order::with(['category', 'mashine.sets', 'user', 'userExec'])
+                ->find($this->viewingOrderId);
+        }
+    }
+
     public function render()
     {
         $categories = \App\Models\Category::all();
@@ -904,6 +1150,19 @@ class ExcavatorPanel extends Component
 
         $ordersCount = $mashines->sum(fn($m) => $m->orders->count());
 
-        return view('livewire.excavator-panel', compact('mashines', 'ordersCount', 'categories', 'users', 'allMashines'));
+        // Номер оборудования — вычисляем прямым запросом к БД по mashine_id.
+        // НЕ используем связь $miner->mashine, потому что Livewire теряет её при сериализации.
+        // mashine_id — это просто число, которое Livewire сохраняет надёжно.
+        $minerMashineNumber = '—';
+        if ($this->miner?->mashine_id) {
+            $mashineNumber = \App\Models\Mashine::where('id', $this->miner->mashine_id)->value('number');
+            if ($mashineNumber) {
+                $minerMashineNumber = 'ЭКГ №' . $mashineNumber;
+            }
+        } elseif ($this->miner?->name_miner) {
+            $minerMashineNumber = $this->miner->name_miner;
+        }
+
+        return view('livewire.excavator-panel', compact('mashines', 'ordersCount', 'categories', 'users', 'allMashines', 'minerMashineNumber'));
     }
 }

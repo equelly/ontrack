@@ -46,11 +46,12 @@ class MasterPanel extends Component
     public bool $showOrderDetailsModal = false;
     public ?int $viewingOrderId = null;
     public ?int $newOrderMashineId = null;
-    public array $newOrderSets = [];          // чекбоксы расходников
+    public array $newOrderSets = [];
     public string $newOrderContent = '';
-    public $newOrderImage = null;               // загруженное фото (Livewire TemporaryUploadedFile)
+    public $newOrderImage = null;
     public $viewingOrder = null;
-    public ?int $editOrderCategoryId = null;   // для смены категории в деталях
+    public ?int $editOrderCategoryId = null;
+    public ?int $editingOrderId = null; // ID заявки при редактировании (null = создание)
     public $newZoneCapacity = 10000;
     public $newZoneVolume = 0;
     public $newTruckNumber;
@@ -603,22 +604,109 @@ class MasterPanel extends Component
      */
     public function openCreateOrderModal(): void
     {
+        $this->editingOrderId = null;
         $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent', 'newOrderImage']);
         $this->showCreateOrderModal = true;
     }
 
     /**
      * Закрыть модальное окно создания заявки.
-     * Удаляем временное загруженное фото, если заявка не создана.
      */
     public function closeCreateOrderModal(): void
     {
-        // Если фото загружено во временное хранилище — очищаем
         if ($this->newOrderImage) {
             $this->newOrderImage = null;
         }
         $this->showCreateOrderModal = false;
+        $this->editingOrderId = null;
         $this->reset(['newOrderMashineId', 'newOrderSets', 'newOrderContent', 'newOrderImage']);
+    }
+
+    /**
+     * Открыть модалку редактирования заявки (только для автора).
+     */
+    public function editOrder(int $orderId): void
+    {
+        $order = \App\Models\Order::with(['mashine.sets'])->find($orderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        if ($order->user_id_req !== auth()->id() && auth()->user()?->role !== 'admin') {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Редактировать может только автор']);
+            return;
+        }
+
+        $this->editingOrderId = $orderId;
+        $this->newOrderMashineId = $order->mashine_id;
+        $this->newOrderContent = $order->content ?? '';
+        $this->newOrderImage = null;
+        $this->newOrderSets = $order->mashine?->sets?->pluck('id')?->toArray() ?? [];
+
+        $this->showOrderDetailsModal = false;
+        $this->showCreateOrderModal = true;
+    }
+
+    /**
+     * Сохранить заявку (создать или обновить).
+     */
+    public function saveOrder(): void
+    {
+        if ($this->editingOrderId) {
+            $this->updateOrder();
+        } else {
+            $this->createOrder();
+        }
+    }
+
+    /**
+     * Обновить существующую заявку.
+     */
+    public function updateOrder(): void
+    {
+        $order = \App\Models\Order::find($this->editingOrderId);
+        if (!$order) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Заявка не найдена']);
+            return;
+        }
+
+        if ($order->user_id_req !== auth()->id() && auth()->user()?->role !== 'admin') {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Редактировать может только автор']);
+            return;
+        }
+
+        $this->validate([
+            'newOrderMashineId'  => 'required|exists:mashines,id',
+            'newOrderContent'    => 'required|string|max:2000',
+            'newOrderImage'     => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+        ]);
+
+        $order->update([
+            'content'     => $this->newOrderContent,
+            'mashine_id'  => $this->newOrderMashineId,
+        ]);
+
+        if ($this->newOrderImage) {
+            $imagePath = $this->newOrderImage->store('orders', 'public');
+            $order->update(['image' => $imagePath]);
+        }
+
+        // Обновляем комплектацию
+        \App\Models\MashineSet::where('mashine_id', $this->newOrderMashineId)->delete();
+        foreach ($this->newOrderSets as $setId) {
+            \App\Models\MashineSet::firstOrCreate([
+                'mashine_id' => $this->newOrderMashineId,
+                'set_id'     => $setId,
+            ]);
+        }
+
+        $this->dispatch('notify', [
+            'type'    => 'success',
+            'message' => 'Заявка обновлена',
+        ]);
+
+        $this->closeCreateOrderModal();
     }
 
     /**
@@ -781,7 +869,7 @@ class MasterPanel extends Component
             ->find($orderId);
     }
 
-        /**
+    /**
      * Переключить расходник в комплектации оборудования.
      *
      * Если позиция есть в mashine_sets — удаляем (сняли галочку: завезли/не требуется).
@@ -815,7 +903,6 @@ class MasterPanel extends Component
         }
     }
 
-
     public function render(ShiftService $shiftService)
     {
         // 1. Данные для выпадающих списков фильтра
@@ -834,7 +921,7 @@ class MasterPanel extends Component
                   $q->where('category_id', $this->categoryId);
               })
               ->when($this->userId, function($q) {
-                  $q->where('user_id_req', $this->userId);
+                  $q->where('user_id', $this->userId);
               })
               ->when($this->createdAt, function($q) {
                   $q->whereDate('created_at', $this->createdAt);

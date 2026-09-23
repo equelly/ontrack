@@ -18,7 +18,7 @@
 </head>
 <body class="font-roboto">
     {{-- Глобальный контейнер для toast-уведомлений --}}
-    <div id="global-toast-container" class="fixed top-4 right-4 p-4 z-[9999] flex flex-col items-end gap-2 pointer-events-none"></div>
+    <div id="global-toast-container" class="fixed top-4 right-4 p-4 z-[100000] flex flex-col items-end gap-2 pointer-events-none"></div>
 
     {{-- Модалка входа при истечении сессии (419 Page Expired) --}}
     @include('includes.session-guard-modal')
