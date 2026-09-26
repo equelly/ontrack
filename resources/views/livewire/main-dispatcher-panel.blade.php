@@ -3,7 +3,7 @@
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
-    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
+    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl relative">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
             <!-- Статистика -->
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
@@ -63,7 +63,7 @@
             {{-- AI Алерты — виджет --}}
             @php $newAlertsCount = $this->new_alerts_count; @endphp
             @if($newAlertsCount > 0)
-            <div x-data="{ showAlerts: false }" class="relative ml-2">
+            <div x-data="{ showAlerts: false }" class="ml-2">
                 <button @click="showAlerts = !showAlerts"
                         class="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
                     <i class="fas fa-bell"></i>
@@ -74,8 +74,12 @@
                 </button>
 
                 {{-- Выпадающий список алертов --}}
+                {{-- Ширина: растягивается по доступной ширине строки, но не больше 480px
+                          и не больше ширины экрана (с запасом 2rem по бокам). Минимум 320px,
+                          чтобы 2 колонки метрик влезали. --}}
                 <div x-show="showAlerts" x-cloak x-transition
-                     class="absolute right-0 top-full mt-1 w-[480px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
+                    @click.outside="showAlerts = false"
+                    class="absolute right-4 top-full mt-1 w-[calc(100vw-2rem)] sm:w-[480px] min-w-[320px] max-w-[calc(100vw-2rem)] sm:max-w-[480px] bg-white text-gray-900 rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
 
                     <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-10">
                         <div class="flex items-center gap-2">
@@ -96,36 +100,13 @@
                     <div class="divide-y divide-gray-100">
                         @php $alerts = $this->recent_alerts; @endphp
                         @foreach($alerts as $alert)
-                        <div class="p-3 {{ $alert->status === 'new' ? 'bg-red-50' : 'bg-white' }} hover:bg-slate-50 transition">
-                            <div class="flex items-start justify-between gap-2">
-                                <div class="flex-1">
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <span class="px-1.5 py-0.5 text-[10px] font-bold rounded {{ $alert->severity === 'critical' ? 'bg-red-600 text-white' : ($alert->severity === 'warning' ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white') }}">
-                                            {{ $alert->severity === 'critical' ? 'КРИТИЧНО' : ($alert->severity === 'warning' ? 'ВНИМАНИЕ' : 'ИНФО') }}
-                                        </span>
-                                        @if($alert->status === 'new')
-                                            <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-                                        @endif
-                                        <small class="text-gray-400">{{ $alert->created_at->diffForHumans() }}</small>
-                                    </div>
-                                    <p class="text-sm font-medium text-gray-800">{{ $alert->title }}</p>
-                                    <p class="text-xs text-gray-600 mt-1">{{ $alert->message }}</p>
-                                </div>
-                                @if($alert->status === 'new')
-                                    <button wire:click="acknowledgeAlert({{ $alert->id }})"
-                                            class="px-2 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-md text-xs font-medium transition whitespace-nowrap">
-                                        <i class="fas fa-check"></i>
-                                    </button>
-                                @else
-                                    <i class="fas fa-check-circle text-emerald-400 text-sm"></i>
-                                @endif
-                            </div>
-                        </div>
+                            @include('components.ai-alert-card', ['alert' => $alert])
                         @endforeach
                         @if($alerts->isEmpty())
-                            <div class="p-6 text-center text-gray-400 text-sm">
-                                <i class="fas fa-check-circle text-2xl text-emerald-400 mb-2"></i>
+                            <div class="p-8 text-center text-gray-400 text-sm">
+                                <i class="fas fa-check-circle text-3xl text-emerald-400 mb-2"></i>
                                 <p>Нет активных алертов</p>
+                                <p class="text-xs mt-1">Система работает нормально</p>
                             </div>
                         @endif
                     </div>
@@ -693,9 +674,9 @@
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-exclamation-circle text-red-500"></i> Важные правила</h4>
                             <div class="pl-6 space-y-1.5 text-xs">
-                                <div>• Зона принимает только <strong>ОДНУ породу</strong> — нельзя смешивать (кроме: руда_ЦПТ → руда → руда_S)</div>
+                                <div>• Зона принимает только <strong>ОДНУ породу</strong> — нельзя смешивать (кроме fallback: руда_ЦПТ → руда → руда_S)</div>
                                 <div>• <strong>Нельзя сменить породу в открытой зоне</strong> — сначала закройте зону для завозки и отгрузите остатки</div>
-                                <div>• Без <strong>текущей породы</strong> у забоя маршруты не назначаются</div>
+                                <div>• Без <strong>current_rock_id</strong> у забоя маршруты не назначаются</div>
                                 <div>• Без <strong>расстояний</strong> маршрут не участвует в оптимизации (задаются в Панели Мастера → Забои → «Расстояния»)</div>
                                 <div>• <strong>Аварийный режим</strong>: если все активные маршруты забоя недоступны — система сама активирует первый доступный резервный</div>
                                 <div>• <strong>Порог разделения зон</strong> настраивается в Настройках (0-100%, по умолчанию 30%)</div>

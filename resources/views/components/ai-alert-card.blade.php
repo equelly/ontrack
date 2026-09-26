@@ -68,7 +68,7 @@
     }
 @endphp
 
-<div class="p-4 {{ $alert->status === 'new' ? $meta['bg'] . ' border-l-4 ' . 'border-' . ($alert->severity === 'critical' ? 'red-500' : 'amber-500') : 'bg-white' }} hover:bg-slate-50 transition">
+<div class="p-4 ml-3 {{ $alert->status === 'new' ? $meta['bg'] . ' border-l-4 ' . 'border-' . ($alert->severity === 'critical' ? 'red-500' : 'amber-500') : 'bg-white' }} hover:bg-slate-50 transition">
     {{-- Header: иконка + бейдж severity + время --}}
     <div class="flex items-center gap-2 mb-2">
         <i class="fas {{ $meta['icon'] }} {{ $meta['color'] }} text-base"></i>

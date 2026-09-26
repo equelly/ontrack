@@ -1510,6 +1510,38 @@ class MainDispatcherPanel extends Component
         $this->loadData();
     }
 
+    /**
+     * Обработчик вебсокет-события ZoneFillWarning.
+     * Зона заполняется (80-99%) — заблаговременное предупреждение.
+     *
+     * В Панели Диспетчера уведомление показываем как info — диспетчер
+     * может заранее перенаправлять новые самосвалы на другие зоны,
+     * не дожидаясь критического переполнения.
+     */
+    #[On('echo:dispatcher,zone.fill.warning')]
+    public function onZoneFillWarning($event): void
+    {
+        $zoneName = $event['zone_name'] ?? '—';
+        $dumpName = $event['dump_name'] ?? '—';
+        $fillPct  = $event['fill_percent'] ?? 0;
+        $hours    = $event['hours_to_overflow'] ?? null;
+        $severity = $event['severity'] ?? 'warning';
+        $message  = $event['message'] ?? "Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%.";
+
+        // Если < 3 часов до переполнения или severity=critical — warning, иначе info
+        $notifyType = ($severity === 'critical' || ($hours !== null && $hours < 3))
+            ? 'warning'
+            : 'info';
+
+        $this->dispatch('notify', [
+            'type' => $notifyType,
+            'message' => $message,
+        ]);
+
+        // Перезагружаем данные — прогресс-бары зон могли обновиться
+        $this->loadData();
+    }
+
     // =========================================
     // УПРАВЛЕНИЕ ВКЛАДКАМИ
     // =========================================

@@ -2,9 +2,58 @@
     <!-- Dark Header -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
-            <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1> 
-            
+            <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1>  
             <div class="flex items-center gap-4">
+                {{-- AI Алерты — виджет (как у диспетчера) --}}
+                @php $newAlertsCount = $this->new_alerts_count; @endphp
+                <div x-data="{ showAlerts: false }" class="relative">
+                    <button @click="showAlerts = !showAlerts"
+                            class="relative flex items-center gap-1.5 px-3 py-1.5 {{ $newAlertsCount > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-700 hover:bg-slate-600' }} text-white rounded-md text-xs font-semibold uppercase transition">
+                        <i class="fas fa-bell"></i>
+                        <span>{{ $newAlertsCount }}</span>
+                        @if($newAlertsCount > 0)
+                            <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
+                        @endif
+                    </button>
+
+                    {{-- Выпадающий список алертов --}}
+                    {{-- Ширина: растягивается по доступной ширине строки, но не больше 480px
+                              и не больше ширины экрана (с запасом 2rem по бокам). Минимум 320px. --}}
+                    <div x-show="showAlerts" x-cloak x-transition
+                         @click.outside="showAlerts = false"
+                         class="absolute right-0 top-full mt-1 min-w-[320px] max-w-[480px] w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
+
+                        <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-10">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-bell text-amber-400"></i>
+                                <span class="font-semibold text-sm uppercase">AI Алерты</span>
+                                @if($newAlertsCount > 0)
+                                    <span class="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">{{ $newAlertsCount }} новых</span>
+                                @endif
+                            </div>
+                            <button wire:click="acknowledgeAllAlerts"
+                                    wire:loading.attr="disabled"
+                                    class="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
+                                <span wire:loading.remove>Подтвердить все</span>
+                                <span wire:loading>...</span>
+                            </button>
+                        </div>
+
+                        <div class="divide-y divide-gray-100 text-center">
+                            @php $alerts = $this->recent_alerts; @endphp
+                            @foreach($alerts as $alert)
+                                @include('components.ai-alert-card', ['alert' => $alert])
+                            @endforeach
+                            @if($alerts->isEmpty())
+                                <div class="p-8 text-center text-gray-400 text-sm">
+                                    <i class="fas fa-check-circle text-3xl text-emerald-400 mb-2"></i>
+                                    <p>Нет активных алертов</p>
+                                    <p class="text-xs mt-1">Система работает нормально</p>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
                 <!-- Информация о пользователе и смене -->
                 <div class="text-right text-sm hidden sm:block">
                     <p class="text-gray-400">{{ Auth::user()->name }}</p>
@@ -1201,4 +1250,64 @@
 <!-- Подключаем стили и скрипты Leaflet (если еще не подключены) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    // =========================================
+    // Echo-подписки на публичные каналы мастера
+    // =========================================
+    // Дублируем нативные Livewire Echo listeners (#[On('echo:master,...')])
+    // для надёжности — нативные listeners иногда пропускают события,
+    // особенно при первом рендере. JS-подписка гарантированно работает,
+    // потому что Echo инициализируется в bootstrap.js до Livewire.
+
+    document.addEventListener('livewire:init', () => {
+        if (!window.Echo) {
+            console.warn('[Echo] window.Echo не инициализирован — подписки на master-каналы не работают');
+            return;
+        }
+
+        // Канал мастера — для уведомлений о зонах и обваловке
+        window.Echo.channel('master')
+            .listen('.zone.fill.warning', (data) => {
+                console.log('[Echo master] .zone.fill.warning', data);
+
+                // Toast напрямую — нативный listener может не сработать
+                const severity = data?.severity ?? 'warning';
+                const hours    = data?.hours_to_overflow ?? null;
+                const isCritical = severity === 'critical' || (hours !== null && hours < 3);
+                Livewire.dispatch('notify', [{
+                    type: isCritical ? 'error' : 'warning',
+                    message: data?.message ?? `Зона «${data?.zone_name ?? '—'}» заполнена на ${data?.fill_percent ?? 0}%.`,
+                }]);
+
+                // Триггерим обновление данных через стандартный механизм Livewire
+                // (можно диспатчить событие, которое слушает MasterPanel)
+                Livewire.dispatch('refresh-master-data');
+            })
+            .listen('.zone.needs.berm', (data) => {
+                console.log('[Echo master] .zone.needs.berm', data);
+                // Toast для критического случая — нативный listener может не сработать
+                Livewire.dispatch('notify', [{
+                    type: 'error',
+                    message: data?.message ?? `Зона «${data?.zone_name ?? '—'}» заполнена. Требуется обваловка!`,
+                }]);
+                Livewire.dispatch('refresh-master-data');
+            })
+            .listen('.berm.progress', (data) => {
+                console.log('[Echo master] .berm.progress', data);
+                // Toast для прогресса обваловки
+                const status = data?.status ?? 'in_progress';
+                const type = status === 'completed' ? 'success'
+                           : status === 'cancelled' ? 'info'
+                           : 'info';
+                if (data?.message) {
+                    Livewire.dispatch('notify', [{ type, message: data.message }]);
+                }
+                Livewire.dispatch('refresh-master-data');
+            });
+
+        console.log('[Echo] Подписка на канал master активна');
+    });
+</script>
+
 </div>

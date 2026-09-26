@@ -9,6 +9,7 @@ use App\Models\Miner;
 use App\Models\Zone;
 use App\Models\SystemSetting;
 use App\Events\RoutesUpdated;
+use App\Events\ZoneFillWarning;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -198,7 +199,6 @@ class AnomalyDetectionService
                 'status'      => AiAlert::STATUS_NEW,
             ]);
 
-
             Log::info('AnomalyDetection: алерт производительности забоя', [
                 'miner_id' => $trip->miner_id,
                 'deviation_pct' => $deviationPct,
@@ -280,6 +280,14 @@ class AnomalyDetectionService
 
         $fillPct = ($zone->volume / $zone->capacity) * 100;
 
+        Log::debug('AnomalyDetection: analyzeZoneFill called', [
+            'zone_id'      => $zone->id,
+            'zone_name'    => $zone->name_zone,
+            'volume'       => $zone->volume,
+            'capacity'     => $zone->capacity,
+            'fill_pct'     => round($fillPct, 1),
+        ]);
+
         if ($fillPct < 80) {
             return;
         }
@@ -294,10 +302,6 @@ class AnomalyDetectionService
         $remainingCapacity = $zone->capacity - $zone->volume;
         $hoursToOverflow = $recentVolume > 0 ? $remainingCapacity / $recentVolume : null;
 
-        if (AiAlert::hasActiveAlert(AiAlert::TYPE_ZONE_OVERFLOW, $zone->id, 'zone')) {
-            return;
-        }
-
         $severity = $fillPct > 90 ? AiAlert::SEVERITY_CRITICAL : AiAlert::SEVERITY_WARNING;
         $message = "Зона «{$zone->name_zone}» заполнена на " . round($fillPct) . '%.';
 
@@ -309,30 +313,75 @@ class AnomalyDetectionService
             $message .= " Требуется контроль.";
         }
 
-        AiAlert::create([
-            'type'        => AiAlert::TYPE_ZONE_OVERFLOW,
-            'severity'    => $severity,
-            'title'       => "Переполнение зоны: {$zone->name_zone} (" . round($fillPct) . '%)',
-            'message'     => $message,
-            'data'        => [
-                'zone_id'           => $zone->id,
-                'zone_name'         => $zone->name_zone,
-                'dump_id'           => $zone->dump_id,
-                'volume'            => $zone->volume,
-                'capacity'          => $zone->capacity,
-                'fill_pct'          => round($fillPct, 1),
-                'recent_volume_hr'  => $recentVolume,
-                'hours_to_overflow' => $hoursToOverflow !== null ? round($hoursToOverflow, 1) : null,
-            ],
-            'entity_type' => 'zone',
-            'entity_id'   => $zone->id,
-            'status'      => AiAlert::STATUS_NEW,
-        ]);
+        $alertData = [
+            'zone_id'           => $zone->id,
+            'zone_name'         => $zone->name_zone,
+            'dump_id'           => $zone->dump_id,
+            'volume'            => $zone->volume,
+            'capacity'          => $zone->capacity,
+            'fill_pct'          => round($fillPct, 1),
+            'recent_volume_hr'  => $recentVolume,
+            'hours_to_overflow' => $hoursToOverflow !== null ? round($hoursToOverflow, 1) : null,
+        ];
+
+        // === Логика AiAlert: создаём только при первом превышении,
+        // при последующих — обновляем существующий с новыми данными.
+        // Это позволяет алерт-центру иметь ОДНУ карточку на зону, но
+        // с актуальными метриками.
+        $existingAlert = AiAlert::active()
+            ->where('type', AiAlert::TYPE_ZONE_OVERFLOW)
+            ->where('entity_type', 'zone')
+            ->where('entity_id', $zone->id)
+            ->first();
+
+        if ($existingAlert) {
+            // Обновляем существующий алерт новыми данными
+            $existingAlert->update([
+                'severity' => $severity,
+                'title'    => "Переполнение зоны: {$zone->name_zone} (" . round($fillPct) . '%)',
+                'message'  => $message,
+                'data'     => $alertData,
+            ]);
+            Log::info('AnomalyDetection: обновлён существующий AiAlert', [
+                'alert_id' => $existingAlert->id,
+                'zone_id'  => $zone->id,
+                'fill_pct' => round($fillPct, 1),
+            ]);
+        } else {
+            // Создаём новый
+            AiAlert::create([
+                'type'        => AiAlert::TYPE_ZONE_OVERFLOW,
+                'severity'    => $severity,
+                'title'       => "Переполнение зоны: {$zone->name_zone} (" . round($fillPct) . '%)',
+                'message'     => $message,
+                'data'        => $alertData,
+                'entity_type' => 'zone',
+                'entity_id'   => $zone->id,
+                'status'      => AiAlert::STATUS_NEW,
+            ]);
+            Log::info('AnomalyDetection: создан новый AiAlert', [
+                'zone_id' => $zone->id,
+                'fill_pct' => round($fillPct, 1),
+            ]);
+        }
+
+        // === ВСЕГДА отправляем вебсокет-событие ZoneFillWarning —
+        // даже если AiAlert уже есть. Это real-time уведомление для
+        // мастера/диспетчера о каждой выгрузке в зону >80%.
+        // Раньше тут был баг: событие отправлялось только при создании
+        // нового AiAlert, поэтому при последующих выгрузках мастер не
+        // получал toast (а должен был видеть каждую выгрузку).
+        try {
+            event(new ZoneFillWarning($zone, $hoursToOverflow));
+        } catch (\Exception $e) {
+            Log::error('Failed to broadcast ZoneFillWarning: ' . $e->getMessage());
+        }
 
         Log::info('AnomalyDetection: алерт переполнения зоны', [
             'zone_id' => $zone->id,
             'fill_pct' => round($fillPct, 1),
             'hours_to_overflow' => $hoursToOverflow !== null ? round($hoursToOverflow, 1) : null,
+            'alert_action' => $existingAlert ? 'updated' : 'created',
         ]);
     }
 

@@ -10,7 +10,7 @@ use App\Models\Truck;
 use App\Models\Miner;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
-
+use Illuminate\Support\Facades\Log;
 
 #[Layout('components.layouts.app')]
 #[Title('Панель мастера')]
@@ -75,6 +75,74 @@ class MasterPanel extends Component
     public function mount(ShiftService $shiftService)
     {
         $this->shift = $shiftService->getCurrentShift();
+        $this->loadMasterData();
+    }
+    // ==========================================
+    // AI АЛЕРТЫ (для виджета в шапке — как у диспетчера)
+    // ==========================================
+
+    /**
+     * Количество новых (непросмотренных) алертов.
+     */
+    public function getNewAlertsCountProperty(): int
+    {
+        return \App\Models\AiAlert::new()->count();
+    }
+
+    /**
+     * Активные алерты (для виджета).
+     */
+    public function getRecentAlertsProperty()
+    {
+        return \App\Models\AiAlert::active()
+            ->orderBy('created_at', 'desc')
+            ->limit(20)
+            ->get();
+    }
+
+    /**
+     * Подтвердить алерт.
+     */
+    public function acknowledgeAlert(int $alertId): void
+    {
+        $alert = \App\Models\AiAlert::find($alertId);
+        if ($alert) {
+            $alert->acknowledge(auth()->id());
+        }
+    }
+
+    /**
+     * Подтвердить все алерты.
+     */
+    public function acknowledgeAllAlerts(): void
+    {
+        \App\Models\AiAlert::new()->update([
+            'status' => \App\Models\AiAlert::STATUS_ACKNOWLEDGED,
+            'acknowledged_at' => now(),
+            'acknowledged_by' => auth()->id(),
+        ]);
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Все алерты подтверждены']);
+    }
+
+
+    /**
+     * Обработчик события refresh-master-data (от JS Echo-подписки).
+     * Перегружает данные панели — нужно когда приходят вебсокеты
+     * о заполнении зон, обваловке и т.д.
+     */
+    #[On('refresh-master-data')]
+    public function refreshMasterData(): void
+    {
+        $this->loadMasterData();
+    }
+
+    /**
+     * Загрузка всех данных панели. Вызывается из mount() и refreshMasterData().
+     * Вынесено в отдельный метод чтобы можно было перезагружать данные
+     * при получении вебсокет-событий без полного ре-инита компонента.
+     */
+    protected function loadMasterData(): void
+    {
         $this->rocks = \App\Models\Rock::all();
         // 1. Реальная сводка по самосвалам
         $this->trucksSummary = [
@@ -471,6 +539,45 @@ class MasterPanel extends Component
         ]);
 
         // Обновляем данные — список зон, активные обваловки
+        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+    }
+
+    /**
+     * Обработчик вебсокет-события ZoneFillWarning.
+     * Зона заполняется (80-99%) — заблаговременное предупреждение.
+     *
+     * В отличие от ZoneNeedsBerm (когда зона уже полная), это событие
+     * даёт мастеру время подготовить обваловку заранее — пока можно
+     * ещё принимать самосвалы в зону.
+     */
+    #[On('echo:master,zone.fill.warning')]
+    public function onZoneFillWarning($event): void
+    {
+        $zoneName = $event['zone_name'] ?? '—';
+        $dumpName = $event['dump_name'] ?? '—';
+        $fillPct  = $event['fill_percent'] ?? 0;
+        $hours    = $event['hours_to_overflow'] ?? null;
+        $severity = $event['severity'] ?? 'warning';
+        $message  = $event['message'] ?? "Зона «{$zoneName}» заполнена на {$fillPct}%.";
+
+        // Если hours_to_overflow < 3 или fill_pct >= 95 — error, иначе warning
+        $notifyType = ($severity === 'critical' || ($hours !== null && $hours < 3))
+            ? 'error'
+            : 'warning';
+
+        $this->dispatch('notify', [
+            'type' => $notifyType,
+            'message' => $message,
+        ]);
+
+        \Illuminate\Support\Facades\Log::info('MasterPanel: received ZoneFillWarning', [
+            'zone_id' => $event['zone_id'] ?? null,
+            'zone_name' => $zoneName,
+            'fill_percent' => $fillPct,
+            'hours_to_overflow' => $hours,
+        ]);
+
+        // Обновляем данные в интерфейсе — нужно перерисовать прогресс-бары заполнения зон
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
     }
 
