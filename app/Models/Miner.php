@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
+
 
 /**
  * Miner - забой (экскаватор)
@@ -331,10 +333,20 @@ class Miner extends Model
         $trips = $this->getRecentTrips(5);
         $avgTripTime = null;
 
+        // ФИЛЬТР АНОМАЛИЙ: отбрасываем рейсы длиннее 4 часов (240 минут).
+        // Причина: в разработке/тесте оператор мог забыть завершить рейс,
+        // и он завис на 5-7 дней. Один такой рейс ломает avgTripTime →
+        // получается recommended=7267 / 10289 / 80 (см. лог).
+        // 4 часа — верхняя граница нормального рейса самосвала в карьере.
+        $MAX_TRIP_MINUTES = 240;
+
         $tripTimes = $trips->filter(function ($trip) {
             return $trip->started_at && $trip->completed_at;
         })->map(function ($trip) {
             return $trip->started_at->diffInSeconds($trip->completed_at) / 60;
+        })->filter(function ($minutes) use ($MAX_TRIP_MINUTES) {
+            // Отбрасываем аномальные (>4 часов) и нулевые/отрицательные
+            return $minutes > 0 && $minutes <= $MAX_TRIP_MINUTES;
         });
 
         if ($tripTimes->isNotEmpty()) {
@@ -350,6 +362,32 @@ class Miner extends Model
         } else {
             // Упрощённый расчёт: 2 рейса = 1 машина загружена, 1 в пути
             $recommended = max(2, round(2 + ($avgWaitTime / $loadTime)));
+        }
+
+        // CLAMP: в реальной карьере на один забой никогда не нужно >10 самосвалов.
+        // Если recommended > 10 — это значит, что либо avgTripTime аномально большой,
+        // либо loadTime аномально маленький (например, target_load_time в секундах
+        // обработано как минуты). Возвращаем безопасный минимум = 2.
+        //
+        // Раньше тут вылетало recommended=7267 / 10289 / 80 → приоритет не считал
+        // забой недозагруженным (current=1 vs recommended-1=7266 → balanced).
+        //
+        // Используем 2 (а не 5) — потому что 2 это безопасный минимум:
+        // - При current=0: 0 < 2-1=1 → -20 (недозагруженный) ✅ правильно
+        // - При current=2: 2 >= 2 → +50 (перегруженный) — перестраховка,
+        //   но безопаснее чем думать что забор вместит 5
+        if ($recommended > 10 || $recommended < 1) {
+            Log::warning('Miner.getRecommendedTruckCount: аномальное recommended, клампим', [
+                'miner_id'        => $this->id,
+                'miner_name'      => $this->name_miner,
+                'avgTripTime'     => $avgTripTime,
+                'loadTime'        => $loadTime,
+                'avgLoadTime'     => $avgLoadTime,
+                'targetLoadTime'  => $targetLoadTime,
+                'raw_recommended' => $recommended,
+                'clamped_to'      => 2,
+            ]);
+            $recommended = 2; // Безопасный минимум — забой не резиновый
         }
 
         return [

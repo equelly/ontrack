@@ -44,19 +44,17 @@ Broadcast::channel('driver.{truckId}', function ($user, $truckId) {
     return $truck && (int)$user->id === (int)$truck->driver_id;
 });
 
-// Канал экскаватора/забоя - только операторы закреплённые за экскаватором
+// Канал экскаватора/забоя - операторы закреплённые за экскаватором
 Broadcast::channel('miner.{id}', function ($user, $id) {
-    // Перезагружаем пользователя из базы, чтобы получить актуальный miner_id
     $userFresh = \App\Models\User::find($user->id);
     
     Log::debug('CHANNEL miner AUTH', [
         'user_id' => $user->id,
         'user_role' => $user->role,
+        'user_position' => $user->position,
         'user_miner_id_old' => $user->miner_id,
         'user_miner_id_fresh' => $userFresh?->miner_id,
         'channel_miner_id' => $id,
-        'role_check' => $user->role === 'excavator_operator',
-        'miner_id_check' => $userFresh ? ((int)$userFresh->miner_id === (int)$id) : false,
         'is_admin' => $user->role === 'admin',
     ]);
 
@@ -65,10 +63,12 @@ Broadcast::channel('miner.{id}', function ($user, $id) {
         return true;
     }
 
-    // Оператор экскаватора - если привязан к этому экскаватору (проверяем свежие данные)
-    return $user->role === 'excavator_operator' 
-        && $userFresh 
-        && (int)$userFresh->miner_id === (int)$id;
+    // Проверяем position (английское значение: 'excavator_operator', 'master' и т.д.)
+    // и совпадение miner_id
+    $isAuthorizedRole = in_array($user->position, ['excavator_operator', 'master', 'admin']);
+    $minerIdMatches = $userFresh && (int)$userFresh->miner_id === (int)$id;
+    
+    return $isAuthorizedRole && $minerIdMatches;
 });
 
 // Канал диспетчера - только диспетчеры и админы
@@ -76,7 +76,8 @@ Broadcast::channel('dispatcher', function ($user) {
     Log::debug('CHANNEL dispatcher AUTH', [
         'user_id' => $user->id,
         'user_role' => $user->role,
+        'user_position' => $user->position,
     ]);
 
-    return in_array($user->role, ['dispatcher', 'admin']);
+    return in_array($user->position, ['dispatcher', 'admin']) || $user->role === 'admin';
 });

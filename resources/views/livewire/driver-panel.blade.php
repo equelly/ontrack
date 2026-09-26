@@ -550,7 +550,6 @@
         </div>
     </main>
     @endif
-
     <!-- Модальные окна (Tailwind + JS overlay) -->
     @if($showZoneModal)
     <div wire:key="zone-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" style="display: flex;">
@@ -735,31 +734,8 @@
             subscribeToTruckChannels({{ $truck->id }});
             @endif
 
-            Livewire.on('notify', (data) => {
-                const event = Array.isArray(data) ? data[0] : data;
-                if (!event || !event.message) return;
-
-                const container = document.getElementById('global-toast-container');
-                const toast = document.createElement('div');
-
-                const bgClass = event.type === 'success' ? 'bg-emerald-500' :
-                               event.type === 'error' ? 'bg-red-500' :
-                               event.type === 'warning' ? 'bg-amber-500' :
-                               'bg-blue-500';
-
-                toast.className = `${bgClass} text-white px-4 py-2 rounded-md shadow-lg mb-2 flex justify-between items-center text-sm max-w-xs`;
-                toast.innerHTML = `
-                    <span>${event.message}</span>
-                    <button onclick="this.parentElement.remove()" class="ml-4 text-xl leading-none">&times;</button>
-                `;
-                container.appendChild(toast);
-
-                setTimeout(() => {
-                    toast.style.transition = 'opacity 0.5s';
-                    toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 500);
-                }, 5000);
-            });
+            // notify обрабатывается в layout (components/layouts/app.blade.php)
+            // Здесь НЕ регистрируем — чтобы не было дублей
 
             Livewire.on('restart-timer', () => setTimeout(startTimer, 50));
             Livewire.on('set-cookie', (data) => {
@@ -775,4 +751,4 @@
             });
         });
     </script>
-</div>
+</div>                    

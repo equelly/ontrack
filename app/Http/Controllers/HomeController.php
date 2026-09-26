@@ -37,7 +37,7 @@ class HomeController extends Controller
             case 'excavator_operator':
                 return redirect()->route('excavator.index');
             case 'master':
-                return redirect()->route('master');
+                return redirect()->route('master.panel');
             default:
                 return redirect()->route('dump.index');
         }

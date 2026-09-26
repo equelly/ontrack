@@ -356,15 +356,15 @@ class DriverPanel extends Component
         try {
             $routeService = app(RouteAssignmentService::class);
             $routeService->assignForTruck($this->truck);
-            
+
             // Маршрут найден! Выключаем поиск.
             $this->isSearchingRoute = false;
             $this->loadData();
 
-            $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => 'Маршрут успешно назначен!',
-            ]);
+            // NOTE: notify НЕ диспатчим здесь — RouteAssignmentService::assignForTruck
+            // отправляет DriverRouteUpdated(action='route_assigned') через Echo,
+            // и onRouteUpdated() покажет toast "Назначен новый маршрут!".
+            // Раньше тут был дубль (success + info) — теперь только один toast.
 
         } catch (NoRouteAvailableException $e) {
             // Точная причина, почему маршрута нет
@@ -535,11 +535,10 @@ class DriverPanel extends Component
             // Проверяем, есть ли запланированные задачи обслуживания
             $this->checkPendingServiceTasks();
 
-            // Уведомляем водителя
-            $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => 'Рейс завершён. Топливо списано.',
-            ]);
+            // NOTE: notify НЕ диспатчим здесь — TruckStatusService::changeStatus('completed')
+            // отправляет DriverRouteUpdated(action='route_completed') через Echo,
+            // и onRouteUpdated() покажет toast "Рейс завершён!".
+            // Раньше тут был дубль (success из completeTrip + success из onRouteUpdated).
 
         } catch (\Exception $e) {
             Log::error('Complete trip failed', ['error' => $e->getMessage()]);

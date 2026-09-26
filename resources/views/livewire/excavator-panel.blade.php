@@ -148,7 +148,7 @@
             <!-- Показатели производительности -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">У забоя</p>
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">К забою</p>
                     <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ $productivityStats['current_trucks'] ?? 0 }}</p>
                 </div>
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
@@ -369,31 +369,8 @@
         @endif
 
         document.addEventListener('livewire:init', () => {
-            Livewire.on('notify', (data) => {
-                const event = Array.isArray(data) ? data[0] : data;
-                if (!event || !event.message) return;
-
-                const container = document.getElementById('global-toast-container');
-                const toast = document.createElement('div');
-
-                const bgClass = event.type === 'success' ? 'bg-emerald-500' :
-                               event.type === 'error' ? 'bg-red-500' :
-                               event.type === 'warning' ? 'bg-amber-500' :
-                               'bg-blue-500';
-
-                toast.className = `${bgClass} text-white px-4 py-2 rounded-md shadow-lg mb-2 flex justify-between items-center text-sm max-w-xs`;
-                toast.innerHTML = `
-                    <span>${event.message}</span>
-                    <button onclick="this.parentElement.remove()" class="ml-4 text-xl leading-none">&times;</button>
-                `;
-                container.appendChild(toast);
-
-                setTimeout(() => {
-                    toast.style.transition = 'opacity 0.5s';
-                    toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 500);
-                }, 5000);
-            });
+            // notify обрабатывается в layout (components/layouts/app.blade.php)
+            // Здесь НЕ регистрируем — чтобы не было дублей
 
             Livewire.on('set-cookie', (data) => {
                 const event = Array.isArray(data) ? data[0] : data;
@@ -421,10 +398,26 @@
 
             window.Echo.private(`miner.${minerId}`)
                 .listen('.excavator.notification', (data) => {
+                    console.log('[Echo] Получено .excavator.notification', data);
                     Livewire.dispatch('refresh-miner-data');
+
+                    // Показываем toast напрямую — нативный Livewire Echo listener
+                    // может не сработать, если $this->miner ещё null в момент
+                    // построения getListeners() (miner.0 канал — мимо).
+                    const payload = data?.payload ?? {};
+                    const message = payload.message ?? data?.message ?? 'Новое уведомление';
+                    const type = (data?.type === 'truck_assigned' || payload.type === 'success')
+                        ? 'success'
+                        : 'info';
+                    Livewire.dispatch('notify', [{ type, message }]);
                 })
                 .listen('.loading.started', (data) => {
+                    console.log('[Echo] Получено .loading.started', data);
                     Livewire.dispatch('refresh-miner-data');
+
+                    // Дублируем toast — нативный listener может не сработать
+                    const message = data?.message ?? `Самосвал ${data?.truck_number ?? ''} начал погрузку`;
+                    Livewire.dispatch('notify', [{ type: 'info', message }]);
                 });
         }
 
@@ -525,7 +518,7 @@
                     <div class="flex items-center gap-3">
                         <i class="fas fa-file-alt text-2xl"></i>
                         <div>
-                            <h3 class="text-lg font-semibold">Заявка №{{ $viewingOrderId }}</h3>
+                            <h3 class="text-lg font-semibold">Заявка #{{ $viewingOrderId }}</h3>
                             <p class="text-sm text-white/90">Детали заявки</p>
                         </div>
                     </div>
@@ -623,41 +616,8 @@
     </div>
 
     {{-- Локальный toast-контейнер — внутри компонента, после модалок.
-         z-index выше модалок (99999), гарантированно поверх. --}}
+         z-index выше модалок (99999), гарантированно поверх.
+         Обработчик notify — в layout (components/layouts/app.blade.php),
+         он найдёт этот контейнер через global-toast-container. --}}
     <div id="excavator-toast-container" class="fixed top-4 right-4 p-4 flex flex-col items-end gap-2 pointer-events-none" style="z-index: 100000 !important;"></div>
-
-    <!-- <script>
-        document.addEventListener('livewire:init', () => {
-            Livewire.on('notify', (data) => {
-                const event = Array.isArray(data) ? data[0] : data;
-                if (!event || !event.message) return;
-
-                // Сначала пробуем локальный контейнер, потом глобальный
-                let container = document.getElementById('excavator-toast-container');
-                if (!container) container = document.getElementById('global-toast-container');
-                if (!container) return;
-
-                const toast = document.createElement('div');
-                const bgClass = event.type === 'success' ? 'bg-emerald-500' :
-                               event.type === 'error'   ? 'bg-red-500'    :
-                               event.type === 'warning' ? 'bg-amber-500'  :
-                               'bg-blue-500';
-                const icon = event.type === 'success' ? 'fa-check-circle'       :
-                             event.type === 'error'   ? 'fa-exclamation-circle' :
-                             event.type === 'warning' ? 'fa-exclamation-triangle' :
-                             'fa-info-circle';
-
-                toast.className = bgClass + ' text-white px-4 py-3 rounded-md shadow-lg flex items-center gap-2 text-sm max-w-xs pointer-events-auto';
-                toast.innerHTML = '<i class="fas ' + icon + ' text-lg flex-shrink-0"></i><span class="flex-1">' + event.message + '</span><button onclick="this.parentElement.remove()" class="ml-2 text-xl leading-none hover:opacity-70">&times;</button>';
-                container.appendChild(toast);
-
-                // Авто-удаление
-                setTimeout(() => {
-                    toast.style.transition = 'opacity 0.5s';
-                    toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 500);
-                }, 5000);
-            });
-        });
-    </script> -->
 </div>

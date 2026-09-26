@@ -111,6 +111,53 @@ class MainDispatcherPanel extends Component
         $this->zoneSharingThreshold = SystemSetting::getZoneSharingThreshold();
     }
 
+    // ==========================================
+    // AI АЛЕРТЫ
+    // ==========================================
+
+    /**
+     * Количество новых (непросмотренных) алертов.
+     */
+    public function getNewAlertsCountProperty(): int
+    {
+        return \App\Models\AiAlert::new()->count();
+    }
+
+    /**
+     * Активные алерты (для виджета).
+     */
+    public function getRecentAlertsProperty()
+    {
+        return \App\Models\AiAlert::active()
+            ->orderBy('created_at', 'desc')
+            ->limit(20)
+            ->get();
+    }
+
+    /**
+     * Подтвердить алерт.
+     */
+    public function acknowledgeAlert(int $alertId): void
+    {
+        $alert = \App\Models\AiAlert::find($alertId);
+        if ($alert) {
+            $alert->acknowledge(auth()->id());
+        }
+    }
+
+    /**
+     * Подтвердить все.
+     */
+    public function acknowledgeAllAlerts(): void
+    {
+        \App\Models\AiAlert::new()->update([
+            'status' => \App\Models\AiAlert::STATUS_ACKNOWLEDGED,
+            'acknowledged_at' => now(),
+            'acknowledged_by' => auth()->id(),
+        ]);
+        $this->dispatch('notify', ['type' => 'info', 'message' => 'Все алерты подтверждены']);
+    }
+
     /**
      * Обработчик изменения порога адаптивной балансировки — сохраняет в БД.
      */

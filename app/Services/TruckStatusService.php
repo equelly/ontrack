@@ -589,6 +589,21 @@ class TruckStatusService
                 } catch (\Exception $e) {
                     Log::error('BermService::onTruckUnloaded failed: ' . $e->getMessage());
                 }
+
+                // === AI: Анализ аномалий после завершения рейса ===
+                try {
+                    app(\App\Services\AnomalyDetectionService::class)
+                        ->analyzeCompletedTrip($trip->fresh());
+
+                    // Анализ заполнения зоны
+                    if ($zone) {
+                        app(\App\Services\AnomalyDetectionService::class)
+                            ->analyzeZoneFill($zone->fresh());
+                    }
+                } catch (\Exception $e) {
+                    Log::error('AnomalyDetection failed: ' . $e->getMessage());
+                }
+
             } else {
                 Log::warning("Trip {$trip->id} completed without zone - volume not added to any zone");
             }

@@ -60,6 +60,79 @@
                 </div>
             </div>
 
+            {{-- AI Алерты — виджет --}}
+            @php $newAlertsCount = $this->new_alerts_count; @endphp
+            @if($newAlertsCount > 0)
+            <div x-data="{ showAlerts: false }" class="relative ml-2">
+                <button @click="showAlerts = !showAlerts"
+                        class="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
+                    <i class="fas fa-bell"></i>
+                    <span>{{ $newAlertsCount }}</span>
+                    @if($newAlertsCount > 0)
+                        <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
+                    @endif
+                </button>
+
+                {{-- Выпадающий список алертов --}}
+                <div x-show="showAlerts" x-cloak x-transition
+                     class="absolute right-0 top-full mt-1 w-[480px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
+
+                    <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-10">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-bell text-amber-400"></i>
+                            <span class="font-semibold text-sm uppercase">AI Алерты</span>
+                            @if($newAlertsCount > 0)
+                                <span class="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">{{ $newAlertsCount }} новых</span>
+                            @endif
+                        </div>
+                        <button wire:click="acknowledgeAllAlerts"
+                                wire:loading.attr="disabled"
+                                class="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
+                            <span wire:loading.remove>Подтвердить все</span>
+                            <span wire:loading>...</span>
+                        </button>
+                    </div>
+
+                    <div class="divide-y divide-gray-100">
+                        @php $alerts = $this->recent_alerts; @endphp
+                        @foreach($alerts as $alert)
+                        <div class="p-3 {{ $alert->status === 'new' ? 'bg-red-50' : 'bg-white' }} hover:bg-slate-50 transition">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="px-1.5 py-0.5 text-[10px] font-bold rounded {{ $alert->severity === 'critical' ? 'bg-red-600 text-white' : ($alert->severity === 'warning' ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white') }}">
+                                            {{ $alert->severity === 'critical' ? 'КРИТИЧНО' : ($alert->severity === 'warning' ? 'ВНИМАНИЕ' : 'ИНФО') }}
+                                        </span>
+                                        @if($alert->status === 'new')
+                                            <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                                        @endif
+                                        <small class="text-gray-400">{{ $alert->created_at->diffForHumans() }}</small>
+                                    </div>
+                                    <p class="text-sm font-medium text-gray-800">{{ $alert->title }}</p>
+                                    <p class="text-xs text-gray-600 mt-1">{{ $alert->message }}</p>
+                                </div>
+                                @if($alert->status === 'new')
+                                    <button wire:click="acknowledgeAlert({{ $alert->id }})"
+                                            class="px-2 py-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-md text-xs font-medium transition whitespace-nowrap">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                @else
+                                    <i class="fas fa-check-circle text-emerald-400 text-sm"></i>
+                                @endif
+                            </div>
+                        </div>
+                        @endforeach
+                        @if($alerts->isEmpty())
+                            <div class="p-6 text-center text-gray-400 text-sm">
+                                <i class="fas fa-check-circle text-2xl text-emerald-400 mb-2"></i>
+                                <p>Нет активных алертов</p>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+            @endif
+
             <!-- ПРАВЫЙ БЛОК: Обновить, Пользователь, Выход -->
             <div class="ml-auto flex items-center gap-4">
                 <button wire:click="runShiftPlanning" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 rounded-md font-semibold uppercase text-xs tracking-wider hover:bg-emerald-700 whitespace-nowrap">
@@ -620,9 +693,9 @@
                         <div>
                             <h4 class="font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="fas fa-exclamation-circle text-red-500"></i> Важные правила</h4>
                             <div class="pl-6 space-y-1.5 text-xs">
-                                <div>• Зона принимает только <strong>ОДНУ породу</strong> — нельзя смешивать (кроме fallback: руда_ЦПТ → руда → руда_S)</div>
+                                <div>• Зона принимает только <strong>ОДНУ породу</strong> — нельзя смешивать (кроме: руда_ЦПТ → руда → руда_S)</div>
                                 <div>• <strong>Нельзя сменить породу в открытой зоне</strong> — сначала закройте зону для завозки и отгрузите остатки</div>
-                                <div>• Без <strong>current_rock_id</strong> у забоя маршруты не назначаются</div>
+                                <div>• Без <strong>текущей породы</strong> у забоя маршруты не назначаются</div>
                                 <div>• Без <strong>расстояний</strong> маршрут не участвует в оптимизации (задаются в Панели Мастера → Забои → «Расстояния»)</div>
                                 <div>• <strong>Аварийный режим</strong>: если все активные маршруты забоя недоступны — система сама активирует первый доступный резервный</div>
                                 <div>• <strong>Порог разделения зон</strong> настраивается в Настройках (0-100%, по умолчанию 30%)</div>
@@ -1568,58 +1641,7 @@
             </div>
         </div>
     @endif
-<!-- Модальное окно интерактивной карты -->
-<div x-data="{ showMap: false, initMap() { 
-        // Инициализируем карту только один раз
-        if (!window.leafletMapInstance) {
-            // Добавлен параметр { attributionControl: false } для отключения логотипов
-            window.leafletMapInstance = L.map('leafletMap', { attributionControl: false }).setView([51.280247, 37.633032], 13); // Координаты вашего карьера
-            
-            // Спутниковый слой Esri
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: '© Esri',
-                maxZoom: 19
-            }).addTo(window.leafletMapInstance);
 
-            // Обработчик клика
-            window.leafletMapInstance.on('click', function(e) {
-                L.popup()
-                    .setLatLng(e.latlng)
-                    .setContent(`<b>Координаты:</b><br>Широта: ${e.latlng.lat.toFixed(6)}<br>Долгота: ${e.latlng.lng.toFixed(6)}`)
-                    .openOn(window.leafletMapInstance);
-            });
-        }
-        // Лекарство от скрытого окна: заставляем карту перерисоваться через 100мс после открытия
-        setTimeout(() => window.leafletMapInstance.invalidateSize(), 100);
-    } 
-    }">
-    <!-- Кнопка открытия карты -->
-    <button @click="showMap = true; initMap()" class="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase shadow-lg z-30">
-        🗺️ Открыть карту
-    </button>
-
-    <!-- Само окно карты -->
-    <div x-show="showMap" x-cloak class="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4" style="display: none;">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col">
-            <div class="p-4 border-b flex justify-between items-center">
-                <h5 class="font-bold text-gray-800 uppercase">Интерактивная карта карьера</h5>
-                <button @click="showMap = false" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
-            </div>
-            
-            <!-- Контейнер карты. Добавлен h-full -->
-            <div id="leafletMap" class="flex-1 w-full h-full bg-slate-200 rounded-b-xl overflow-hidden"></div>
-            
-            <div class="p-3 bg-slate-50 border-t text-xs text-gray-500">
-                <i class="fas fa-info-circle"></i> Кликните по карте, чтобы поставить точку.
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Подключаем стили и скрипты Leaflet (если еще не подключены) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-</div>
     <script>
         function updateTripTimers() {
             document.querySelectorAll('.trip-timer').forEach(el => {

@@ -439,8 +439,70 @@ class RouteAssignmentService
             // Дополняем единственный маршрут информацией для логирования
             $routes[0]['empty_run_km'] = $this->calculateEmptyRun($truck, $routes[0]['order']->miner_id);
             $routes[0]['miner_priority'] = $this->calculateMinerPriority($routes[0]['order']->miner_id);
+            Log::info('WRR: только один маршрут, выбор без сравнения', [
+                'truck_id'  => $truck->id,
+                'order_id'  => $routes[0]['order']->id,
+                'miner_id'  => $routes[0]['order']->miner_id,
+                'miner_name'=> $routes[0]['order']->miner?->name_miner,
+            ]);
             return $routes[0];
         }
+
+        // Считаем score для каждого маршрута (до сортировки) — нужно для логирования
+        $scoredRoutes = array_map(function($route) use ($truck) {
+            $order = $route['order'];
+
+            $baseScore = ($order->wrr_cursor ?? 0) / max($order->weight ?? 1, 1);
+            $loadingTimeSeconds = ($route['loading_time'] ?? 0) * 60;
+
+            $lastAssigned = $order->last_assigned_at;
+            $secondsSince = $lastAssigned ? now()->diffInSeconds($lastAssigned) : $loadingTimeSeconds;
+            $recentPenalty = ($secondsSince < $loadingTimeSeconds)
+                ? ($loadingTimeSeconds - $secondsSince) * 10
+                : 0;
+
+            $emptyRunKm = $this->calculateEmptyRun($truck, $order->miner_id);
+            $emptyRunPenalty = $emptyRunKm * self::EMPTY_RUN_COEFFICIENT;
+
+            $minerPriority = $this->calculateMinerPriority($order->miner_id);
+
+            // ВАЖНО: +minerPriority (не -!). Подробности в selectByWeightedWRR ниже.
+            $totalScore = $baseScore + $recentPenalty + $emptyRunPenalty + $minerPriority;
+
+            return [
+                'route'             => $route,
+                'order_id'          => $order->id,
+                'miner_id'          => $order->miner_id,
+                'miner_name'        => $order->miner?->name_miner,
+                'wrr_cursor'        => $order->wrr_cursor ?? 0,
+                'weight'            => $order->weight ?? 1,
+                'base_score'        => round($baseScore, 2),
+                'recent_penalty'    => round($recentPenalty, 2),
+                'empty_run_km'      => round($emptyRunKm, 2),
+                'empty_run_penalty' => round($emptyRunPenalty, 2),
+                'miner_priority'    => round($minerPriority, 2),
+                'total_score'       => round($totalScore, 2),
+            ];
+        }, $routes);
+
+        // Логируем ВСЕ маршруты с их scores — до сортировки
+        Log::info('WRR: список всех доступных маршрутов с scores', [
+            'truck_id'         => $truck->id,
+            'truck_location'   => $truck->getCurrentLocationDumpId(),
+            'routes_count'     => count($scoredRoutes),
+            'routes'           => array_map(fn($r) => [
+                'order_id'          => $r['order_id'],
+                'miner'             => $r['miner_name'] ?? ('#'.$r['miner_id']),
+                'cursor'            => $r['wrr_cursor'],
+                'weight'            => $r['weight'],
+                'base'              => $r['base_score'],
+                'recent_penalty'    => $r['recent_penalty'],
+                'empty_run_km'      => $r['empty_run_km'],
+                'empty_run_penalty' => $r['empty_run_penalty'],
+                'miner_priority'   => $r['miner_priority'],
+                'TOTAL'             => $r['total_score'],
+            ], $scoredRoutes),
+        ]);
 
         // Сортируем по общей сумме score
         usort($routes, function($a, $b) use ($truck) {
@@ -470,10 +532,16 @@ class RouteAssignmentService
             $minerPriorityB = $this->calculateMinerPriority($b['order']->miner_id);
 
             // Общий score = base + recent_penalty + empty_run_penalty + miner_priority
-            // Минус miner_priority, потому что недозагруженный забой имеет отрицательный приоритет
-            // (хочется, чтобы он выбирался раньше)
-            $scoreA = $baseScoreA + $recentPenaltyA + $emptyRunA - $minerPriorityA;
-            $scoreB = $baseScoreB + $recentPenaltyB + $emptyRunB - $minerPriorityB;
+            // ПЛЮС miner_priority, потому что недозагруженный забой имеет ОТРИЦАТЕЛЬНЫЙ приоритет
+            // (например -20), и +(-20) = -20 УМЕНЬШАЕТ score → забой выбирается раньше.
+            // Перегруженный забой имеет ПОЛОЖИТЕЛЬНЫЙ приоритет (+50), и +50 УВЕЛИЧИВАЕТ score.
+            // WRR выбирает минимальный score → недозагруженные забои выигрывают.
+            //
+            // РАНЬШЕ ТУТ БЫЛ МИНУС (- miner_priority) — это инвертировало логику:
+            // недозагруженные забои получали БОЛЬШИЙ score и никогда не выбирались.
+            // Баг проявлялся так: всегда выбирался забой с miner_priority=0 (как ЭКГ-9).
+            $scoreA = $baseScoreA + $recentPenaltyA + $emptyRunA + $minerPriorityA;
+            $scoreB = $baseScoreB + $recentPenaltyB + $emptyRunB + $minerPriorityB;
 
             return $scoreA <=> $scoreB;
         });
@@ -482,14 +550,23 @@ class RouteAssignmentService
         $routes[0]['empty_run_km'] = $this->calculateEmptyRun($truck, $routes[0]['order']->miner_id);
         $routes[0]['miner_priority'] = $this->calculateMinerPriority($routes[0]['order']->miner_id);
 
+        // Находим score выбранного (после сортировки — это минимальный)
+        $chosen = collect($scoredRoutes)->firstWhere('order_id', $routes[0]['order']->id);
+
         Log::info('WRR: выбран маршрут', [
-            'truck_id'        => $truck->id,
-            'truck_location'  => $truck->getCurrentLocationDumpId(),
-            'order_id'        => $routes[0]['order']->id,
-            'miner_id'        => $routes[0]['order']->miner_id,
-            'empty_run_km'    => $routes[0]['empty_run_km'],
-            'empty_run_penalty' => $routes[0]['empty_run_km'] * self::EMPTY_RUN_COEFFICIENT,
-            'miner_priority'  => $routes[0]['miner_priority'],
+            'truck_id'         => $truck->id,
+            'truck_location'   => $truck->getCurrentLocationDumpId(),
+            'order_id'         => $routes[0]['order']->id,
+            'miner_id'         => $routes[0]['order']->miner_id,
+            'miner_name'       => $routes[0]['order']->miner?->name_miner,
+            'empty_run_km'     => $routes[0]['empty_run_km'],
+            'empty_run_penalty'=> $routes[0]['empty_run_km'] * self::EMPTY_RUN_COEFFICIENT,
+            'miner_priority'   => $routes[0]['miner_priority'],
+            'chosen_score'     => $chosen['total_score'] ?? null,
+            'all_scores'       => array_map(fn($r) => [
+                'miner' => $r['miner_name'] ?? ('#'.$r['miner_id']),
+                'TOTAL' => $r['total_score'],
+            ], $scoredRoutes),
         ]);
 
         return $routes[0];

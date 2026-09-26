@@ -35,8 +35,10 @@
                 const event = Array.isArray(data) ? data[0] : data;
                 if (!event || !event.message) return;
 
-                const container = document.getElementById('global-toast-container');
-                if (!container) return;
+                // Сначала пробуем локальный контейнер компонента, потом глобальный
+                let container = document.getElementById('excavator-toast-container');
+                if (!container) container = document.getElementById('global-toast-container');
+
 
                 const toast = document.createElement('div');
 

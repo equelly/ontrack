@@ -865,22 +865,32 @@ class ExcavatorPanel extends Component
     #[On('refresh-miner-data')]
     public function refreshMinerData(): void
     {
-        Log::info('refresh-miner-data triggered');
+        Log::info('refresh-miner-data triggered', [
+            'selectedMinerId' => $this->selectedMinerId,
+            'miner_set' => $this->miner ? 'yes' : 'no',
+        ]);
         $this->loadMinerData();
     }
+
     protected function getListeners()
     {
-    // Получаем ID текущего экскаватора/майнера, который открыт на панели
-    $minerId = $this->miner?->id ?? 0;
+        $minerId = $this->miner?->id ?? 0;
 
-    return [
-        // Динамические приватные каналы для конкретного экскаватора (Livewire v3 синтаксис)
-        "echo-private:miner.{$minerId},.loading.started" => 'onLoadingStarted',
-        "echo-private:miner.{$minerId},.excavator.notification" => 'onExcavatorNotification',
-        
-        // Статические события (как у диспетчера) можно оставлять прямо здесь:
-        'refresh-miner-data' => 'onRefreshData',
-    ];
+        return [
+            // Echo-каналы НЕ регистрируем через Livewire-native listener —
+            // это создаёт дубль с JS-подпиской в excavator-panel.blade.php
+            // (window.Echo.private(`miner.${minerId}`).listen(...)).
+            //
+            // Старые нативные listeners:
+            //   "echo-private:miner.{$minerId},.loading.started" => 'onLoadingStarted',
+            //   "echo-private:miner.{$minerId},.excavator.notification" => 'onExcavatorNotification',
+            //
+            // Проблема: getListeners() строится ДО того, как $this->miner
+            // успевает загрузиться при первом рендере → слушал канал miner.0 (мимо).
+            // JS-подписка корректная, использует актуальный minerId.
+
+            // refresh-miner-data обрабатывается через #[On] выше
+        ];
     }
 
     // ==========================================
