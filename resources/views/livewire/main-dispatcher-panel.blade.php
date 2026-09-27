@@ -3,7 +3,7 @@
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
-    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
+    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl relative">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
             <!-- Статистика -->
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
@@ -63,14 +63,12 @@
             {{-- AI Алерты — виджет --}}
             @php $newAlertsCount = $this->new_alerts_count; @endphp
             @if($newAlertsCount > 0)
-            <div x-data="{ showAlerts: false }" class="relative ml-2">
+            <div x-data="{ showAlerts: false, openFilter: null }" class="ml-2">
                 <button @click="showAlerts = !showAlerts"
-                        class="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
+                        class="relative flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
                     <i class="fas fa-bell"></i>
                     <span>{{ $newAlertsCount }}</span>
-                    @if($newAlertsCount > 0)
-                        <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
-                    @endif
+                    <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
                 </button>
 
                 {{-- Выпадающий список алертов --}}
@@ -79,9 +77,9 @@
                           чтобы 2 колонки метрик влезали. --}}
                 <div x-show="showAlerts" x-cloak x-transition
                      @click.outside="showAlerts = false"
-                     class="absolute right-0 top-full mt-1 min-w-[320px] max-w-[480px] w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
+                     class="absolute right-0 top-full mt-1 min-w-[320px] max-w-[480px] w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[85vh] overflow-y-auto">
 
-                    <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-10">
+                    <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-20">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-bell text-amber-400"></i>
                             <span class="font-semibold text-sm uppercase">AI Алерты</span>
@@ -97,6 +95,99 @@
                         </button>
                     </div>
 
+                    {{-- Панель фильтров — аккордеон --}}
+                    @php
+                        $filterOptions = $this->alert_filter_options;
+                        $filtersActive = $this->alert_filters_active;
+                        // Считаем активные фильтры в каждой категории для бейджа
+                        $filterCounts = [
+                            'type'     => count($this->alertFilters['type'] ?? []),
+                            'severity' => count($this->alertFilters['severity'] ?? []),
+                            'entity'   => count($this->alertFilters['entity'] ?? []),
+                            'status'   => count($this->alertFilters['status'] ?? []),
+                        ];
+                    @endphp
+                    <div class="bg-slate-50 border-b border-gray-200 z-10">
+                        {{-- Заголовок панели фильтров: Показать/Скрыть + Сбросить --}}
+                        <div class="flex items-center justify-between px-3 py-2">
+                            <button @click="openFilter = (openFilter === 'all' ? null : 'all')"
+                                    class="text-xs font-semibold text-gray-700 hover:text-emerald-600 flex items-center gap-1.5">
+                                <i class="fas fa-filter"></i>
+                                <span>Фильтры</span>
+                                @if($filtersActive)
+                                    <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">
+                                        {{ array_sum($filterCounts) }} акт.
+                                    </span>
+                                @endif
+                                <i class="fas fa-chevron-down text-[10px] transition-transform"
+                                   :class="openFilter === 'all' ? 'rotate-180' : ''"></i>
+                            </button>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-500">
+                                    Показано: <strong class="text-gray-700">{{ $this->recent_alerts->count() }}</strong>
+                                </span>
+                                @if($filtersActive)
+                                    <button wire:click="resetAlertFilters"
+                                            class="px-2 py-0.5 text-[11px] rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition">
+                                        <i class="fas fa-times mr-0.5"></i>Сбросить
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
+
+                        {{-- Тело фильтров — раскрывается аккордеоном --}}
+                        <div x-show="openFilter === 'all'" x-cloak x-collapse class="px-3 pb-2.5 space-y-1.5">
+
+                            {{-- Категория: Тип --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Тип:</span>
+                                @foreach($filterOptions['type'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('type', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('type', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Категория: Severity --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Важн:</span>
+                                @foreach($filterOptions['severity'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('severity', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('severity', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Категория: Сущность --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Сущн:</span>
+                                @foreach($filterOptions['entity'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('entity', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('entity', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Категория: Статус --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Стат:</span>
+                                @foreach($filterOptions['status'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('status', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('status', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="divide-y divide-gray-100">
                         @php $alerts = $this->recent_alerts; @endphp
                         @foreach($alerts as $alert)
@@ -104,9 +195,9 @@
                         @endforeach
                         @if($alerts->isEmpty())
                             <div class="p-8 text-center text-gray-400 text-sm">
-                                <i class="fas fa-check-circle text-3xl text-emerald-400 mb-2"></i>
-                                <p>Нет активных алертов</p>
-                                <p class="text-xs mt-1">Система работает нормально</p>
+                                <i class="fas {{ $filtersActive ? 'fa-filter' : 'fa-check-circle' }} text-3xl {{ $filtersActive ? 'text-gray-400' : 'text-emerald-400' }} mb-2"></i>
+                                <p>{{ $filtersActive ? 'Нет алертов под фильтрами' : 'Нет активных алертов' }}</p>
+                                <p class="text-xs mt-1">{{ $filtersActive ? 'Измените фильтры или сбросьте их' : 'Система работает нормально' }}</p>
                             </div>
                         @endif
                     </div>

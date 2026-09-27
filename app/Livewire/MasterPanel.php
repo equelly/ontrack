@@ -12,6 +12,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Illuminate\Support\Facades\Log;
 
+
 #[Layout('components.layouts.app')]
 #[Title('Панель мастера')]
 
@@ -77,9 +78,21 @@ class MasterPanel extends Component
         $this->shift = $shiftService->getCurrentShift();
         $this->loadMasterData();
     }
+
     // ==========================================
     // AI АЛЕРТЫ (для виджета в шапке — как у диспетчера)
     // ==========================================
+
+    /**
+     * Фильтры для выпадающего списка AiAlerts.
+     * Каждый массив — список активных значений. Пустой массив = фильтр не применён.
+     */
+    public array $alertFilters = [
+        'type'     => [],
+        'severity' => [],
+        'entity'   => [],
+        'status'   => [],
+    ];
 
     /**
      * Количество новых (непросмотренных) алертов.
@@ -90,14 +103,108 @@ class MasterPanel extends Component
     }
 
     /**
-     * Активные алерты (для виджета).
+     * Активные алерты с применёнными фильтрами (для виджета).
      */
     public function getRecentAlertsProperty()
     {
-        return \App\Models\AiAlert::active()
-            ->orderBy('created_at', 'desc')
-            ->limit(20)
-            ->get();
+        $query = \App\Models\AiAlert::active();
+
+        if (!empty($this->alertFilters['type'])) {
+            $query->whereIn('type', $this->alertFilters['type']);
+        }
+        if (!empty($this->alertFilters['severity'])) {
+            $query->whereIn('severity', $this->alertFilters['severity']);
+        }
+        if (!empty($this->alertFilters['entity'])) {
+            $query->whereIn('entity_type', $this->alertFilters['entity']);
+        }
+        if (!empty($this->alertFilters['status'])) {
+            $query->whereIn('status', $this->alertFilters['status']);
+        }
+
+        return $query->orderBy('created_at', 'desc')->limit(50)->get();
+    }
+
+    /**
+     * Метаданные для фильтров — какие бывают типы/severity/сущности.
+     */
+    public function getAlertFilterOptionsProperty(): array
+    {
+        return [
+            'type' => [
+                ['value' => 'truck_anomaly',        'label' => 'Аномалия рейса',  'icon' => 'fa-truck'],
+                ['value' => 'productivity_drop',    'label' => 'Падение произв.', 'icon' => 'fa-chart-line'],
+                ['value' => 'empty_run_high',       'label' => 'Холостой пробег','icon' => 'fa-route'],
+                ['value' => 'zone_overflow',        'label' => 'Переполнение зоны','icon' => 'fa-layer-group'],
+                ['value' => 'maintenance_predict', 'label' => 'Риск поломки',    'icon' => 'fa-wrench'],
+            ],
+            'severity' => [
+                ['value' => 'critical', 'label' => 'Критично',  'icon' => 'fa-circle text-red-500'],
+                ['value' => 'warning',  'label' => 'Внимание', 'icon' => 'fa-circle text-amber-500'],
+                ['value' => 'info',      'label' => 'Инфо',     'icon' => 'fa-circle text-blue-500'],
+            ],
+            'entity' => [
+                ['value' => 'truck', 'label' => 'Самосвалы', 'icon' => 'fa-truck'],
+                ['value' => 'miner', 'label' => 'Забои',     'icon' => 'fa-hard-hat'],
+                ['value' => 'zone',  'label' => 'Зоны',       'icon' => 'fa-map-marker-alt'],
+                ['value' => 'fleet', 'label' => 'Парк',        'icon' => 'fa-truck-loading'],
+            ],
+            'status' => [
+                ['value' => 'new',          'label' => 'Новые',          'icon' => 'fa-circle text-red-500'],
+                ['value' => 'acknowledged', 'label' => 'Подтверждённые', 'icon' => 'fa-circle text-emerald-500'],
+            ],
+        ];
+    }
+
+    /**
+     * Активен ли фильтр (хотя бы один) — для кнопки "Сбросить".
+     */
+    public function getAlertFiltersActiveProperty(): bool
+    {
+        return !empty($this->alertFilters['type'])
+            || !empty($this->alertFilters['severity'])
+            || !empty($this->alertFilters['entity'])
+            || !empty($this->alertFilters['status']);
+    }
+
+    /**
+     * Переключить фильтр (вкл/выкл) по категории.
+     */
+    public function toggleAlertFilter(string $category, string $value): void
+    {
+        if (!isset($this->alertFilters[$category])) {
+            $this->alertFilters[$category] = [];
+        }
+
+        $idx = array_search($value, $this->alertFilters[$category], true);
+        if ($idx === false) {
+            $this->alertFilters[$category][] = $value;
+        } else {
+            unset($this->alertFilters[$category][$idx]);
+            $this->alertFilters[$category] = array_values($this->alertFilters[$category]);
+        }
+    }
+
+    /**
+     * Проверить, активен ли конкретный фильтр (для подсветки чипа).
+     */
+    public function isAlertFilterActive(string $category, string $value): bool
+    {
+        return isset($this->alertFilters[$category])
+            && in_array($value, $this->alertFilters[$category], true);
+    }
+
+    /**
+     * Сбросить все фильтры.
+     */
+    public function resetAlertFilters(): void
+    {
+        $this->alertFilters = [
+            'type'     => [],
+            'severity' => [],
+            'entity'   => [],
+            'status'   => [],
+        ];
     }
 
     /**
@@ -123,7 +230,6 @@ class MasterPanel extends Component
         ]);
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Все алерты подтверждены']);
     }
-
 
     /**
      * Обработчик события refresh-master-data (от JS Echo-подписки).
@@ -502,7 +608,7 @@ class MasterPanel extends Component
 
         $this->dispatch('notify', [
             'type' => 'error',
-            'message' => "⚠️ Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%. Требуется обваловка!",
+            'message' => "⚠️ Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%. Нужно подготовить зону для разгрузки!",
         ]);
 
         \Illuminate\Support\Facades\Log::info('MasterPanel: received ZoneNeedsBerm', [
