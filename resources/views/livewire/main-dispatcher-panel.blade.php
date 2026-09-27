@@ -3,7 +3,7 @@
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
     <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
-    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl relative">
+    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
         <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
             <!-- Статистика -->
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
@@ -63,7 +63,7 @@
             {{-- AI Алерты — виджет --}}
             @php $newAlertsCount = $this->new_alerts_count; @endphp
             @if($newAlertsCount > 0)
-            <div x-data="{ showAlerts: false }" class="ml-2">
+            <div x-data="{ showAlerts: false }" class="relative ml-2">
                 <button @click="showAlerts = !showAlerts"
                         class="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
                     <i class="fas fa-bell"></i>
@@ -78,8 +78,8 @@
                           и не больше ширины экрана (с запасом 2rem по бокам). Минимум 320px,
                           чтобы 2 колонки метрик влезали. --}}
                 <div x-show="showAlerts" x-cloak x-transition
-                    @click.outside="showAlerts = false"
-                    class="absolute right-4 top-full mt-1 w-[calc(100vw-2rem)] sm:w-[480px] min-w-[320px] max-w-[calc(100vw-2rem)] sm:max-w-[480px] bg-white text-gray-900 rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
+                     @click.outside="showAlerts = false"
+                     class="absolute right-0 top-full mt-1 min-w-[320px] max-w-[480px] w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[80vh] overflow-y-auto">
 
                     <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-10">
                         <div class="flex items-center gap-2">
@@ -1344,9 +1344,100 @@
             </div>
         </div>
 
-        <!-- Аналитика скоростей по маршрутам -->
-        <div x-show="tab === 'analyticsTab'" x-cloak class="mt-4" id="analyticsTab">
-            @php $routeSpeeds = $this->route_speeds; @endphp
+        <!-- Аналитика скоростей по маршрутам + тренды -->
+        <div x-show="tab === 'analyticsTab'" x-cloak class="mt-4 space-y-6" id="analyticsTab"
+             x-data="analyticsCharts"
+             x-init="
+                // Если пользователь уже на вкладке analyticsTab при загрузке — инициализируем сразу
+                if (tab === 'analyticsTab') {
+                    $nextTick(() => initCharts());
+                }
+                // Подписываемся на переключение вкладок
+                $watch('tab', (v) => {
+                    if (v === 'analyticsTab') {
+                        $nextTick(() => initCharts());
+                    }
+                });
+            "
+        >
+            {{-- Chart.js подключается в layout (components/layouts/app.blade.php) --}}
+
+            {{-- Данные для графиков передаются через скрытый JSON-блок, читаются из JS --}}
+            <script type="application/json" id="analytics-data">
+                {{ json_encode($this->analytics_trends) }}
+            </script>
+
+            {{-- KPI-карточки --}}
+            @php $trends = $this->analytics_trends; $kpi = $trends['kpi']; @endphp
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div class="bg-white p-3 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] text-gray-500 uppercase font-semibold">Добыто</p>
+                    <p class="text-xl font-bold text-emerald-600">{{ $kpi['total_volume'] }} <span class="text-xs">т</span></p>
+                </div>
+                <div class="bg-white p-3 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] text-gray-500 uppercase font-semibold">Рейсов</p>
+                    <p class="text-xl font-bold text-blue-600">{{ $kpi['total_trips'] }}</p>
+                </div>
+                <div class="bg-white p-3 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] text-gray-500 uppercase font-semibold">Ср. скорость</p>
+                    <p class="text-xl font-bold text-purple-600">{{ $kpi['avg_speed'] }} <span class="text-xs">км/ч</span></p>
+                </div>
+                <div class="bg-white p-3 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] text-gray-500 uppercase font-semibold">Эффективность</p>
+                    <p class="text-xl font-bold {{ $kpi['efficiency_pct'] >= 70 ? 'text-emerald-600' : ($kpi['efficiency_pct'] >= 50 ? 'text-amber-600' : 'text-red-600') }}">{{ $kpi['efficiency_pct'] }}<span class="text-xs">%</span></p>
+                </div>
+                <div class="bg-white p-3 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] text-gray-500 uppercase font-semibold">Гружёный</p>
+                    <p class="text-xl font-bold text-emerald-600">{{ $kpi['total_loaded_km'] }} <span class="text-xs">км</span></p>
+                </div>
+                <div class="bg-white p-3 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] text-gray-500 uppercase font-semibold">Холостой</p>
+                    <p class="text-xl font-bold {{ $kpi['total_empty_km'] > 0 ? 'text-amber-600' : 'text-emerald-600' }}">{{ $kpi['total_empty_km'] }} <span class="text-xs">км</span></p>
+                </div>
+            </div>
+
+            {{-- Сводка по смене --}}
+            <div class="bg-slate-50 rounded-lg border p-3 text-sm text-gray-600 flex items-center gap-4 flex-wrap">
+                <span><i class="fas fa-clock text-blue-500 mr-1"></i> <strong>Смена:</strong> {{ $trends['shift']['label'] }}</span>
+                <span><i class="fas fa-pause-circle text-amber-500 mr-1"></i> <strong>Простои:</strong> {{ $kpi['pauses_count'] }} ({{ $kpi['total_pause_formatted'] }})</span>
+                <span class="ml-auto"><i class="fas fa-route text-emerald-500 mr-1"></i> <strong>Всего пробег:</strong> {{ $kpi['total_loaded_km'] + $kpi['total_empty_km'] }} км</span>
+            </div>
+
+            {{-- Графики --}}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {{-- График 1: Добыча по часам --}}
+                <div class="bg-white rounded-xl border shadow-sm p-4">
+                    <h3 class="font-bold text-gray-800 uppercase text-sm mb-3 flex items-center gap-2">
+                        <i class="fas fa-chart-bar text-emerald-500"></i> Добыча по часам
+                    </h3>
+                    <div style="height: 280px;">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+                </div>
+
+                {{-- График 2: Эффективность (гружёный vs холостой) --}}
+                <div class="bg-white rounded-xl border shadow-sm p-4">
+                    <h3 class="font-bold text-gray-800 uppercase text-sm mb-3 flex items-center gap-2">
+                        <i class="fas fa-route text-blue-500"></i> Эффективность пробега по часам
+                    </h3>
+                    <div style="height: 280px;">
+                        <canvas id="efficiencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            {{-- График 3: Простои по типам — на всю ширину --}}
+            <div class="bg-white rounded-xl border shadow-sm p-4">
+                <h3 class="font-bold text-gray-800 uppercase text-sm mb-3 flex items-center gap-2">
+                    <i class="fas fa-pause-circle text-amber-500"></i> Простои по типам
+                    <span class="text-gray-400 normal-case font-normal text-xs">всего: {{ $trends['pauses']['total_formatted'] }}</span>
+                </h3>
+                <div style="height: 280px;">
+                    <canvas id="pausesChart"></canvas>
+                </div>
+            </div>
+
+            {{-- Таблица скоростей (была раньше — оставили) --}}
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
                 <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Средняя скорость по маршрутам <span class="text-gray-400 normal-case font-normal">(за смену)</span></div>
                 <div class="overflow-x-auto">
@@ -1355,6 +1446,7 @@
                             <tr><th class="p-3 text-left">Маршрут</th><th class="p-3 text-left">Ср. скорость</th><th class="p-3 text-left">Рейсов</th><th class="p-3 text-left">Расстояние</th></tr>
                         </thead>
                         <tbody>
+                            @php $routeSpeeds = $this->route_speeds; @endphp
                             @if(empty($routeSpeeds))
                                 <tr><td colspan="4" class="p-8 text-center text-gray-500">Нет данных за текущую смену. Данные появятся после завершения рейсов.</td></tr>
                             @else
@@ -1384,6 +1476,176 @@
                 </div>
             </div>
         </div>
+
+        {{-- Alpine-компонент для графиков Аналитики.
+             Вынесен из x-data="..." в отдельный script, потому что внутри JS
+             есть строки с одинарными кавычками ('rgba(...)') и HTML-строка
+             с двойными кавычками — Blade-парсер ломается на них. --}}
+        <script>
+            document.addEventListener('alpine:init', () => {
+                Alpine.data('analyticsCharts', () => ({
+                    volumeChart: null,
+                    pausesChart: null,
+                    efficiencyChart: null,
+
+                    // Читает данные из скрытого JSON-блока <script id="analytics-data">
+                    // Обновляется при Livewire-перерисовке (блок тоже перерисовывается)
+                    getData() {
+                        const el = document.getElementById('analytics-data');
+                        if (!el) return null;
+                        try {
+                            return JSON.parse(el.textContent);
+                        } catch (e) {
+                            console.error('Не удалось распарсить analytics-data', e);
+                            return null;
+                        }
+                    },
+
+                    formatSeconds(s) {
+                        const h = Math.floor(s / 3600);
+                        const m = Math.floor((s % 3600) / 60);
+                        if (h > 0) return h + 'ч ' + m + 'м';
+                        return m + 'м';
+                    },
+
+                    initVolumeChart() {
+                        const ctx = document.getElementById('volumeChart');
+                        if (!ctx) return;
+                        const data = this.getData();
+                        if (!data) return;
+
+                        if (this.volumeChart) this.volumeChart.destroy();
+                        this.volumeChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: data.hourly.labels,
+                                datasets: [{
+                                    label: 'Объём (т)',
+                                    data: data.hourly.volume,
+                                    backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                                    borderColor: 'rgba(16, 185, 129, 1)',
+                                    borderWidth: 1,
+                                    yAxisID: 'y'
+                                }, {
+                                    label: 'Рейсов',
+                                    data: data.hourly.trips_count,
+                                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                                    borderColor: 'rgba(59, 130, 246, 1)',
+                                    borderWidth: 1,
+                                    yAxisID: 'y1',
+                                    type: 'line',
+                                    tension: 0.3
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    y: { beginAtZero: true, position: 'left', title: { display: true, text: 'Объём (т)' } },
+                                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Рейсов' } }
+                                },
+                                plugins: { legend: { position: 'top' } }
+                            }
+                        });
+                    },
+
+                    initPausesChart() {
+                        const ctx = document.getElementById('pausesChart');
+                        if (!ctx) return;
+                        const data = this.getData();
+                        if (!data) return;
+
+                        if (this.pausesChart) this.pausesChart.destroy();
+
+                        const pauses = data.pauses.data;
+                        if (!pauses || !pauses.length) {
+                            ctx.parentElement.innerHTML = '<div class="text-center text-gray-400 text-sm py-8"><i class="fas fa-check-circle text-2xl text-emerald-400 mb-2"></i><p>Нет простоев за смену</p></div>';
+                            return;
+                        }
+
+                        const colors = [
+                            'rgba(239, 68, 68, 0.7)',   // red
+                            'rgba(245, 158, 11, 0.7)',  // amber
+                            'rgba(59, 130, 246, 0.7)',  // blue
+                            'rgba(16, 185, 129, 0.7)',  // emerald
+                            'rgba(139, 92, 246, 0.7)',  // purple
+                            'rgba(236, 72, 153, 0.7)',  // pink
+                        ];
+
+                        const self = this;
+                        this.pausesChart = new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: pauses.map(d => d.label + ' (' + self.formatSeconds(d.seconds) + ')'),
+                                datasets: [{
+                                    data: pauses.map(d => d.seconds),
+                                    backgroundColor: colors,
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'right' },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: (ctx) => ctx.label.split(' (')[0] + ': ' + self.formatSeconds(ctx.parsed)
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    },
+
+                    initEfficiencyChart() {
+                        const ctx = document.getElementById('efficiencyChart');
+                        if (!ctx) return;
+                        const data = this.getData();
+                        if (!data) return;
+
+                        if (this.efficiencyChart) this.efficiencyChart.destroy();
+                        this.efficiencyChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: data.hourly.labels,
+                                datasets: [{
+                                    label: 'Гружёный (км)',
+                                    data: data.hourly.loaded_km,
+                                    backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                                    stack: 'km'
+                                }, {
+                                    label: 'Холостой (км)',
+                                    data: data.hourly.empty_km,
+                                    backgroundColor: 'rgba(239, 68, 68, 0.6)',
+                                    stack: 'km'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: { stacked: true },
+                                    y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Км' } }
+                                },
+                                plugins: { legend: { position: 'top' } }
+                            }
+                        });
+                    },
+
+                    initCharts() {
+                        if (typeof Chart === 'undefined') {
+                            console.warn('Chart.js не загружен');
+                            return;
+                        }
+                        this.initVolumeChart();
+                        this.initPausesChart();
+                        this.initEfficiencyChart();
+                    }
+                }));
+            });
+        </script>
 
         <!-- Настройки порогов и сервисных постов -->
         <div x-show="tab === 'settingsTab'" x-cloak class="mt-4 space-y-4" id="settingsTab">

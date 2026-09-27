@@ -2007,6 +2007,160 @@ class MainDispatcherPanel extends Component
         return $routeStats;
     }
 
+    /**
+     * Тренды для вкладки Аналитика:
+     *   - Добыча по часам (объём + количество рейсов)
+     *   - Простои по типам (для pie chart)
+     *   - Эффективность по часам (гружёный vs холостой пробег)
+     *   - KPI: общий объём, рейсов, ср. скорость, эффективность, общее время простоев
+     *
+     * Используется в main-dispatcher-panel.blade.php → tab='analyticsTab'
+     */
+    public function getAnalyticsTrendsProperty(): array
+    {
+        // Получаем shift start (общая логика с getRouteSpeedsProperty)
+        $now = now();
+        $hour = $now->hour;
+        $minute = $now->minute;
+
+        if ($hour > 7 && $hour < 19) {
+            $shiftStart = $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 7 && $minute >= 30) {
+            $shiftStart = $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 19 && $minute < 30) {
+            $shiftStart = $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour >= 19) {
+            $shiftStart = $now->copy()->setTime(19, 30, 0);
+        } else {
+            $shiftStart = $now->copy()->subDay()->setTime(19, 30, 0);
+        }
+
+        // Все завершённые рейсы за смену
+        $trips = TruckTrip::with(['miner', 'dump', 'miningOrder'])
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $shiftStart)
+            ->get();
+
+        // === 1. ДОБЫЧА ПО ЧАСАМ ===
+        // Группируем по часу завершения рейса
+        $hours = [];
+        $currentHour = (int) $shiftStart->format('H');
+        for ($i = 0; $i < 12; $i++) {
+            $h = ($currentHour + $i) % 24;
+            $hours[] = $h;
+        }
+
+        $volumeByHour = array_fill_keys($hours, 0);
+        $tripsByHour   = array_fill_keys($hours, 0);
+
+        foreach ($trips as $trip) {
+            $tripHour = (int) $trip->completed_at->format('H');
+            if (array_key_exists($tripHour, $volumeByHour)) {
+                $volumeByHour[$tripHour] += (float) ($trip->load_volume ?? 0);
+                $tripsByHour[$tripHour]++;
+            }
+        }
+
+        // Округляем объёмы
+        $volumeByHour = array_map(fn($v) => round($v, 1), $volumeByHour);
+
+        // === 2. ПРОСТОИ ПО ТИПАМ (за смену) ===
+        $pauses = TripPause::where('started_at', '>=', $shiftStart)->get();
+        $pauseByType = [];
+        foreach ($pauses as $pause) {
+            $type = $pause->type;
+            $seconds = $pause->getCurrentDuration();
+            if (!isset($pauseByType[$type])) {
+                $pauseByType[$type] = [
+                    'type'   => $type,
+                    'label'  => TripPause::typeLabel($type),
+                    'count'  => 0,
+                    'seconds' => 0,
+                ];
+            }
+            $pauseByType[$type]['count']++;
+            $pauseByType[$type]['seconds'] += $seconds;
+        }
+
+        // Сортируем по убыванию секунд
+        usort($pauseByType, fn($a, $b) => $b['seconds'] <=> $a['seconds']);
+
+        $totalPauseSeconds = array_sum(array_column($pauseByType, 'seconds'));
+
+        // === 3. ЭФФЕКТИВНОСТЬ ПО ЧАСАМ ===
+        // Гружёный vs холостой пробег по часам
+        $loadedKmByHour  = array_fill_keys($hours, 0);
+        $emptyKmByHour   = array_fill_keys($hours, 0);
+
+        foreach ($trips as $trip) {
+            $tripHour = (int) $trip->completed_at->format('H');
+            if (array_key_exists($tripHour, $loadedKmByHour)) {
+                $loadedKmByHour[$tripHour] += (float) ($trip->miningOrder->distance_km ?? 0);
+                $emptyKmByHour[$tripHour]  += (float) ($trip->empty_run_km ?? 0);
+            }
+        }
+
+        $loadedKmByHour = array_map(fn($v) => round($v, 1), $loadedKmByHour);
+        $emptyKmByHour  = array_map(fn($v) => round($v, 1), $emptyKmByHour);
+
+        // === 4. KPI ===
+        $totalVolume    = round($trips->sum('load_volume'), 1);
+        $totalTrips     = $trips->count();
+        $totalLoadedKm  = round($trips->sum(fn($t) => $t->miningOrder->distance_km ?? 0), 1);
+        $totalEmptyKm   = round($trips->sum('empty_run_km'), 1);
+        $totalAllKm     = $totalLoadedKm + $totalEmptyKm;
+        $efficiency     = $totalAllKm > 0
+            ? round(($totalLoadedKm / $totalAllKm) * 100, 1)
+            : 0;
+
+        // Средняя скорость
+        $speedSum = 0;
+        $speedCount = 0;
+        foreach ($trips as $t) {
+            $distance = (float) ($t->miningOrder->distance_km ?? 0);
+            if ($distance > 0 && $t->loaded_at && $t->unloading_started_at) {
+                $transportingHours = $t->getTransportingHours();
+                if ($transportingHours > 0) {
+                    $speedSum += $distance / $transportingHours;
+                    $speedCount++;
+                }
+            }
+        }
+        $avgSpeed = $speedCount > 0 ? round($speedSum / $speedCount, 1) : 0;
+
+        // Метрики для графиков
+        return [
+            'kpi' => [
+                'total_volume'        => $totalVolume,
+                'total_trips'         => $totalTrips,
+                'avg_speed'           => $avgSpeed,
+                'efficiency_pct'      => $efficiency,
+                'total_loaded_km'     => $totalLoadedKm,
+                'total_empty_km'      => $totalEmptyKm,
+                'total_pause_seconds' => $totalPauseSeconds,
+                'total_pause_formatted' => $this->formatSeconds($totalPauseSeconds),
+                'pauses_count'        => $pauses->count(),
+            ],
+            'hourly' => [
+                'labels'         => array_map(fn($h) => sprintf('%02d:00', $h), $hours),
+                'volume'         => array_values($volumeByHour),
+                'trips_count'    => array_values($tripsByHour),
+                'loaded_km'      => array_values($loadedKmByHour),
+                'empty_km'       => array_values($emptyKmByHour),
+            ],
+            'pauses' => [
+                'data' => $pauseByType,
+                'total_seconds' => $totalPauseSeconds,
+                'total_formatted' => $this->formatSeconds($totalPauseSeconds),
+            ],
+            'shift' => [
+                'start' => $shiftStart->format('H:i'),
+                'end'   => $shiftStart->copy()->addHours(12)->format('H:i'),
+                'label' => $shiftStart->format('H:i') . '–' . $shiftStart->copy()->addHours(12)->format('H:i'),
+            ],
+        ];
+    }
+
     // =========================================
     // УПРАВЛЕНИЕ ПОРОГАМИ ПЕРЕГРУЖЕННОСТИ
     // =========================================

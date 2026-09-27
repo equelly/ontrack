@@ -12,7 +12,10 @@
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.11.2/css/all.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    
+
+    {{-- Chart.js для графиков в Аналитике (подключаем в layout, чтобы не реинжектить при Livewire-обновлениях) --}}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
     {{-- Livewire Styles в HEAD --}}
     @livewireStyles
 </head>
