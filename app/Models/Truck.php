@@ -108,7 +108,17 @@ class Truck extends Model
             ->latest('completed_at')
             ->first();
 
-        return $lastCompletedTrip?->dump_id;
+        // Если есть последний trip — возвращаем его dump_id
+        if ($lastCompletedTrip?->dump_id) {
+            return $lastCompletedTrip->dump_id;
+        }
+
+        // Fallback: самосвал без истории (новый, после долгого простоя, после обслуживания) —
+        // считаем что он находится в сервисной точке (отстой/обслуживание/заправка).
+        // Сервисная точка — это Dump с флагом is_service_point=true, с записями
+        // в miner_dump_distances до каждого забоя.
+        // Если сервисной точки нет — возвращаем null (empty_run будет null = "нет данных").
+        return \App\Models\Dump::getServicePointId();
     }
 
     /**

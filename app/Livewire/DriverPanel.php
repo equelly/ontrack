@@ -34,7 +34,7 @@ class DriverPanel extends Component
     public ?int $selectedTruckId = null;
     public array $trucks = [];
     public ?TruckTrip $currentTrip = null;
-    public float $emptyRunKm = 0; // Холостой пробег от текущего места до забоя (км)
+    public ?float $emptyRunKm = null; // Холостой пробег от текущего места до забоя (км), null = нет данных
     public ?TripPause $activePause = null;
     public array $stats = [
         'shift_name' => '-',
@@ -197,7 +197,7 @@ class DriverPanel extends Component
 
         // Расчёт холостого пробега (для отображения в карточке маршрута)
         // От текущего местоположения самосвала (предыдущая разгрузка) до забоя текущего trip
-        $this->emptyRunKm = 0;
+        $this->emptyRunKm = null;
         if ($this->currentTrip && $this->currentTrip->miner_id) {
             try {
                 $routeService = app(\App\Services\RouteAssignmentService::class);

@@ -23,6 +23,7 @@ class RouteBlockReason
     const NO_AVAILABLE_ZONES = 'no_available_zones';
     const NO_ACTIVE_ORDERS = 'no_active_orders';
     const ZONE_UNDER_BERM = 'zone_under_berm';
+    const NO_DISTANCE_DATA = 'no_distance_data'; // Нет записи в miner_dump_distances
 
     /**
      * Человекочитаемая метка причины.
@@ -40,6 +41,7 @@ class RouteBlockReason
             self::NO_AVAILABLE_ZONES   => 'Нет доступных зон разгрузки для породы',
             self::NO_ACTIVE_ORDERS     => 'Нет активных маршрутов',
             self::ZONE_UNDER_BERM      => 'Необходимо обваловать — обычные маршруты заблокированы',
+            self::NO_DISTANCE_DATA     => 'Нет записи о расстоянии от забоя до отвала',
             default                    => 'Неизвестная причина',
         };
     }
@@ -59,6 +61,7 @@ class RouteBlockReason
             self::ROCK_RESTRICTED      => 'Порода запрещена',
             self::NO_AVAILABLE_ZONES   => 'Нет зон',
             self::NO_ACTIVE_ORDERS     => 'Нет маршрутов',
+            self::NO_DISTANCE_DATA     => 'Нет расстояния',
             default                    => '—',
         };
     }
@@ -78,6 +81,7 @@ class RouteBlockReason
             self::ROCK_RESTRICTED      => 'amber',
             self::NO_AVAILABLE_ZONES   => 'amber',
             self::NO_ACTIVE_ORDERS     => 'slate',    // инфо
+            self::NO_DISTANCE_DATA     => 'red',      // критично — данные неполные
             default                    => 'slate',
         };
     }
@@ -97,6 +101,7 @@ class RouteBlockReason
             self::ROCK_RESTRICTED      => 'fa-ban',
             self::NO_AVAILABLE_ZONES   => 'fa-map-marked-alt',
             self::NO_ACTIVE_ORDERS     => 'fa-list',
+            self::NO_DISTANCE_DATA     => 'fa-ruler-horizontal',
             default                    => 'fa-question',
         };
     }
@@ -116,6 +121,7 @@ class RouteBlockReason
             self::ROCK_RESTRICTED      => 'Снимите ограничение на эту породу для самосвала',
             self::NO_AVAILABLE_ZONES   => 'Откройте зону разгрузки или привяжите породу к зоне',
             self::NO_ACTIVE_ORDERS     => 'Создайте/активируйте маршрут в Панели Диспетчера',
+            self::NO_DISTANCE_DATA     => 'Добавьте запись в Таблицу расстояний (Забой-Отвал)',
             default                    => 'Обратитесь к администратору',
         };
     }
@@ -135,6 +141,7 @@ class RouteBlockReason
             self::ROCK_RESTRICTED,
             self::NO_AVAILABLE_ZONES,
             self::NO_ACTIVE_ORDERS,
+            self::NO_DISTANCE_DATA,
         ];
     }
 }

@@ -8,9 +8,7 @@
                 {{-- AI Алерты — виджет (как у диспетчера) --}}
                 @php $newAlertsCount = $this->new_alerts_count; @endphp
                 <div x-data="{ showAlerts: false, openFilter: null }" class="relative">
-                    {{-- relative ВАЖЕН на кнопке, чтобы точка -top-1 -right-1
-                         позиционировалась относительно кнопки, а не относительно
-                         родительского div --}}
+                    {{-- relative ВАЖЕН на кнопке, чтобы точка -top-1 -right-1 позиционировалась относительно кнопки, а не относительно родительского div --}}
                     <button @click="showAlerts = !showAlerts"
                             class="relative flex items-center gap-1.5 px-3 py-1.5 {{ $newAlertsCount > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-700 hover:bg-slate-600' }} text-white rounded-md text-xs font-semibold uppercase transition">
                         <i class="fas fa-bell"></i>
@@ -832,10 +830,24 @@
             </div>
 
             @foreach($dumps as $dump)
-                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                    <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
-                        <h3 class="font-bold text-gray-800 uppercase text-sm">{{ $dump->name_dump }}</h3>
-                        <div class="flex gap-3 items-center">
+                <div class="bg-white rounded-xl border shadow-sm overflow-hidden {{ $dump->is_service_point ? 'border-amber-400 border-2' : '' }}">
+                    <div class="p-4 border-b bg-slate-50 flex justify-between items-center gap-2">
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                            <h3 class="font-bold text-gray-800 uppercase text-sm truncate">{{ $dump->name_dump }}</h3>
+                            @if($dump->is_service_point)
+                                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-bold rounded-full border border-amber-300 whitespace-nowrap" title="Сервисная точка (отстой / обслуживание / заправка). Используется как стартовая точка для новых самосвалов без истории рейсов.">
+                                    <i class="fas fa-tools"></i> Сервисная
+                                </span>
+                            @endif
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <button wire:click="toggleServicePoint({{ $dump->id }})"
+                                    wire:loading.attr="disabled"
+                                    class="text-xs px-2 py-1 rounded font-semibold transition {{ $dump->is_service_point ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300' }}"
+                                    title="{{ $dump->is_service_point ? 'Снять статус сервисной точки' : 'Сделать сервисной точкой (отстой / обслуживание)' }}">
+                                <i class="fas fa-tools mr-1"></i>
+                                {{ $dump->is_service_point ? 'Сервисная' : 'Сделать сервисной' }}
+                            </button>
                             <button wire:click="toggleAddZone({{ $dump->id }})" class="text-blue-500 hover:text-blue-700 text-xs font-semibold uppercase">
                                 + Добавить зону
                             </button>

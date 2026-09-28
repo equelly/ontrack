@@ -497,6 +497,21 @@ class TruckStatusService
                 'load_volume'  => $loadVolume,
             ]);
 
+            // === ПЕРЕСЧИТЫВАЕМ empty_run_km при завершении trip ===
+            // empty_run_km сохраняется при создании trip (см. createTripAndAssign),
+            // но если в тот момент не было данных (сервисная точка ещё не назначена,
+            // или не было записи в miner_dump_distances), то значение = null.
+            // При завершении trip мы можем пересчитать — у нас есть dump_id предыдущего
+            // завершённого trip (это и есть стартовая точка для текущего trip).
+            //
+            // Логика:
+            // 1. Берём dump_id предыдущего завершённого trip (того, что был ДО текущего)
+            // 2. Ищем расстояние от этого dump_id до miner_id текущего trip
+            // 3. Если есть запись — сохраняем, иначе оставляем null с логом
+            if ($trip->empty_run_km === null) {
+                $this->recalculateEmptyRunForTrip($trip);
+            }
+
             // Записываем пробег и мото-часы
             $this->recordTripMetrics($truck, $trip);
 
@@ -603,7 +618,6 @@ class TruckStatusService
                 } catch (\Exception $e) {
                     Log::error('AnomalyDetection failed: ' . $e->getMessage());
                 }
-
             } else {
                 Log::warning("Trip {$trip->id} completed without zone - volume not added to any zone");
             }
@@ -627,6 +641,80 @@ class TruckStatusService
         // НЕ назначаем маршрут автоматически - ждём решения диспетчера
         // Грузовик остаётся в статусе 'completed' (Ожидает назначения)
         Log::info("Truck {$truck->id} completed trip, waiting for dispatcher decision");
+    }
+
+    /**
+     * Пересчитать empty_run_km для завершённого trip.
+     *
+     * Используется когда при создании trip не было данных (empty_run_km = null),
+     * но к моменту завершения — данные появились (например, только что назначили
+     * сервисную точку, или добавили запись в miner_dump_distances).
+     *
+     * Берём dump_id ПРЕДЫДУЩЕГО завершённого trip (того, что был ДО текущего)
+     * — это и есть стартовая точка для текущего trip. Ищем расстояние от неё
+     * до miner_id текущего trip.
+     */
+    protected function recalculateEmptyRunForTrip(TruckTrip $trip): void
+    {
+        try {
+            // Ищем предыдущий завершённый trip ЭТОГО самосвала
+            // (завершённый ДО текущего trip)
+            $previousTrip = TruckTrip::where('truck_id', $trip->truck_id)
+                ->where('id', '!=', $trip->id)
+                ->whereNotNull('completed_at')
+                ->where('completed_at', '<', $trip->completed_at ?? now())
+                ->orderBy('completed_at', 'desc')
+                ->first();
+
+            $startDumpId = null;
+
+            if ($previousTrip && $previousTrip->dump_id) {
+                // Самосвал перед этим trip был на previousTrip.dump_id
+                $startDumpId = $previousTrip->dump_id;
+            } else {
+                // Нет предыдущего trip — берём сервисную точку (если есть)
+                $startDumpId = \App\Models\Dump::getServicePointId();
+            }
+
+            if (!$startDumpId) {
+                // Всё ещё нет стартовой точки — не можем рассчитать
+                Log::info("recalculateEmptyRunForTrip: нет стартовой точки для trip {$trip->id}", [
+                    'truck_id' => $trip->truck_id,
+                    'has_previous' => $previousTrip ? 'yes' : 'no',
+                ]);
+                return;
+            }
+
+            // Ищем расстояние от startDumpId до miner_id текущего trip
+            $distance = \App\Models\MinerDumpDistance::where('miner_id', $trip->miner_id)
+                ->where('dump_id', $startDumpId)
+                ->value('distance_km');
+
+            if ($distance === null) {
+                Log::warning("recalculateEmptyRunForTrip: нет записи в miner_dump_distances", [
+                    'trip_id'     => $trip->id,
+                    'miner_id'    => $trip->miner_id,
+                    'start_dump_id' => $startDumpId,
+                ]);
+                return; // Оставляем null
+            }
+
+            // Сохраняем пересчитанное значение
+            $trip->update(['empty_run_km' => (float) $distance]);
+
+            Log::info("recalculateEmptyRunForTrip: обновлён empty_run_km", [
+                'trip_id'        => $trip->id,
+                'truck_id'       => $trip->truck_id,
+                'miner_id'       => $trip->miner_id,
+                'start_dump_id'  => $startDumpId,
+                'previous_trip_id' => $previousTrip?->id,
+                'empty_run_km'   => (float) $distance,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('recalculateEmptyRunForTrip failed: ' . $e->getMessage(), [
+                'trip_id' => $trip->id,
+            ]);
+        }
     }
 
     /**

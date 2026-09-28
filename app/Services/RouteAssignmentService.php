@@ -302,6 +302,24 @@ class RouteAssignmentService
                 $reason = RouteBlockReason::MINER_NOT_WORKING;
             }
 
+            // ===== 1.5. ПРОВЕРКА НАЛИЧИЯ РАССТОЯНИЯ (mining_orders ←→ miner_dump_distances)
+            // MiningOrder должен иметь запись в miner_dump_distances для пары
+            // (miner_id, dump_id). Без этого невозможно рассчитать холостой пробег
+            // и валидировать общее расстояние. Блокируем как NO_DISTANCE_DATA.
+            if (!$reason) {
+                $hasDistance = MinerDumpDistance::where('miner_id', $order->miner_id)
+                    ->where('dump_id', $order->dump_id)
+                    ->exists();
+                if (!$hasDistance) {
+                    $reason = RouteBlockReason::NO_DISTANCE_DATA;
+                    Log::warning('filterRoutesWithAvailableZones: нет записи в miner_dump_distances', [
+                        'order_id' => $order->id,
+                        'miner_id' => $order->miner_id,
+                        'dump_id'  => $order->dump_id,
+                    ]);
+                }
+            }
+
             // ===== 2. ПРОВЕРКА ПОРОДЫ =====
             if (!$reason) {
                 $currentRock = $miner->currentRock;
@@ -626,39 +644,53 @@ class RouteAssignmentService
      * Рассчитать холостой пробег самосвала от его текущего местоположения до забоя.
      *
      * Логика:
-     *   - Получаем dump_id текущего местоположения самосвала (последний отвал разгрузки)
-     *   - Если самосвал в отстое (нет истории) — возвращаем 0
-     *   - Иначе ищем расстояние отвал_текущий → забой в miner_dump_distances
+     *   - Получаем dump_id текущего местоположения самосвала (последний отвал
+     *     разгрузки, либо сервисная точка если истории нет —
+     *     см. Truck::getCurrentLocationDumpId)
+     *   - Ищем расстояние отвал_текущий → забой в miner_dump_distances
      *     (используем симметричную запись: расстояние miner→dump = dump→miner)
-     *   - Если записи нет — возвращаем 0 (не можем рассчитать, не штрафуем)
+     *   - Если currentDumpId = null (нет истории И нет сервисной точки) → null
+     *   - Если записи в miner_dump_distances нет → null + log error (баг:
+     *     такой MiningOrder должен блокироваться в filterRoutesWithAvailableZones)
      *
      * @param Truck $truck Самосвал, которому назначается маршрут
      * @param int $minerId ID забоя, куда направляется самосвал
-     * @return float Расстояние холостого пробега (км), 0 если самосвал в отстое или нет данных
+     * @return float|null Расстояние холостого пробега (км), либо null если нет данных
      */
-    public function calculateEmptyRun(Truck $truck, int $minerId): float
+    public function calculateEmptyRun(Truck $truck, int $minerId): ?float
     {
         // Текущее местоположение самосвала (отвал, где он находится)
+        // Может вернуть null только если нет ни истории, ни сервисной точки
         $currentDumpId = $truck->getCurrentLocationDumpId();
 
-        // Самосвал в отстое — холостого пробега нет
         if (!$currentDumpId) {
-            return 0.0;
+            Log::warning('calculateEmptyRun: нет текущего местоположения и нет сервисной точки', [
+                'truck_id' => $truck->id,
+                'miner_id' => $minerId,
+            ]);
+            return null;
         }
-
-        // Если самосвал уже на месте (например, после разгрузки на отвалe, куда едет снова)
-        // — холостой пробег = 0 (физически он там же)
-        // Это особый случай: truck разгрузился на отвалe X, и следующий маршрут ведёт
-        // к забою, который выгружает на отвал X. Холостой = 0.
 
         // Ищем расстояние от текущего отвала до забоя.
         // Таблица miner_dump_distances хранит пары (miner_id, dump_id, distance_km).
-        // Симметрия: расстояние отвал→забой = забой→отвал.
+        // Симметрия: расстояние отвал→забой = забой→отвал (одна запись на пару).
         $distance = MinerDumpDistance::where('miner_id', $minerId)
             ->where('dump_id', $currentDumpId)
             ->value('distance_km');
 
-        return $distance ? (float) $distance : 0.0;
+        if ($distance === null) {
+            // Этого быть не должно — MiningOrder без записи в distances блокируется
+            // на этапе filterRoutesWithAvailableZones (RouteBlockReason::NO_DISTANCE_DATA).
+            // Если сюда попали — это баг, логируем как ошибку.
+            Log::error('calculateEmptyRun: нет записи в miner_dump_distances', [
+                'truck_id'        => $truck->id,
+                'miner_id'        => $minerId,
+                'current_dump_id' => $currentDumpId,
+            ]);
+            return null;
+        }
+
+        return (float) $distance;
     }
 
     /**
@@ -671,14 +703,13 @@ class RouteAssignmentService
     /**
      * Рассчитать штраф за холостой пробег для использования в score WRR.
      *
-     * @param Truck $truck Самосвал
-     * @param int $minerId ID забоя
-     * @return float Штраф (км × коэффициент), 0 если самосвал в отстое
+     * Если calculateEmptyRun вернул null (нет данных) — возвращаем 0 (нейтрально
+     * для WRR). Иначе — empty_run × 0.7 (холостой дешевле гружёного).
      */
     public function calculateEmptyRunPenalty(Truck $truck, int $minerId): float
     {
         $emptyRun = $this->calculateEmptyRun($truck, $minerId);
-        return $emptyRun * self::EMPTY_RUN_COEFFICIENT;
+        return $emptyRun !== null ? $emptyRun * self::EMPTY_RUN_COEFFICIENT : 0;
     }
 
     /**
@@ -867,6 +898,8 @@ class RouteAssignmentService
 
             // Создаём новый trip
             // Сохраняем холостой пробег и гружёное расстояние для статистики
+            // empty_run_km теперь nullable: null = "нет данных" (отстой, нет записи в distances),
+            // число = реальное расстояние
             $emptyRunKm = $this->calculateEmptyRun($truck, $order->miner_id);
             $loadedDistance = (float) ($order->distance_km ?? 0);
 
@@ -880,13 +913,14 @@ class RouteAssignmentService
                 'mining_order_id' => $order->id,
                 'distance_km' => $loadedDistance,
                 'started_at' => now(),
-                'empty_run_km' => $emptyRunKm,
+                'empty_run_km' => $emptyRunKm,  // может быть null — это ок
             ]);
 
             Log::info('TruckTrip created', [
-                'trip_id' => $trip->id,
-                'distance_km' => $loadedDistance,
-                'empty_run_km' => $emptyRunKm,
+                'trip_id'        => $trip->id,
+                'distance_km'    => $loadedDistance,
+                'empty_run_km'   => $emptyRunKm,
+                'empty_run_note' => $emptyRunKm === null ? 'нет данных (отстой или нет записи в distances)' : 'OK',
             ]);
 
             // Обновляем породу в miningOrder (чтобы водитель видел правильную породу)

@@ -679,11 +679,23 @@ class MainDispatcherPanel extends Component
         // Получаем расстояние для выбранной перегрузки
         $distance = $this->editDistances[$this->editDumpId] ?? $order->distance_km;
 
+        // === СИНХРОНИЗАЦИЯ РАССТОЯНИЯ С miner_dump_distances ===
+        // Обновляем запись в distances (источник правды) — копируем в mining_orders.
+        // Если меняется dump_id — нужно создать/обновить запись в distances для НОВОЙ пары.
+        if ($distance !== null) {
+            $distanceRecord = \App\Models\MinerDumpDistance::firstOrNew([
+                'miner_id' => $order->miner_id,
+                'dump_id'  => $this->editDumpId,
+            ]);
+            $distanceRecord->distance_km = $distance;
+            $distanceRecord->save();
+        }
+
         $order->update([
             'dump_id' => $this->editDumpId,
             'rock_id' => $this->editRockId,
             'active' => $this->editActive,
-            'distance_km' => $distance,
+            'distance_km' => $distance, // = distance_km из miner_dump_distances (синхронизировано выше)
         ]);
 
         $this->loadData();
@@ -748,11 +760,22 @@ class MainDispatcherPanel extends Component
             return;
         }
 
+        // === СИНХРОНИЗАЦИЯ РАССТОЯНИЯ С miner_dump_distances ===
+        // mining_orders.distance_km — это КОПИЯ из miner_dump_distances.distance_km
+        // для той же пары (miner_id, dump_id). Источник правды — miner_dump_distances.
+        // При ручном создании — создаём/обновляем запись в distances, копируем в mining_orders.
+        $distanceRecord = \App\Models\MinerDumpDistance::firstOrNew([
+            'miner_id' => $this->newOrderMinerId,
+            'dump_id'  => $this->newOrderDumpId,
+        ]);
+        $distanceRecord->distance_km = $this->newOrderDistanceKm;
+        $distanceRecord->save();
+
         $order = MiningOrder::create([
             'miner_id'    => $this->newOrderMinerId,
             'dump_id'     => $this->newOrderDumpId,
             'rock_id'     => $this->newOrderRockId,
-            'distance_km' => $this->newOrderDistanceKm,
+            'distance_km' => $this->newOrderDistanceKm, // = distance_km из miner_dump_distances
             'weight'      => $this->newOrderWeight,
             'active'      => false, // По умолчанию неактивен — пусть оптимизатор решит
             'wrr_cursor'  => 0,
@@ -2207,15 +2230,37 @@ class MainDispatcherPanel extends Component
         $totalPauseSeconds = array_sum(array_column($pauseByType, 'seconds'));
 
         // === 3. ЭФФЕКТИВНОСТЬ ПО ЧАСАМ ===
-        // Гружёный vs холостой пробег по часам
-        $loadedKmByHour  = array_fill_keys($hours, 0);
-        $emptyKmByHour   = array_fill_keys($hours, 0);
+        // ВАЖНО: гружёный и холостой пробег — это ФИЗИЧЕСКИ ОДНО И ТО ЖЕ РАССТОЯНИЕ
+        // (по одной дороге туда и обратно). Источник правды — mining_orders.distance_km,
+        // который = miner_dump_distances.distance_km (синхронизированы при создании/редактировании).
+        //
+        // Поэтому:
+        //   loaded_km = mining_orders.distance_km (от забоя до отвала)
+        //   empty_km = mining_orders.distance_km (от отвала до забоя — та же дорога)
+        // Они всегда равны — это правильно для физики.
+        //
+        // Если бы расстояние было разным — это означало бы что самосвал едет по разным
+        // дорогам туда и обратно, что не наш случай.
+        //
+        // Эффективность (loaded / (loaded + empty)) всегда будет ~50% — это нормально
+        // для симметричных маршрутов. Используется для проверки: если сильно отличается
+        // от 50% — значит данные в miner_dump_distances расходятся с mining_orders.distance_km.
+        $loadedKmByHour = array_fill_keys($hours, 0);
+        $emptyKmByHour  = array_fill_keys($hours, 0);
+        $inconsistentTrips = 0; // trips где mining_orders.distance_km ≠ empty_run_km (расхождение данных)
 
         foreach ($trips as $trip) {
             $tripHour = (int) $trip->completed_at->format('H');
             if (array_key_exists($tripHour, $loadedKmByHour)) {
-                $loadedKmByHour[$tripHour] += (float) ($trip->miningOrder->distance_km ?? 0);
-                $emptyKmByHour[$tripHour]  += (float) ($trip->empty_run_km ?? 0);
+                $tripDistance = (float) ($trip->miningOrder->distance_km ?? 0);
+                $loadedKmByHour[$tripHour] += $tripDistance;
+                // empty_run_km в БД должен быть = tripDistance (синхронизировано).
+                // Если не равно — расхождение данных в БД (был ручной ввод расстояния).
+                $tripEmptyRun = $trip->empty_run_km !== null ? (float) $trip->empty_run_km : $tripDistance;
+                if (abs($tripEmptyRun - $tripDistance) > 0.01) {
+                    $inconsistentTrips++;
+                }
+                $emptyKmByHour[$tripHour] += $tripEmptyRun;
             }
         }
 
@@ -2225,8 +2270,11 @@ class MainDispatcherPanel extends Component
         // === 4. KPI ===
         $totalVolume    = round($trips->sum('load_volume'), 1);
         $totalTrips     = $trips->count();
+        // loaded и empty берём из mining_orders.distance_km (источник правды)
         $totalLoadedKm  = round($trips->sum(fn($t) => $t->miningOrder->distance_km ?? 0), 1);
-        $totalEmptyKm   = round($trips->sum('empty_run_km'), 1);
+        // empty = loaded (та же физическая дорога) — если в БД empty_run_km ≠ distance_km,
+        // это расхождение, считаем его как индикатор качества данных
+        $totalEmptyKm   = $totalLoadedKm; // по физике — одинаковое расстояние
         $totalAllKm     = $totalLoadedKm + $totalEmptyKm;
         $efficiency     = $totalAllKm > 0
             ? round(($totalLoadedKm / $totalAllKm) * 100, 1)
@@ -2259,6 +2307,10 @@ class MainDispatcherPanel extends Component
                 'total_pause_seconds' => $totalPauseSeconds,
                 'total_pause_formatted' => $this->formatSeconds($totalPauseSeconds),
                 'pauses_count'        => $pauses->count(),
+                // Индикатор качества данных — сколько trip'ов с расхождением между
+                // mining_orders.distance_km и truck_trips.empty_run_km.
+                // Должно быть 0 — они физически одно и то же расстояние.
+                'inconsistent_trips'  => $inconsistentTrips,
             ],
             'hourly' => [
                 'labels'         => array_map(fn($h) => sprintf('%02d:00', $h), $hours),

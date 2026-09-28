@@ -124,10 +124,25 @@
                     </div>
                     <div>
                         <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Холостой пробег</p>
-                        <p class="text-base sm:text-xl font-bold {{ $emptyRunKm > 0 ? 'text-amber-600' : 'text-emerald-600' }}">
-                            {{ $emptyRunKm > 0 ? $emptyRunKm . ' км' : '0 км' }}
-                        </p>
-                        <p class="text-[10px] text-gray-400">от пред. разгрузки до забоя</p>
+                        @php
+                            // empty_run_km может быть null (нет данных), числом > 0, или 0.
+                            // - null = "нет данных" (отстой/нет записи в distances) — серый
+                            // - 0 = почти невозможно (даже на том же отвалe нужно ехать до забоя)
+                            // - > 0 = реальное расстояние — янтарный
+                            $emptyRunNull = $emptyRunKm === null;
+                            $emptyRunZero = $emptyRunKm === 0;
+                            $emptyRunClass = $emptyRunNull ? 'text-slate-400'
+                                : ($emptyRunZero ? 'text-emerald-600'
+                                : 'text-amber-600');
+                            $emptyRunText = $emptyRunNull
+                                ? 'Нет данных'
+                                : ($emptyRunZero ? '0 км' : $emptyRunKm . ' км');
+                            $emptyRunNote = $emptyRunNull
+                                ? 'отстой или нет записи'
+                                : 'от пред. разгрузки до забоя';
+                        @endphp
+                        <p class="text-base sm:text-xl font-bold {{ $emptyRunClass }}">{{ $emptyRunText }}</p>
+                        <p class="text-[10px] text-gray-400">{{ $emptyRunNote }}</p>
                     </div>
                     <div>
                         <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время в пути</p>
@@ -550,6 +565,7 @@
         </div>
     </main>
     @endif
+
     <!-- Модальные окна (Tailwind + JS overlay) -->
     @if($showZoneModal)
     <div wire:key="zone-modal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4" style="display: flex;">
@@ -751,4 +767,4 @@
             });
         });
     </script>
-</div>                    
+</div>

@@ -514,8 +514,45 @@ class MasterPanel extends Component
 
         // Автозапуск оптимизации — отвал удалён, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('удалении отвала');
-
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Перегрузка удалена']);
+    }
+
+    /**
+     * Переключить статус сервисной точки для отвала.
+     * Сервисная точка — это место, где находится самосвал если у него нет истории
+     * рейсов (новый, после долгого простоя, после обслуживания). Используется
+     * как fallback в Truck::getCurrentLocationDumpId().
+     *
+     * ВАЖНО: только одна сервисная точка может быть активна одновременно.
+     * При включении — флаг снимается с других.
+     */
+    public function toggleServicePoint(int $dumpId): void
+    {
+        $dump = \App\Models\Dump::find($dumpId);
+        if (!$dump) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Перегрузка не найдена']);
+            return;
+        }
+
+        if ($dump->is_service_point) {
+            // Снимаем статус
+            $dump->is_service_point = false;
+            $dump->save();
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => "«{$dump->name_dump}» больше не сервисная точка",
+            ]);
+        } else {
+            // Назначаем сервисной (снимает флаг с других)
+            $dump->markAsServicePoint();
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => "«{$dump->name_dump}» — теперь сервисная точка. Будет использоваться как стартовая для самосвалов без истории.",
+            ]);
+        }
+
+        // Перезагружаем dumps, чтобы UI отобразил изменения
+        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
     }
 
     public function toggleAddZone($dumpId)
@@ -608,7 +645,7 @@ class MasterPanel extends Component
 
         $this->dispatch('notify', [
             'type' => 'error',
-            'message' => "⚠️ Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%. Нужно подготовить зону для разгрузки!",
+            'message' => "⚠️ Зона «{$zoneName}» ({$dumpName}) заполнена на {$fillPct}%. Требуется обваловка!",
         ]);
 
         \Illuminate\Support\Facades\Log::info('MasterPanel: received ZoneNeedsBerm', [
