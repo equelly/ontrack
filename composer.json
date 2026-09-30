@@ -16,6 +16,7 @@
         "laravel/ui": "^4.2",
         "livewire/livewire": "^3.7",
         "mailersend/laravel-driver": "^2.7",
+        "predis/predis": "^3.6",
         "resend/resend-laravel": "^0.15.0"
     },
     "require-dev": {

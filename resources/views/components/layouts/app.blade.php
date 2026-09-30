@@ -23,6 +23,21 @@
     {{-- Глобальный контейнер для toast-уведомлений --}}
     <div id="global-toast-container" class="fixed top-4 right-4 p-4 z-[100000] flex flex-col items-end gap-2 pointer-events-none"></div>
 
+    {{-- Офлайн-индикатор (показывается когда нет связи с сервером) --}}
+    {{-- Использует события window.online/offline + Livewire:disconnect/connect --}}
+    {{-- Логика вынесена в Alpine.data('offlineIndicator', ...) в нижнем блоке --}}
+    <div x-data="offlineIndicator"
+         x-show="show"
+         x-cloak
+         x-transition
+         class="fixed top-0 left-0 right-0 z-[100001] bg-red-600 text-white text-center py-2 text-sm font-semibold shadow-lg">
+        <div class="flex items-center justify-center gap-2">
+            <i class="fas fa-wifi text-lg animate-pulse"></i>
+            <span>Нет связи с сервером. Ждём восстановления Wi-Fi...</span>
+            <span x-text="lastSeen ? '(посл. онлайн: ' + lastSeen.toLocaleTimeString() + ')' : ''"></span>
+        </div>
+    </div>
+
     {{-- Модалка входа при истечении сессии (419 Page Expired) --}}
     @include('includes.session-guard-modal')
 
@@ -101,6 +116,81 @@
                 // AiAlert в БД остаётся в статусе 'new' до явного acknowledge
                 // (через выпадающий список алертов у диспетчера).
             });
+        });
+
+        // ==========================================
+        // Alpine-компонент: офлайн-индикатор
+        // ==========================================
+        // Отслеживает navigator.onLine и Livewire responses.
+        // При offline — показывает красный баннер вверху страницы.
+        // При возврате online — переподключает Echo + dispatch refresh-* в Livewire.
+        //
+        // ВАЖНО: нельзя использовать x-init с операторами (if, setInterval, etc.)
+        // — Alpine падает с "Unexpected token". Поэтому логика в Alpine.data().
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('offlineIndicator', () => ({
+                show: false,
+                online: navigator.onLine,
+                livewireConnected: true,
+                lastSeen: navigator.onLine ? new Date() : null,
+                heartbeatInterval: null,
+
+                init() {
+                    // Слушаем window online — связь восстановлена
+                    window.addEventListener('online', () => {
+                        this.online = true;
+                        this.lastSeen = new Date();
+                        // Скрываем баннер с задержкой 500мс — Livewire должен успеть переподключиться
+                        setTimeout(() => {
+                            this.show = false;
+                            this.onReconnect();
+                        }, 500);
+                    });
+
+                    // Слушаем window offline — связь пропала
+                    window.addEventListener('offline', () => {
+                        this.online = false;
+                        this.show = true;
+                    });
+
+                    // Слушаем Livewire responses — если идёт трафик, значит онлайн
+                    Livewire.on('response', () => {
+                        this.livewireConnected = true;
+                        if (this.online) this.show = false;
+                    });
+
+                    // Heartbeat каждые 10 секунд: если Livewire не отвечает, считаем offline
+                    this.heartbeatInterval = setInterval(() => {
+                        if (!navigator.onLine || !this.livewireConnected) {
+                            this.show = !navigator.onLine;
+                        }
+                        this.livewireConnected = false; // Сброс — ждём следующего Livewire response
+                    }, 10000);
+                },
+
+                // Действия при восстановлении связи
+                onReconnect() {
+                    // 1. Триггерим обновление данных в открытых панелях
+                    Livewire.dispatch('refresh-master-data');
+                    Livewire.dispatch('refresh-miner-data');
+                    Livewire.dispatch('reload-truck-data');
+
+                    // 2. Toast для пользователя
+                    Livewire.dispatch('notify', [{
+                        type: 'success',
+                        message: 'Связь восстановлена — данные обновлены',
+                    }]);
+
+                    // 3. Переподключаем Echo (WebSocket), если он отвалился
+                    if (window.Echo && window.Echo.connector) {
+                        try {
+                            window.Echo.connector.connect();
+                        } catch (e) {
+                            console.warn('Echo reconnect failed:', e);
+                        }
+                    }
+                },
+            }));
         });
     </script>
 </body>
