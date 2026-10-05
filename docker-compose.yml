@@ -3,14 +3,12 @@
 #
 # Сервисы:
 #   - app (PHP-FPM + Laravel) — порт 9000 (для nginx)
-#   - nginx (reverse proxy) — порт 8080 (HTTP), можно добавить 443
-#   - mysql — порт 3306 (для dev; в prod — внутренний)
-#   - redis — порт 6379 (для dev; в prod — внутренний)
-#   - reverb — порт 8081 (websocket)
-#   - supervisor — queue workers + reverb (в одном контейнере с app)
+#   - nginx (reverse proxy) — порт 8080 (HTTP)
+#   - mysql — порт 3306 (изолирован внутри сети для безопасности в prod)
+#   - redis — порт 6379 (изолирован внутри сети для безопасности в prod)
+#   - supervisor — запускает внутри себя: queue workers + reverb сокеты (порт 8081)
 #
-# ВАЖНО: перед запуском — создай .env (можно скопировать .env.example)
-# и заполни APP_KEY, REVERB_APP_KEY, DB_PASSWORD.
+# ВАЖНО: перед запуском — создай .env и заполни APP_KEY, REVERB_APP_KEY, DB_PASSWORD.
 
 services:
   app:
@@ -31,7 +29,7 @@ services:
     environment:
       - DB_HOST=mysql
       - REDIS_HOST=redis
-      - REVERB_HOST=reverb
+      - REVERB_HOST=supervisor  # ИСПРАВЛЕНО: указывает на контейнер с запущенным Reverb
 
   nginx:
     image: nginx:alpine
@@ -51,8 +49,10 @@ services:
     image: mysql:8.0
     container_name: laravel-mysql
     restart: unless-stopped
-    ports:
-      - "3306:3306"
+    # В проде порты закрыты наружу ради безопасности. Доступ только внутри сети Docker.
+    # Если нужно подключиться локально для разработки, раскомментируйте:
+    # ports:
+    #   - "3306:3306"
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-laravel}
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
@@ -65,16 +65,18 @@ services:
     image: redis:7-alpine
     container_name: laravel-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
-    # В проде — раскомментируй и задай пароль:
+    # В проде порты закрыты наружу. Доступ только внутри сети Docker.
+    # Если нужно подключиться локально для разработки, раскомментируйте:
+    # ports:
+    #   - "6379:6379"
+    # В проде обязательно задайте пароль:
     # command: redis-server --requirepass ${REDIS_PASSWORD:-secret}
     volumes:
       - redis-data:/data
     networks:
       - laravel-network
 
-  # Queue workers + Reverb — в одном контейнере с supervisor
+  # Контейнер со встроенным Supervisor для параллельного вещания и очередей
   supervisor:
     build:
       context: .
@@ -99,7 +101,7 @@ services:
       - REVERB_HOST=0.0.0.0
       - REVERB_PORT=8081
     ports:
-      - "8081:8081"  # Reverb WebSocket
+      - "8081:8081"  # Проброс порта Reverb WebSocket для планшетов и фронтенда
 
 networks:
   laravel-network:

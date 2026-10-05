@@ -5,7 +5,6 @@ RUN apk add --no-cache \
     nginx \
     supervisor \
     mysql-client \
-    redis \
     $PHPIZE_DEPS \
     libpng-dev \
     libzip-dev \
@@ -16,7 +15,7 @@ RUN apk add --no-cache \
     git \
     curl
 
-# PHP расширения
+# PHP расширения (ИСПРАВЛЕНО: добавлено корректное расширение redis через pecl)
 RUN docker-php-ext-install \
     pdo_mysql \
     mysqli \
@@ -27,7 +26,8 @@ RUN docker-php-ext-install \
     bcmath \
     pcntl \
     opcache \
-    redis
+&& pecl install redis \
+&& docker-php-ext-enable redis
 
 # Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -36,12 +36,14 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 COPY . /var/www/html
 
-# Права
+# Права (ИСПРАВЛЕНО: даем права и пользователю root, так как supervisor в докере работает от root)
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html/storage \
-    && chmod -R 755 /var/www/html/bootstrap/cache
+    && chmod -R 775 /var/www/html/storage \
+    && chmod -R 775 /var/www/html/bootstrap/cache \
+    && mkdir -p /var/log/supervisor # Создаем директорию для логов самого супервизора
 
 # Composer install (без dev для прода)
+# ВАЖНО: запускаем от имени www-data или используем флаг --allow-plugins
 RUN composer install --no-interaction --no-dev --optimize-autoloader
 
 # Конфиг supervisor
