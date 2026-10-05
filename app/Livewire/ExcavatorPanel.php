@@ -98,6 +98,36 @@ class ExcavatorPanel extends Component
         }
     }
 
+    /**
+     * УВЕДОМЛЕНИЕ ДРАЙВЕРОВ В РЕЖИМЕ ОЖИДАНИЯ — УСТАРЕВШИЙ МЕТОД.
+     *
+     * Раньше этот метод напрямую отправлял событие RouteAvailable каждому
+     * драйверу через Echo. DriverPanel в браузере ловил его и сам вызывал
+     * assignRoute через HTTP round-trip.
+     *
+     * Это была "частичная" event-driven архитектура — решения принимались
+     * в браузере, что ненадёжно (если браузер закрыт, водитель не получит
+     * маршрут; если связь плохая, HTTP-запрос упадёт).
+     *
+     * ТЕПЕРЬ: Используется triggerRoutesAvailable() в RouteAssignmentService
+     * → событие RouteAssignmentOpportunity → RouteAssignmentListener (Process Manager)
+     * на сервере через queue worker сам вызывает assignForTruck для всех
+     * ждущих драйверов. Браузер получает только DriverRouteUpdated (broadcast)
+     * когда маршрут уже назначен — UI просто обновляется.
+     *
+     * Метод оставлен для обратной совместимости, но не вызывается нигде.
+     * Удалить можно позже, после уверенности что Process Manager работает.
+     */
+    protected function notifySearchingDrivers(?int $minerId, string $reason = 'loading_completed'): void
+    {
+        // DEPRECATED — см. комментарий выше.
+        // Используйте: app(RouteAssignmentService::class)->triggerRoutesAvailable(...)
+        Log::warning('notifySearchingDrivers: DEPRECATED method called. Use RouteAssignmentService::triggerRoutesAvailable() instead.', [
+            'reason' => $reason,
+            'miner_id' => $minerId,
+        ]);
+    }
+
     public function loadMinerData(): void
     {
         // Сбрасываем данные по умолчанию
@@ -275,6 +305,21 @@ class ExcavatorPanel extends Component
             event(new \App\Events\RoutesUpdated());
         } catch (\Exception $e) {
             Log::error('ExcavatorPanel RoutesUpdated: ' . $e->getMessage());
+        }
+
+        // 4. === EVENT-DRIVEN (Подход B): диспатчим RockChanged ===
+        // Process Manager (RouteAssignmentListener) поймает через queue worker
+        // и попытается назначить маршрут ждущим драйверам (если ограничение по
+        // породе раньше мешало, теперь может быть доступно).
+        try {
+            event(new \App\Events\RockChanged(
+                miner: $this->miner,
+                oldRock: $oldRock ?? null,
+                newRock: $rock,
+                userId: Auth::id(),
+            ));
+        } catch (\Exception $e) {
+            Log::error('ExcavatorPanel RockChanged dispatch: ' . $e->getMessage());
         }
 
         $message = 'Текущая порода: ' . ($rock?->name_rock ?? '');
@@ -589,6 +634,13 @@ class ExcavatorPanel extends Component
             $statusService = app(TruckStatusService::class);
             $statusService->changeStatus($truck, 'transporting');
 
+            // === EVENT-DRIVEN (Подход B): погрузка завершена ===
+            // Используем LoadingCompleted — он ДВОЙНОЙ:
+            //   1. Broadcasting на truck.{truckId} → водитель получает toast
+            //   2. Domain event → RouteAssignmentListener (Process Manager) через
+            //      queue worker находит всех ждущих драйверов и пытается им назначить
+            //      маршрут (т.к. забой освободился после завершения погрузки).
+            // Никаких отдельных triggerRoutesAvailable — универсальное событие убрано.
 
             // Получаем актуальную информацию
             $trip->refresh();
@@ -596,11 +648,16 @@ class ExcavatorPanel extends Component
             $finalZone = $trip->zone;
             $finalDump = $trip->miningOrder?->dump ?? $trip->dump;
 
-            // Отправляем уведомление водителю
+            // Отправляем событие — broadcast для водителя + domain для Process Manager
             event(new LoadingCompleted(
                 $truck,
                 $zoneReassigned ? $finalZone?->name_zone : null,
-                $zoneReassigned ? $finalDump?->name_dump : null
+                $zoneReassigned ? $finalDump?->name_dump : null,
+                // Доменные данные для Process Manager (не идут в broadcast):
+                minerId: $trip->miner_id,
+                miningOrderId: $trip->mining_order_id,
+                zoneId: $finalZone?->id,
+                dumpId: $finalDump?->id,
             ));
 
             Log::info("Loading completed for truck {$truck->id}", [

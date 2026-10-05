@@ -148,7 +148,7 @@
             <!-- Показатели производительности -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">К забою</p>
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">У забоя</p>
                     <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ $productivityStats['current_trucks'] ?? 0 }}</p>
                 </div>
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
@@ -368,7 +368,65 @@
         window.currentMinerId = {{ $miner->id }};
         @endif
 
+        // =========================================
+        // Echo подписка на канал экскаватора
+        // =========================================
+        let currentMinerChannel = null;
+
+        function subscribeToMinerChannel(minerId) {
+            if (!minerId || !window.Echo) {
+                console.warn('[Echo] subscribeToMinerChannel: нет minerId или Echo', { minerId, hasEcho: !!window.Echo });
+                return;
+            }
+
+            // Если уже подписаны на этот же канал — пропускаем
+            if (currentMinerChannel === minerId) {
+                console.log('[Echo] Уже подписаны на miner.' + minerId);
+                return;
+            }
+
+            // Покидаем старый канал
+            if (currentMinerChannel) {
+                window.Echo.leave(`private-miner.${currentMinerChannel}`);
+            }
+
+            currentMinerChannel = minerId;
+            console.log('[Echo] Подписка на канал miner.' + minerId);
+
+            // РАЗДЕЛЬНЫЕ подписки на события
+            const channel = window.Echo.private(`miner.${minerId}`);
+
+            console.log('[Echo] Регистрирую callback .excavator.notification...');
+            channel.listen('.excavator.notification', (data) => {
+                console.log('[Echo] Получено .excavator.notification', data);
+                Livewire.dispatch('refresh-miner-data');
+
+                const payload = data?.payload ?? {};
+                const message = payload.message ?? data?.message ?? 'Новое уведомление';
+                const type = (data?.type === 'truck_assigned' || payload.type === 'success')
+                    ? 'success'
+                    : 'info';
+                Livewire.dispatch('notify', [{ type, message }]);
+            });
+            console.log('[Echo] ✓ Callback .excavator.notification зарегистрирован');
+
+            console.log('[Echo] Регистрирую callback .loading.started...');
+            channel.listen('.loading.started', (data) => {
+                console.log('[Echo] Получено .loading.started', data);
+                Livewire.dispatch('refresh-miner-data');
+
+                const message = data?.message ?? `Самосвал ${data?.truck_number ?? ''} начал погрузку`;
+                Livewire.dispatch('notify', [{ type: 'info', message }]);
+            });
+            console.log('[Echo] ✓ Callback .loading.started зарегистрирован');
+        }
+
         document.addEventListener('livewire:init', () => {
+            // Подписка при загрузке — если экскаватор уже выбран
+            @if($miner)
+            subscribeToMinerChannel({{ $miner->id }});
+            @endif
+
             // notify обрабатывается в layout (components/layouts/app.blade.php)
             // Здесь НЕ регистрируем — чтобы не было дублей
 
@@ -379,55 +437,8 @@
                 date.setTime(date.getTime() + (event.days * 24 * 60 * 60 * 1000));
                 document.cookie = `${event.name}=${event.value};expires=${date.toUTCString()};path=/`;
             });
-        });
 
-        // =========================================
-        // Echo подписка на канал экскаватора
-        // =========================================
-        let currentMinerChannel = null;
-
-        function subscribeToMinerChannel(minerId) {
-            if (!minerId || !window.Echo) return;
-
-            if (currentMinerChannel) {
-                window.Echo.leave(`private-miner.${currentMinerChannel}`);
-                currentMinerChannel = null;
-            }
-
-            currentMinerChannel = minerId;
-
-            window.Echo.private(`miner.${minerId}`)
-                .listen('.excavator.notification', (data) => {
-                    console.log('[Echo] Получено .excavator.notification', data);
-                    Livewire.dispatch('refresh-miner-data');
-
-                    // Показываем toast напрямую — нативный Livewire Echo listener
-                    // может не сработать, если $this->miner ещё null в момент
-                    // построения getListeners() (miner.0 канал — мимо).
-                    const payload = data?.payload ?? {};
-                    const message = payload.message ?? data?.message ?? 'Новое уведомление';
-                    const type = (data?.type === 'truck_assigned' || payload.type === 'success')
-                        ? 'success'
-                        : 'info';
-                    Livewire.dispatch('notify', [{ type, message }]);
-                })
-                .listen('.loading.started', (data) => {
-                    console.log('[Echo] Получено .loading.started', data);
-                    Livewire.dispatch('refresh-miner-data');
-
-                    // Дублируем toast — нативный listener может не сработать
-                    const message = data?.message ?? `Самосвал ${data?.truck_number ?? ''} начал погрузку`;
-                    Livewire.dispatch('notify', [{ type: 'info', message }]);
-                });
-        }
-
-        @if($miner)
-        document.addEventListener('DOMContentLoaded', () => {
-            subscribeToMinerChannel({{ $miner->id }});
-        });
-        @endif
-
-        document.addEventListener('livewire:init', () => {
+            // При смене экскаватора — переключаем подписку
             Livewire.on('miner-selected', (data) => {
                 const event = Array.isArray(data) ? data[0] : data;
                 if (event && event.miner_id) {

@@ -589,6 +589,9 @@ class MasterPanel extends Component
         $zone = \App\Models\Zone::find($zoneId);
         if (!$zone) return;
 
+        // Запоминаем старое значение delivery — нужно для выбора ZoneOpened vs ZoneClosed
+        $oldDelivery = $zone->delivery;
+
         if ($field === 'delivery') {
             $zone->delivery = filter_var($value, FILTER_VALIDATE_BOOLEAN);
         } elseif (in_array($field, ['volume', 'capacity', 'name_zone'])) {
@@ -596,16 +599,45 @@ class MasterPanel extends Component
         } elseif ($field === 'rock_id') {
             $zone->rocks()->sync([$value]);
         }
-        
+
         // Фиксируем, кто изменил зону
         $zone->last_updated_by = auth()->id();
         $zone->save();
-        
+
         app(\App\Services\MiningOrderSyncService::class)->syncActiveStatusForZone($zone->id);
-        
+
         // ОТПРАЛЯЕМ СИГНАЛ ВОДИТЕЛЯМ
         event(new \App\Events\RoutesUpdated());
-        
+
+        // === EVENT-DRIVEN (Подход B): диспатчим ZoneOpened или ZoneClosed ===
+        // Process Manager (RouteAssignmentListener) через queue worker найдёт
+        // ждущих драйверов и попытается им назначить маршрут.
+        if ($field === 'delivery') {
+            // Сохранили delivery в зоне — проверяем, изменилось ли
+            $zone->refresh();
+            if ($zone->delivery && !$oldDelivery) {
+                // Была закрыта, теперь открыта
+                try {
+                    event(new \App\Events\ZoneOpened(
+                        zone: $zone,
+                        userId: auth()->id(),
+                    ));
+                } catch (\Exception $e) {
+                    Log::error('updateZoneField ZoneOpened dispatch: ' . $e->getMessage());
+                }
+            } elseif (!$zone->delivery && $oldDelivery) {
+                // Была открыта, теперь закрыта
+                try {
+                    event(new \App\Events\ZoneClosed(
+                        zone: $zone,
+                        userId: auth()->id(),
+                    ));
+                } catch (\Exception $e) {
+                    Log::error('updateZoneField ZoneClosed dispatch: ' . $e->getMessage());
+                }
+            }
+        }
+
         $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона обновлена']);
     }

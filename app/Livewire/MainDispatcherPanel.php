@@ -701,6 +701,20 @@ class MainDispatcherPanel extends Component
         $this->loadData();
         $this->closeEditOrder();
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Маршрут обновлён']);
+
+        // === EVENT-DRIVEN (Подход B): обновление маршрута может сделать его доступным ===
+        // Например, поменяли dump_id → теперь есть запись в miner_dump_distances.
+        // Process Manager попытается назначить маршрут ждущим драйверам.
+        if ($order->active) {
+            try {
+                event(new \App\Events\MiningOrderActivated(
+                    order: $order,
+                    userId: auth()->id(),
+                ));
+            } catch (\Exception $e) {
+                Log::error('saveOrder MiningOrderActivated dispatch: ' . $e->getMessage());
+            }
+        }
     }
 
     public function toggleOrderActive(int $orderId): void
@@ -711,6 +725,21 @@ class MainDispatcherPanel extends Component
             $this->loadData();
             $status = $order->active ? 'активирован' : 'деактивирован';
             $this->dispatch('notify', ['type' => 'info', 'message' => "Маршрут {$status}"]);
+
+            // === EVENT-DRIVEN (Подход B): если активировали — диспатчим событие ===
+            // Process Manager (RouteAssignmentListener) через queue worker найдёт
+            // всех ждущих драйверов и попытается им назначить маршрут (т.к. теперь
+            // этот MiningOrder доступен).
+            if ($order->active) {
+                try {
+                    event(new \App\Events\MiningOrderActivated(
+                        order: $order,
+                        userId: auth()->id(),
+                    ));
+                } catch (\Exception $e) {
+                    Log::error('toggleOrderActive MiningOrderActivated dispatch: ' . $e->getMessage());
+                }
+            }
         }
     }
 

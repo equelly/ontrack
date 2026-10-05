@@ -25,7 +25,7 @@
 
     {{-- Офлайн-индикатор (показывается когда нет связи с сервером) --}}
     {{-- Использует события window.online/offline + Livewire:disconnect/connect --}}
-    {{-- Логика вынесена в Alpine.data('offlineIndicator', ...) в нижнем блоке --}}
+    {{-- Логика вынесена в Alpine.data('offlineIndicator', ...) в нижнем блоке <script> --}}
     <div x-data="offlineIndicator"
          x-show="show"
          x-cloak
@@ -35,7 +35,22 @@
             <i class="fas fa-wifi text-lg animate-pulse"></i>
             <span>Нет связи с сервером. Ждём восстановления Wi-Fi...</span>
             <span x-text="lastSeen ? '(посл. онлайн: ' + lastSeen.toLocaleTimeString() + ')' : ''"></span>
+            <span x-show="pendingCount > 0"
+                  x-text="'• В очереди: ' + pendingCount + ' действ.'"
+                  class="ml-2 px-2 py-0.5 bg-white/20 rounded"></span>
         </div>
+    </div>
+
+    {{-- Индикатор очереди офлайн-действий (показывается когда есть pending actions) --}}
+    <div x-data="offlineQueueIndicator"
+         x-show="count > 0"
+         x-cloak
+         x-transition
+         class="fixed bottom-4 right-4 z-[100000] bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 cursor-pointer hover:bg-blue-700"
+         @click="flush()"
+         title="Клик — отправить сейчас">
+        <i class="fas fa-cloud-upload-alt text-lg" :class="flushing ? 'animate-pulse' : ''"></i>
+        <span x-text="flushing ? 'Отправляем...' : ('В очереди: ' + count)"></span>
     </div>
 
     {{-- Модалка входа при истечении сессии (419 Page Expired) --}}
@@ -133,6 +148,7 @@
                 online: navigator.onLine,
                 livewireConnected: true,
                 lastSeen: navigator.onLine ? new Date() : null,
+                pendingCount: 0, // счётчик действий в OfflineQueue
                 heartbeatInterval: null,
 
                 init() {
@@ -164,8 +180,28 @@
                         if (!navigator.onLine || !this.livewireConnected) {
                             this.show = !navigator.onLine;
                         }
-                        this.livewireConnected = false; // Сброс — ждём следующего Livewire response
-                    }, 10000);
+                        this.livewireConnected = false;
+                        this.refreshPendingCount();
+                    }, 5000);
+
+                    // Слушаем изменения очереди офлайн-действий
+                    window.addEventListener('offline-queue-changed', () => {
+                        this.refreshPendingCount();
+                    });
+
+                    // Стартовая инициализация счётчика
+                    this.refreshPendingCount();
+                },
+
+                // Обновить счётчик pending действий из OfflineQueue
+                async refreshPendingCount() {
+                    if (window.OfflineQueue) {
+                        try {
+                            this.pendingCount = await window.OfflineQueue.count();
+                        } catch (e) {
+                            console.warn('Failed to get offline queue count:', e);
+                        }
+                    }
                 },
 
                 // Действия при восстановлении связи
@@ -189,9 +225,67 @@
                             console.warn('Echo reconnect failed:', e);
                         }
                     }
+
+                    // 4. Отправляем очередь офлайн-действий.
+                    //    НЕ вызываем напрямую — OfflineQueue сам слушает window.online
+                    //    и вызывает flush(). Если тут тоже вызвать — будет дублирование
+                    //    flush'ей (видно по "[OfflineQueue] Already flushing, skip").
+                    //    Просто ждём — OfflineQueue.flush() сам запустится.
+                },
+            }));
+
+            // ==========================================
+            // Alpine-компонент: индикатор очереди офлайн-действий
+            // ==========================================
+            // Синий кружок внизу справа — показывает сколько действий
+            // накопилось в очереди. Клик — отправить вручную.
+            Alpine.data('offlineQueueIndicator', () => ({
+                count: 0,
+                flushing: false,
+
+                async init() {
+                    await this.refresh();
+                    // Слушаем изменения очереди
+                    window.addEventListener('offline-queue-changed', () => this.refresh());
+                    // Обновляем каждые 5 секунд
+                    setInterval(() => this.refresh(), 5000);
+                },
+
+                async refresh() {
+                    if (window.OfflineQueue) {
+                        try {
+                            this.count = await window.OfflineQueue.count();
+                            this.flushing = window.OfflineQueue.isFlushing;
+                        } catch (e) {
+                            console.warn('Failed to refresh offline queue:', e);
+                        }
+                    }
+                },
+
+                async flush() {
+                    if (window.OfflineQueue && navigator.onLine) {
+                        this.flushing = true;
+                        await window.OfflineQueue.flush();
+                        this.flushing = false;
+                        await this.refresh();
+                    } else if (!navigator.onLine) {
+                        Livewire.dispatch('notify', [{
+                            type: 'warning',
+                            message: 'Нет связи — действия останутся в очереди',
+                        }]);
+                    }
                 },
             }));
         });
+
+        // ==========================================
+        // Echo-подписка экскаваторщика — ВЫНЕСЕНА в excavator-panel.blade.php
+        // ==========================================
+        // Раньше подписка была здесь в layout, но не работала из-за того что
+        // window.subscribeToMinerChannel вызывалась ДО того как Livewire инициализировал
+        // событие 'miner-selected'. Теперь код полностью внутри excavator-panel.blade.php,
+        // внутри одного <script> + document.addEventListener('livewire:init', ...).
+        // Это работает так же как DriverPanel (driver-panel.blade.php — у которого всё работает).
     </script>
 </body>
 </html>

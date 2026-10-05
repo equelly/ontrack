@@ -63,3 +63,9 @@ window.Echo = new Echo({
 });
 
 console.log('✅ Echo + Reverb инициализирован');
+
+// ---------------------------
+// OfflineQueue — буферизация действий водителя при отсутствии связи
+// ---------------------------
+import './offline-queue.js';
+console.log('✅ OfflineQueue инициализирован');

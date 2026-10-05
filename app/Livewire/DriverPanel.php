@@ -142,6 +142,15 @@ class DriverPanel extends Component
             if ($this->truck->driver_id !== auth()->id()) {
                 $this->truck->update(['driver_id' => auth()->id()]);
             }
+
+            // Синхронизируем isSearchingRoute с БД — это решает 2 проблемы:
+            // 1. После перезагрузки страницы — если водитель был в ожидании,
+            //    плашка "Идет ожидание..." снова появится (а не исчезнет).
+            // 2. Плашка показывается ТОЛЬКО у того водителя, чей грузовик
+            //    реально в режиме ожидания (trucks.is_searching_route=true).
+            //    У других драйверов это поле false → плашки не будет.
+            $this->isSearchingRoute = (bool) $this->truck->is_searching_route;
+
             $this->loadData();
             // Временно отключено - проверка запланированного обслуживания
             // $this->checkScheduledService();
@@ -359,6 +368,8 @@ class DriverPanel extends Component
 
             // Маршрут найден! Выключаем поиск.
             $this->isSearchingRoute = false;
+            // Синхронизируем с БД — TruckStatusService будет знать кто не ждёт
+            $this->truck->update(['is_searching_route' => false]);
             $this->loadData();
 
             // NOTE: notify НЕ диспатчим здесь — RouteAssignmentService::assignForTruck
@@ -370,10 +381,13 @@ class DriverPanel extends Component
             // Точная причина, почему маршрута нет
             $wasSearching = $this->isSearchingRoute;
             $this->isSearchingRoute = true;
-            
+            // Синхронизируем с БД — TruckStatusService при завершении погрузки
+            // найдёт всех is_searching_route=true и broadcast'ит им RouteAvailable
+            $this->truck->update(['is_searching_route' => true]);
+
             // Формируем человекочитаемое сообщение для водителя
             $message = $this->buildDriverMessage($e->getDiagnostics());
-            
+
             // Выводим уведомление только один раз (при первом переходе в режим ожидания)
             // или если причина изменилась
             if (!$wasSearching || ($this->lastBlockReason ?? '') !== $message) {
@@ -386,6 +400,7 @@ class DriverPanel extends Component
         } catch (\Exception $e) {
             // Системная ошибка (грузовик занят, БД недоступна и т.д.)
             $this->isSearchingRoute = false;
+            $this->truck->update(['is_searching_route' => false]);
             $this->dispatch('notify', [
                 'type' => 'error',
                 'message' => $e->getMessage(),
@@ -451,10 +466,29 @@ class DriverPanel extends Component
         }
     }
 
+    /**
+     * Слушатель WebSocket-события RouteAvailable на канале driver.{truckId}.
+     *
+     * УСТАРЕВШИЙ — теперь не нужен. Process Manager (RouteAssignmentListener)
+     * на сервере сам вызывает assignForTruck() для ждущих драйверов через queue.
+     * DriverPanel получает только DriverRouteUpdated (broadcast) когда маршрут
+     * уже назначен — стандартный путь через onRouteUpdated().
+     *
+     * Событие RouteAvailable удалено из Events/. Эта заглушка осталась для
+     * совместимости — может быть удалена после проверки что Process Manager работает.
+     */
+    // #[On('echo-private:driver.{truck.id},.route.available')]
+    // public function onRouteAvailable($event): void
+    // {
+    //     // DEPRECATED — см. RouteAssignmentOpportunity + RouteAssignmentListener
+    //     // в app/Listeners/RouteAssignmentListener.php
+    // }
+
     // Ручная отмена ожидания водителем
     public function stopSearchingRoute(): void
     {
         $this->isSearchingRoute = false;
+        $this->truck->update(['is_searching_route' => false]);
         $this->dispatch('notify', [
             'type' => 'info',
             'message' => 'Ожидание маршрута отменено.',

@@ -5,15 +5,19 @@ namespace App\Events;
 use App\Models\Truck;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
  * Событие: Уведомление экскаваторщика
  * Отправляется на канал miner.{minerId}
+ *
+ * ВАЖНО: implements ShouldBroadcastNow (не ShouldBroadcast) — отправляет
+ * в Reverb СИНХРОННО, без queue. Если queue worker не обрабатывает
+ * BroadcastEvent jobs — события не доходят. ShouldBroadcastNow обходит queue.
  */
-class ExcavatorNotification implements ShouldBroadcast
+class ExcavatorNotification implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -46,6 +50,6 @@ class ExcavatorNotification implements ShouldBroadcast
 
     public function broadcastAs(): string
     {
-        return '.excavator.notification';
+        return 'excavator.notification';
     }
 }

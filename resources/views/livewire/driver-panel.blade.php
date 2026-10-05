@@ -145,7 +145,7 @@
                         <p class="text-[10px] text-gray-400">{{ $emptyRunNote }}</p>
                     </div>
                     <div>
-                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время в пути</p>
+                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время рейса</p>
                         <p class="text-base sm:text-xl font-bold text-gray-800 timer-display" id="trip-time"
                            data-started="{{ $tripStartedAt ?? '' }}"
                            data-pause-started="{{ $pauseStartedAt ?? '' }}"
@@ -734,7 +734,29 @@
                 })
                 .listen('.zone.changed', (eventData) => {
                     Livewire.dispatch('zone-changed');
+                })
+                // === EVENT-DRIVEN: уведомление о доступности маршрута ===
+                // TruckStatusService при завершении погрузки → забой освободился →
+                // broadcast'ит это событие всем драйверам в is_searching_route.
+                // DriverPanel.onRouteAvailable() → автоматически вызывает assignRoute().
+                .listen('.route.available', (eventData) => {
+                    console.log('[Echo] Получено .route.available', eventData);
+                    // Уведомление обрабатывается через нативный Livewire listener
+                    // #[On('echo-private:driver.{truck.id},.route.available')] → onRouteAvailable()
+                    // Но если нативный listener не сработает — fallback через dispatch:
+                    if (eventData && eventData.truck_id === truckId) {
+                        Livewire.dispatch('route-available-received', { data: eventData });
+                    }
                 });
+            // === EVENT-DRIVEN: подписка на .route.available УБРАНА ===
+            // Раньше: TruckStatusService при завершении погрузки → RouteAvailable →
+            // DriverPanel ловил через Echo → сам вызывал assignRoute() через HTTP.
+            // Это была "частичная" event-driven — решения принимались в браузере.
+            //
+            // ТЕПЕРЬ: Process Manager на сервере (RouteAssignmentListener) через
+            // queue worker сам вызывает assignForTruck() для всех ждущих драйверов.
+            // DriverPanel получает только DriverRouteUpdated (broadcast) — стандартный
+            // путь через .route.updated выше. JS не участвует в принятии решений.
             echoChannels.push(`driver.${truckId}`);
 
             window.Echo.private(`truck.${truckId}`)
