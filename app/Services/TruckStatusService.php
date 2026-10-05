@@ -405,7 +405,10 @@ class TruckStatusService
             }
         }
 
-        $trip->update(['load_time' => now()]);
+        $trip->update([
+            'load_time' => now(),
+            'load_start' => now(),  // ← нужно для getAvgLoadTime ( Miner::getAvgLoadTime проверяет load_start && loaded_at)
+        ]);
 
         // Уведомляем диспетчера об изменениях при загрузке
         $this->notifyDispatcher($truck, 'loading', 'loading');

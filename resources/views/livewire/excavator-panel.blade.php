@@ -160,13 +160,35 @@
                     <p class="text-xl sm:text-2xl font-bold text-emerald-600">{{ $productivityStats['loading_trucks'] ?? 0 }}</p>
                 </div>
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    @php
-                        $targetForCompare = ($productivityStats['target_load_time'] ?? 0) / 60;
-                        $avgLoadTime = $productivityStats['avg_load_time'] ?? 999;
-                    @endphp
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Ср. погрузка</p>
-                    <p class="text-xl sm:text-2xl font-bold {{ $avgLoadTime > $targetForCompare && $targetForCompare > 0 ? 'text-red-600' : 'text-emerald-600' }}">{{ $avgLoadTime == 999 ? '-' : $avgLoadTime }} <span class="text-sm font-normal text-gray-400">мин</span></p>
-                </div>
+                @php
+                    // 1. Получаем целевое время
+                    $targetLoadTimeSeconds = $productivityStats['target_load_time'] ?? 0;
+                    $targetForCompare = $targetLoadTimeSeconds > 0 ? $targetLoadTimeSeconds / 60 : 0;
+                    
+                    // 2. Получаем фактическое среднее время
+                    $avgLoadTime = $productivityStats['avg_load_time'] ?? null;
+
+                    // Порядок вывода и определение метки:
+                    if ($avgLoadTime && $avgLoadTime > 0) {
+                        $displayTime = $avgLoadTime;
+                        $timeType = 'динамическая';
+                    } elseif ($targetForCompare > 0) {
+                        $displayTime = $targetForCompare;
+                        $timeType = 'установленная';
+                    } else {
+                        // Замените \App\Models\Miner на ваш актуальный класс с константой
+                        $displayTime = \App\Models\Miner::DEFAULT_LOADING_TIME_MINUTES; 
+                        $timeType = 'дефолтная';
+                    }
+                @endphp
+                
+                <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">
+                    погрузка <span class="lowercase font-normal text-gray-400">({{ $timeType }})</span>
+                </p>
+                <p class="text-xl sm:text-2xl font-bold {{ $avgLoadTime > $targetForCompare && $targetForCompare > 0 ? 'text-red-600' : 'text-emerald-600' }}">
+                    {{ $displayTime }} <span class="text-sm font-normal text-gray-400">мин</span>
+                </p>
+            </div>
             </div>
 
             <!-- Таблица самосвалов -->
