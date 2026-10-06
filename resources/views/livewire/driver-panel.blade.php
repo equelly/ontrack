@@ -145,7 +145,7 @@
                         <p class="text-[10px] text-gray-400">{{ $emptyRunNote }}</p>
                     </div>
                     <div>
-                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время рейса</p>
+                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время в пути</p>
                         <p class="text-base sm:text-xl font-bold text-gray-800 timer-display" id="trip-time"
                            data-started="{{ $tripStartedAt ?? '' }}"
                            data-pause-started="{{ $pauseStartedAt ?? '' }}"
@@ -183,21 +183,42 @@
                 @endif
 
                 @if($status === 'free')
-                    <div wire:key="status-free">
+                    <div wire:key="status-free" class="space-y-3">
                         @if(!$currentTrip)
                             <button wire:click="assignRoute" wire:loading.attr="disabled" class="w-full inline-flex items-center justify-center px-4 sm:px-6 py-3 sm:py-4 bg-emerald-600 border border-transparent rounded-md font-semibold text-white uppercase tracking-widest hover:bg-emerald-700 transition text-sm sm:text-base">
                                 <span wire:loading.remove>Получить маршрут</span>
-                                <span wire:loading class="animate-spin">⏳ Получение...</span>
+                                <span wire:loading class="animate-spin">⏳</span>
                             </button>
                         @endif
+                        {{-- Кнопка запроса обслуживания (подкачка/обтяжка/заявка) --}}
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <button wire:click="requestTireInflation" wire:loading.attr="disabled" class="w-full sm:flex-1 px-4 py-2 bg-amber-100 text-amber-700 border border-amber-300 rounded-md font-semibold uppercase hover:bg-amber-200 text-sm transition">
+                                <span wire:loading.remove>🔧 Подкачка шин</span>
+                                <span wire:loading class="animate-spin">⏳</span>
+                            </button>
+                            <button wire:click="requestWheelTightening" wire:loading.attr="disabled" class="w-full sm:flex-1 px-4 py-2 bg-amber-100 text-amber-700 border border-amber-300 rounded-md font-semibold uppercase hover:bg-amber-200 text-sm transition">
+                                <span wire:loading.remove>🔩 Обтяжка колёс</span>
+                                <span wire:loading class="animate-spin">⏳</span>
+                            </button>
+                        </div>
                     </div>
                 @endif
 
                 @if($status === 'completed')
                     <div wire:key="status-completed" class="space-y-3">
-                        <div class="p-3 sm:p-4 bg-green-50 border-l-4 border-green-500 text-green-700 rounded text-sm">Рейс завершён. Запросите новый маршрут или уйдите в отстой.</div>
+                        <div class="p-3 sm:p-4 bg-green-50 border-l-4 border-green-500 text-green-700 rounded text-sm">Рейс завершён. Запросите новый маршрут, уйдите в отстой или запросите обслуживание.</div>
                         <button wire:click="assignRoute" class="w-full px-4 sm:px-6 py-3 bg-emerald-600 text-white rounded-md font-semibold uppercase hover:bg-emerald-700 text-sm sm:text-base">Запросить маршрут</button>
-                        <button wire:click="goToStandby" class="w-full px-4 sm:px-6 py-3 bg-slate-200 text-slate-700 rounded-md font-semibold uppercase hover:bg-slate-300 text-sm sm:text-base">Уйти в отстой</button>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <button wire:click="goToStandby" class="w-full sm:flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-md font-semibold uppercase hover:bg-slate-300 text-sm">Отстой</button>
+                            <button wire:click="requestTireInflation" wire:loading.attr="disabled" class="w-full sm:flex-1 px-4 py-2 bg-amber-100 text-amber-700 border border-amber-300 rounded-md font-semibold uppercase hover:bg-amber-200 text-sm transition">
+                                <span wire:loading.remove>🔧 Подкачка</span>
+                                <span wire:loading class="animate-spin">⏳</span>
+                            </button>
+                            <button wire:click="requestWheelTightening" wire:loading.attr="disabled" class="w-full sm:flex-1 px-4 py-2 bg-amber-100 text-amber-700 border border-amber-300 rounded-md font-semibold uppercase hover:bg-amber-200 text-sm transition">
+                                <span wire:loading.remove>🔩 Обтяжка</span>
+                                <span wire:loading class="animate-spin">⏳</span>
+                            </button>
+                        </div>
                     </div>
                 @endif
 
@@ -354,7 +375,7 @@
                     </div>
                     <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Примерно рейсов</p>
-                        <p class="text-base sm:text-lg font-bold text-gray-800">{{ $this->fuelStats['estimated_trips'] ?? 0 }} <span class="text-sm font-normal text-gray-500">(ср. {{ $this->fuelStats['avg_distance'] ?? '-' }} км)</span></p>
+                        <p class="text-base sm:text-lg font-bold text-gray-800">{{ $this->fuelStats['estimated_trips'] ?? 0 }} <span class="text-sm font-normal text-gray-500">(ср. {{ isset($this->fuelStats['avg_distance']) ? round($this->fuelStats['avg_distance'], 1) : '-' }} км)</span></p>
                     </div>
                 </div>
 
@@ -448,7 +469,7 @@
         <div x-show="tab === 'stats'" x-cloak class="space-y-4 sm:space-y-6">
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6">
                 <h3 class="font-bold text-gray-800 uppercase tracking-wider mb-4 text-sm sm:text-base">Статистика за смену ({{ $stats['shift_name'] ?? '-' }})</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-3 gap-4">
                     <div class="p-3 sm:p-4 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
                         <p class="text-[10px] sm:text-xs text-emerald-600 uppercase font-semibold mb-1">Рейсов</p>
                         <p class="text-xl sm:text-2xl font-bold text-emerald-700">{{ $stats['today_trips'] ?? 0 }}</p>
@@ -461,10 +482,54 @@
                         <p class="text-[10px] sm:text-xs text-purple-600 uppercase font-semibold mb-1">Ср. скорость</p>
                         <p class="text-xl sm:text-2xl font-bold text-purple-700">{{ $stats['avg_speed'] ?? '-' }} <span class="text-xs sm:text-sm">@if($stats['avg_speed']) км/ч @endif</span></p>
                     </div>
-                    <div class="p-3 sm:p-4 bg-slate-50 rounded-lg border border-slate-200 text-center">
-                        <p class="text-[10px] sm:text-xs text-slate-600 uppercase font-semibold mb-1">Всего рейсов</p>
-                        <p class="text-xl sm:text-2xl font-bold text-slate-700">{{ $stats['total_trips'] ?? 0 }}</p>
+                </div>
+            </div>
+
+            {{-- Таблица: рейсы по экскаваторам и породам за смену --}}
+            @php $tripsByMinerRock = $stats['trips_by_miner_rock'] ?? []; @endphp
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                    <i class="fas fa-route text-blue-500"></i> Рейсы за смену по экскаваторам
+                </div>
+                <div class="overflow-x-auto">
+                    @if(!empty($tripsByMinerRock))
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b">
+                            <tr>
+                                <th class="text-left p-3 font-semibold text-gray-600">Экскаватор</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Отвал</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
+                                <th class="text-center p-3 font-semibold text-gray-600">Рейсов</th>
+                                <th class="text-center p-3 font-semibold text-gray-600">Объём (т)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($tripsByMinerRock as $row)
+                            <tr class="border-b hover:bg-slate-50">
+                                <td class="p-3 font-medium text-gray-800">{{ $row['miner'] }}</td>
+                                <td class="p-3 text-gray-600">{{ $row['dump'] }}</td>
+                                <td class="p-3">
+                                    <span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $row['rock'] }}</span>
+                                </td>
+                                <td class="p-3 text-center font-bold text-gray-800">{{ $row['trips'] }}</td>
+                                <td class="p-3 text-center text-gray-600">{{ number_format($row['volume'], 1) }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot class="bg-slate-50 border-t-2 border-slate-300">
+                            <tr>
+                                <td colspan="3" class="p-3 font-bold text-gray-700 text-right">Итого:</td>
+                                <td class="p-3 text-center font-bold text-emerald-700">{{ array_sum(array_column($tripsByMinerRock, 'trips')) }}</td>
+                                <td class="p-3 text-center font-bold text-blue-700">{{ number_format(array_sum(array_column($tripsByMinerRock, 'volume')), 1) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    @else
+                    <div class="p-8 text-center text-gray-400 text-sm">
+                        <i class="fas fa-inbox text-3xl text-gray-300 mb-2"></i>
+                        <p>Нет завершённых рейсов за смену</p>
                     </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -734,19 +799,6 @@
                 })
                 .listen('.zone.changed', (eventData) => {
                     Livewire.dispatch('zone-changed');
-                })
-                // === EVENT-DRIVEN: уведомление о доступности маршрута ===
-                // TruckStatusService при завершении погрузки → забой освободился →
-                // broadcast'ит это событие всем драйверам в is_searching_route.
-                // DriverPanel.onRouteAvailable() → автоматически вызывает assignRoute().
-                .listen('.route.available', (eventData) => {
-                    console.log('[Echo] Получено .route.available', eventData);
-                    // Уведомление обрабатывается через нативный Livewire listener
-                    // #[On('echo-private:driver.{truck.id},.route.available')] → onRouteAvailable()
-                    // Но если нативный listener не сработает — fallback через dispatch:
-                    if (eventData && eventData.truck_id === truckId) {
-                        Livewire.dispatch('route-available-received', { data: eventData });
-                    }
                 });
             // === EVENT-DRIVEN: подписка на .route.available УБРАНА ===
             // Раньше: TruckStatusService при завершении погрузки → RouteAvailable →

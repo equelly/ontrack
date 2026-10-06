@@ -8,11 +8,15 @@ use App\Models\TruckTrip;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class DriverRouteUpdated implements ShouldBroadcast
+/**
+ * DriverRouteUpdated — водитель получает уведомление о назначении/изменении/завершении маршрута.
+ * ShouldBroadcastNow — критичное real-time событие (водитель должен немедленно видеть маршрут).
+ */
+class DriverRouteUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

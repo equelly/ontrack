@@ -743,7 +743,57 @@ class ExcavatorPanel extends Component
             'avg_loading_time' => round($avgLoadingTime ?? 0, 1),
             'shift_start' => $shiftStart->format('H:i'),
             'shift_name' => $this->getShiftName(),
+            // Отчёт по грузовикам: truck → dump → rock → trips + volume
+            'trips_by_truck' => $this->getTripsByTruck($trips),
         ];
+    }
+
+    /**
+     * Отчёт: рейсы по грузовикам за смену (для этого экскаватора).
+     * Группировка: грузовик → отвал → порода → количество рейсов + объём.
+     */
+    protected function getTripsByTruck($trips): array
+    {
+        if ($trips->isEmpty()) {
+            return [];
+        }
+
+        // Загружаем связи если ещё не загружены
+        $trips->loadMissing(['truck', 'dump', 'rock', 'miningOrder.dump']);
+
+        $grouped = [];
+        foreach ($trips as $trip) {
+            $truckNumber = $trip->truck?->number ?? '—';
+            $dumpName = $trip->dump?->name_dump ?? $trip->miningOrder?->dump?->name_dump ?? '—';
+            $rockName = $trip->rock?->name_rock ?? '—';
+
+            $key = "{$truckNumber}|{$dumpName}|{$rockName}";
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'truck' => $truckNumber,
+                    'dump' => $dumpName,
+                    'rock' => $rockName,
+                    'trips' => 0,
+                    'volume' => 0,
+                ];
+            }
+
+            $grouped[$key]['trips']++;
+            $grouped[$key]['volume'] += (float) ($trip->load_volume ?? 0);
+        }
+
+        // Сортировка по грузовику, потом по породе
+        $result = array_values($grouped);
+        usort($result, function ($a, $b) {
+            return strcmp($a['truck'], $b['truck']) ?: strcmp($a['rock'], $b['rock']);
+        });
+
+        foreach ($result as &$row) {
+            $row['volume'] = round($row['volume'], 1);
+        }
+
+        return $result;
     }
 
     protected function getShiftStart(): \Carbon\Carbon
@@ -848,10 +898,17 @@ class ExcavatorPanel extends Component
         // Статистика по последним 5 рейсам
         $recentTrips = $this->miner->getRecentTrips(5);
 
+        // avg_load_time: динамическое → установленное → null
+        $avgLoadTimeDynamic = $this->miner->getAvgLoadTime(5);
+        $targetLoadTimeMin = $this->miner->target_load_time ? round($this->miner->target_load_time / 60, 1) : null;
+        $avgLoadTime = $avgLoadTimeDynamic ?? $targetLoadTimeMin;
+        $avgLoadTimeSource = $avgLoadTimeDynamic ? 'dynamic' : ($targetLoadTimeMin ? 'target' : null);
+
         return [
             'miner_name' => $this->miner->name_miner,
             'target_load_time' => $this->miner->target_load_time,
-            'avg_load_time' => $this->miner->getAvgLoadTime(5),
+            'avg_load_time' => $avgLoadTime,
+            'avg_load_time_source' => $avgLoadTimeSource,
             'avg_wait_time' => $this->miner->getAvgWaitTime(5),
             'current_trucks' => $recommendations['current'] ?? 0,
             'waiting_trucks' => $recommendations['waiting'] ?? 0,

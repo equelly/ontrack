@@ -5,11 +5,15 @@ namespace App\Events;
 use App\Models\Truck;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NoZoneAvailable implements ShouldBroadcast
+/**
+ * NoZoneAvailable — нет зоны для породы, требуется решение диспетчера.
+ * ShouldBroadcastNow — критичное (диспетчер должен немедленно решить).
+ */
+class NoZoneAvailable implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

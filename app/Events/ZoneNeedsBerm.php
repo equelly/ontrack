@@ -5,7 +5,7 @@ namespace App\Events;
 use App\Models\Zone;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -18,8 +18,10 @@ use Illuminate\Queue\SerializesModels;
  *  - 'master'   — мастер видит уведомление в Панели Мастера
  *  - 'dispatcher' — диспетчер видит уведомление в Панели Диспетчера
  *  - 'zones'    — публичный канал для всех, кто слушает изменения зон
+ *
+ * ShouldBroadcastNow — критичное для безопасности (мастер должен немедленно знать).
  */
-class ZoneNeedsBerm implements ShouldBroadcast
+class ZoneNeedsBerm implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

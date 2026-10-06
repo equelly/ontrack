@@ -160,35 +160,31 @@
                     <p class="text-xl sm:text-2xl font-bold text-emerald-600">{{ $productivityStats['loading_trucks'] ?? 0 }}</p>
                 </div>
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                @php
-                    // 1. Получаем целевое время
-                    $targetLoadTimeSeconds = $productivityStats['target_load_time'] ?? 0;
-                    $targetForCompare = $targetLoadTimeSeconds > 0 ? $targetLoadTimeSeconds / 60 : 0;
-                    
-                    // 2. Получаем фактическое среднее время
-                    $avgLoadTime = $productivityStats['avg_load_time'] ?? null;
-
-                    // Порядок вывода и определение метки:
-                    if ($avgLoadTime && $avgLoadTime > 0) {
-                        $displayTime = $avgLoadTime;
-                        $timeType = 'динамическая';
-                    } elseif ($targetForCompare > 0) {
-                        $displayTime = $targetForCompare;
-                        $timeType = 'установленная';
-                    } else {
-                        // Замените \App\Models\Miner на ваш актуальный класс с константой
-                        $displayTime = \App\Models\Miner::DEFAULT_LOADING_TIME_MINUTES; 
-                        $timeType = 'дефолтная';
-                    }
-                @endphp
-                
-                <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">
-                    погрузка <span class="lowercase font-normal text-gray-400">({{ $timeType }})</span>
-                </p>
-                <p class="text-xl sm:text-2xl font-bold {{ $avgLoadTime > $targetForCompare && $targetForCompare > 0 ? 'text-red-600' : 'text-emerald-600' }}">
-                    {{ $displayTime }} <span class="text-sm font-normal text-gray-400">мин</span>
-                </p>
-            </div>
+                    @php
+                        $targetForCompare = ($productivityStats['target_load_time'] ?? 0) / 60;
+                        $avgLoadTime = $productivityStats['avg_load_time'];
+                        $avgLoadTimeSource = $productivityStats['avg_load_time_source'] ?? null;
+                        // Цвет: динамическое — зелёный/красный (по сравнению с нормой)
+                        //       установленное — янтарный (ещё нет реальных данных)
+                        //       null — серый (нет данных)
+                        $avgLoadColor = $avgLoadTime === null
+                            ? 'text-slate-400'
+                            : ($avgLoadTimeSource === 'target'
+                                ? 'text-amber-600'
+                                : ($avgLoadTime > $targetForCompare && $targetForCompare > 0
+                                    ? 'text-red-600'
+                                    : 'text-emerald-600'));
+                    @endphp
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Ср. погрузка</p>
+                    <p class="text-xl sm:text-2xl font-bold {{ $avgLoadColor }}">
+                        @if($avgLoadTime !== null)
+                            {{ $avgLoadTime }}
+                            <span class="text-sm font-normal text-gray-400">мин{{ $avgLoadTimeSource === 'target' ? '*' : '' }}</span>
+                        @else
+                            <span class="text-sm">нет данных</span>
+                        @endif
+                    </p>
+                </div>
             </div>
 
             <!-- Таблица самосвалов -->
@@ -286,6 +282,54 @@
                         <p class="text-[10px] sm:text-xs text-slate-600 uppercase font-semibold mb-1">Начало смены</p>
                         <p class="text-xl sm:text-2xl font-bold text-slate-700">{{ $stats['shift_start'] ?? '-' }}</p>
                     </div>
+                </div>
+            </div>
+
+            {{-- Таблица: рейсы за смену по грузовикам --}}
+            @php $tripsByTruck = $stats['trips_by_truck'] ?? []; @endphp
+            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                    <i class="fas fa-truck text-blue-500"></i> Рейсы за смену
+                </div>
+                <div class="overflow-x-auto">
+                    @if(!empty($tripsByTruck))
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 border-b">
+                            <tr>
+                                <th class="text-left p-3 font-semibold text-gray-600">Грузовик</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Отвал</th>
+                                <th class="text-left p-3 font-semibold text-gray-600">Порода</th>
+                                <th class="text-center p-3 font-semibold text-gray-600">Рейсов</th>
+                                <th class="text-center p-3 font-semibold text-gray-600">Объём (т)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($tripsByTruck as $row)
+                            <tr class="border-b hover:bg-slate-50">
+                                <td class="p-3 font-medium text-gray-800">{{ $row['truck'] }}</td>
+                                <td class="p-3 text-gray-600">{{ $row['dump'] }}</td>
+                                <td class="p-3">
+                                    <span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $row['rock'] }}</span>
+                                </td>
+                                <td class="p-3 text-center font-bold text-gray-800">{{ $row['trips'] }}</td>
+                                <td class="p-3 text-center text-gray-600">{{ number_format($row['volume'], 1) }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot class="bg-slate-50 border-t-2 border-slate-300">
+                            <tr>
+                                <td colspan="3" class="p-3 font-bold text-gray-700 text-right">Итого:</td>
+                                <td class="p-3 text-center font-bold text-emerald-700">{{ array_sum(array_column($tripsByTruck, 'trips')) }}</td>
+                                <td class="p-3 text-center font-bold text-blue-700">{{ number_format(array_sum(array_column($tripsByTruck, 'volume')), 1) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    @else
+                    <div class="p-8 text-center text-gray-400 text-sm">
+                        <i class="fas fa-inbox text-3xl text-gray-300 mb-2"></i>
+                        <p>Нет завершённых рейсов за смену</p>
+                    </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -393,6 +437,8 @@
         // =========================================
         // Echo подписка на канал экскаватора
         // =========================================
+        // Аналогично DriverPanel — функция + вызов внутри livewire:init.
+        // Это работает потому что livewire:init срабатывает ПОСЛЕ загрузки Livewire.
         let currentMinerChannel = null;
 
         function subscribeToMinerChannel(minerId) {
@@ -415,7 +461,9 @@
             currentMinerChannel = minerId;
             console.log('[Echo] Подписка на канал miner.' + minerId);
 
-            // РАЗДЕЛЬНЫЕ подписки на события
+            // РАЗДЕЛЬНЫЕ подписки на события (вместо chain .listen().listen())
+            // Иногда Pusher-js конфликтует с chain — callback второго .listen может
+            // не сработать. Раздельные вызовы надёжнее.
             const channel = window.Echo.private(`miner.${minerId}`);
 
             console.log('[Echo] Регистрирую callback .excavator.notification...');

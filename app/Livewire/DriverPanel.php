@@ -237,9 +237,6 @@ class DriverPanel extends Component
 
         $this->stats = [
             'shift_name' => $this->getShiftName(),
-            'total_trips' => TruckTrip::where('truck_id', $this->truck->id)
-                ->whereNotNull('completed_at')
-                ->count(),
             'today_trips' => TruckTrip::where('truck_id', $this->truck->id)
                 ->whereNotNull('completed_at')
                 ->whereDate('completed_at', today())
@@ -249,6 +246,8 @@ class DriverPanel extends Component
                 ->whereDate('completed_at', today())
                 ->sum('load_volume'),
             'avg_speed' => $this->calculateAverageSpeed() ?? '-',
+            // Отчёт по экскаваторам и породам за смену
+            'trips_by_miner_rock' => $this->getTripsByMinerRock(),
         ];
 
         // Отправляем событие для перезапуска таймера
@@ -1112,8 +1111,91 @@ class DriverPanel extends Component
             return null;
         }
 
-        // Средняя скорость = расстояние / время
         return round($totalDistance / $totalTransportingHours, 1);
+    }
+
+    /**
+     * Отчёт по экскаваторам и породам за смену.
+     *
+     * Группировка: экскаватор (miner) → отвал (dump) → порода (rock) → количество рейсов + объём.
+     * Используется в вкладке "Статистика" — таблица под KPI-карточками.
+     */
+    protected function getTripsByMinerRock(): array
+    {
+        if (!$this->truck) {
+            return [];
+        }
+
+        // Получаем смену
+        $shiftStart = $this->getShiftStartForStats();
+
+        // Завершённые рейсы за смену
+        $trips = TruckTrip::where('truck_id', $this->truck->id)
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $shiftStart)
+            ->with(['miner', 'dump', 'rock'])
+            ->get();
+
+        if ($trips->isEmpty()) {
+            return [];
+        }
+
+        // Группировка: miner → dump → rock
+        $grouped = [];
+        foreach ($trips as $trip) {
+            $minerName = $trip->miner?->name_miner ?? '—';
+            $dumpName = $trip->dump?->name_dump ?? $trip->miningOrder?->dump?->name_dump ?? '—';
+            $rockName = $trip->rock?->name_rock ?? '—';
+
+            $key = "{$minerName}|{$dumpName}|{$rockName}";
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'miner' => $minerName,
+                    'dump' => $dumpName,
+                    'rock' => $rockName,
+                    'trips' => 0,
+                    'volume' => 0,
+                ];
+            }
+
+            $grouped[$key]['trips']++;
+            $grouped[$key]['volume'] += (float) ($trip->load_volume ?? 0);
+        }
+
+        // Сортировка по экскаватору, потом по породе
+        $result = array_values($grouped);
+        usort($result, function ($a, $b) {
+            return strcmp($a['miner'], $b['miner']) ?: strcmp($a['rock'], $b['rock']);
+        });
+
+        // Округляем объём
+        foreach ($result as &$row) {
+            $row['volume'] = round($row['volume'], 1);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Время начала смены для статистики.
+     */
+    protected function getShiftStartForStats(): \Carbon\Carbon
+    {
+        $now = now();
+        $hour = $now->hour;
+
+        if ($hour > 7 && $hour < 19) {
+            return $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 7 && $now->minute >= 30) {
+            return $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 19 && $now->minute < 30) {
+            return $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour >= 19) {
+            return $now->copy()->setTime(19, 30, 0);
+        } else {
+            return $now->copy()->subDay()->setTime(19, 30, 0);
+        }
     }
 
     // =========================================
