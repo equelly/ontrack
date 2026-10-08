@@ -291,7 +291,8 @@
                         <div class="p-3 sm:p-4 bg-amber-50 border-l-4 border-amber-500 text-amber-700 rounded text-center text-sm">
                             <strong>{{ $currentServiceTask['type'] ?? 'Обслуживание' }}</strong>
                             @if(!empty($currentServiceTask['post_name']))<div class="mt-1 text-xs">Пост: {{ $currentServiceTask['post_name'] }}</div>@endif
-                            @if(!empty($currentServiceTask['started_at']))<div class="text-xs text-gray-500 mt-1">Начало: {{ $currentServiceTask['started_at'] }}</div>@endif
+                            <div class="text-lg font-bold text-amber-600 mt-1" id="service-timer"
+                                 data-service-started="{{ $currentServiceTask['started_at_raw'] ?? '' }}">-</div>
                         </div>
                         <button wire:click="completeService" class="w-full px-4 sm:px-6 py-3 bg-emerald-600 text-white rounded-md font-semibold uppercase hover:bg-emerald-700 text-sm sm:text-base">Завершить обслуживание</button>
                     </div>
@@ -302,7 +303,8 @@
                         <div class="p-3 sm:p-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 rounded text-center text-sm">
                             <strong>Заправка</strong>
                             @if(!empty($currentServiceTask['post_name']))<div class="mt-1 text-xs">Пост: {{ $currentServiceTask['post_name'] }}</div>@endif
-                            @if(!empty($currentServiceTask['started_at']))<div class="text-xs text-gray-500 mt-1">Начало: {{ $currentServiceTask['started_at'] }}</div>@endif
+                            <div class="text-lg font-bold text-blue-600 mt-1" id="service-timer"
+                                 data-service-started="{{ $currentServiceTask['started_at_raw'] ?? '' }}">-</div>
                         </div>
                         <button wire:click="completeService" class="w-full px-4 sm:px-6 py-3 bg-emerald-600 text-white rounded-md font-semibold uppercase hover:bg-emerald-700 text-sm sm:text-base">Завершить заправку</button>
                     </div>
@@ -313,8 +315,9 @@
                         <div class="p-3 sm:p-4 bg-amber-50 border-l-4 border-amber-500 text-amber-700 rounded text-center text-sm">
                             <strong>{{ $currentServiceTask['type'] ?? 'Техническое обслуживание' }}</strong>
                             @if(!empty($currentServiceTask['post_name']))<div class="mt-1 text-xs">Пост: {{ $currentServiceTask['post_name'] }}</div>@endif
-                            @if(!empty($currentServiceTask['started_at']))<div class="text-xs text-gray-500 mt-1">Начало: {{ $currentServiceTask['started_at'] }}</div>@endif
-                            @if(!empty($currentServiceTask['duration']))<div class="text-xs text-gray-500 mt-1">Плановая длительность: {{ $currentServiceTask['duration'] }} мин</div>@endif
+                            <div class="text-lg font-bold text-amber-600 mt-1" id="service-timer"
+                                 data-service-started="{{ $currentServiceTask['started_at_raw'] ?? '' }}">-</div>
+                            @if(!empty($currentServiceTask['duration']))<div class="text-xs text-gray-500 mt-1">Норма: {{ $currentServiceTask['duration'] }} мин</div>@endif
                         </div>
                         <button wire:click="completeService" class="w-full px-4 sm:px-6 py-3 bg-emerald-600 text-white rounded-md font-semibold uppercase hover:bg-emerald-700 text-sm sm:text-base">Завершить ТО</button>
                     </div>
@@ -341,7 +344,7 @@
                             <tr class="border-b bg-green-50">
                                 <td class="p-2 font-medium">Подкачка шин</td>
                                 <td class="p-2"><span class="px-2 py-0.5 text-xs font-medium rounded-md bg-green-600 text-white">В работе</span></td>
-                                <td class="p-2 text-gray-500">0 мин</td>
+                                <td class="p-2 text-gray-500">C {{ $currentServiceTask['started_at'] }}</td>
                                 <td class="p-2 text-green-600 font-medium">Выполняется</td>
                             </tr>
                         </tbody>
@@ -533,6 +536,40 @@
                 </div>
             </div>
         </div>
+
+        {{-- Таблица: завершённое обслуживание за смену --}}
+        @php $completedServices = $stats['completed_services'] ?? []; @endphp
+        @if(!empty($completedServices))
+        <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                <i class="fas fa-tools text-amber-500"></i> Обслуживание за смену
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 border-b">
+                        <tr>
+                            <th class="text-left p-3 font-semibold text-gray-600">Тип</th>
+                            <th class="text-center p-3 font-semibold text-gray-600">Начало</th>
+                            <th class="text-center p-3 font-semibold text-gray-600">Завершено</th>
+                            <th class="text-center p-3 font-semibold text-gray-600">Длительность</th>
+                            <th class="text-left p-3 font-semibold text-gray-600">Пост</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($completedServices as $svc)
+                        <tr class="border-b hover:bg-slate-50">
+                            <td class="p-3 font-medium text-gray-800">{{ $svc['type'] }}</td>
+                            <td class="p-3 text-center text-gray-600">{{ $svc['started_at'] }}</td>
+                            <td class="p-3 text-center text-gray-600">{{ $svc['completed_at'] }}</td>
+                            <td class="p-3 text-center font-bold text-amber-600">{{ $svc['duration_min'] }} мин</td>
+                            <td class="p-3 text-gray-600">{{ $svc['post'] }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @endif
 
         <!-- ВКЛАДКА: Заявки -->
         <div x-show="tab === 'requests'" x-cloak class="space-y-4 sm:space-y-6">
@@ -784,6 +821,52 @@
             timerInterval = setInterval(updateTimer, 1000);
         }
 
+        // =========================================
+        // Таймер обслуживания (живой отсчёт)
+        // =========================================
+        let serviceTimerInterval = null;
+
+        function formatServiceTime(seconds) {
+            if (seconds === null || seconds < 0) return '-';
+            const min = Math.floor(seconds / 60);
+            const sec = seconds % 60;
+            return min + ':' + String(sec).padStart(2, '0');
+        }
+
+        function updateServiceTimer() {
+            const el = document.getElementById('service-timer');
+            if (!el) return;
+            const startedStr = el.getAttribute('data-service-started');
+            if (!startedStr) {
+                el.innerText = '-';
+                return;
+            }
+            const startedAt = new Date(startedStr);
+            if (isNaN(startedAt.getTime())) {
+                el.innerText = '-';
+                return;
+            }
+            const now = new Date();
+            const seconds = Math.floor((now - startedAt) / 1000);
+            el.innerText = formatServiceTime(seconds);
+        }
+
+        function startServiceTimer() {
+            const el = document.getElementById('service-timer');
+            if (!el) return;
+            if (serviceTimerInterval) {
+                clearInterval(serviceTimerInterval);
+                serviceTimerInterval = null;
+            }
+            const startedStr = el.getAttribute('data-service-started');
+            if (!startedStr) {
+                el.innerText = '-';
+                return;
+            }
+            updateServiceTimer();
+            serviceTimerInterval = setInterval(updateServiceTimer, 1000);
+        }
+
         let echoChannels = [];
 
         function subscribeToTruckChannels(truckId) {
@@ -820,6 +903,7 @@
 
         document.addEventListener('livewire:init', () => {
             startTimer();
+            startServiceTimer();
             @if($truck)
             subscribeToTruckChannels({{ $truck->id }});
             @endif
@@ -827,7 +911,10 @@
             // notify обрабатывается в layout (components/layouts/app.blade.php)
             // Здесь НЕ регистрируем — чтобы не было дублей
 
-            Livewire.on('restart-timer', () => setTimeout(startTimer, 50));
+            Livewire.on('restart-timer', () => {
+                setTimeout(startTimer, 50);
+                setTimeout(startServiceTimer, 50);
+            });
             Livewire.on('set-cookie', (data) => {
                 const event = Array.isArray(data) ? data[0] : data;
                 if (!event || !event.name) return;

@@ -248,6 +248,8 @@ class DriverPanel extends Component
             'avg_speed' => $this->calculateAverageSpeed() ?? '-',
             // Отчёт по экскаваторам и породам за смену
             'trips_by_miner_rock' => $this->getTripsByMinerRock(),
+            // Завершённое обслуживание за смену
+            'completed_services' => $this->getCompletedServicesThisShift(),
         ];
 
         // Отправляем событие для перезапуска таймера
@@ -282,6 +284,8 @@ class DriverPanel extends Component
                 'type' => $task->getTypeLabel(),
                 'post_name' => $task->servicePost?->name,
                 'started_at' => $task->started_at?->format('H:i'),
+                // ISO формат для JS-таймера (живой отсчёт времени)
+                'started_at_raw' => $task->started_at?->toDateTimeString(),
                 'duration' => $task->getDuration(),
             ];
         } else {
@@ -1112,6 +1116,41 @@ class DriverPanel extends Component
         }
 
         return round($totalDistance / $totalTransportingHours, 1);
+    }
+
+    /**
+     * Завершённое обслуживание за смену.
+     * Возвращает массив задач с типом, временем начала/окончания, длительностью.
+     */
+    protected function getCompletedServicesThisShift(): array
+    {
+        if (!$this->truck) {
+            return [];
+        }
+
+        $shiftStart = $this->getShiftStartForStats();
+
+        $tasks = \App\Models\TruckPlannedTask::where('truck_id', $this->truck->id)
+            ->where('completed', true)
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $shiftStart)
+            ->orderBy('completed_at', 'asc')
+            ->with('servicePost')
+            ->get();
+
+        if ($tasks->isEmpty()) {
+            return [];
+        }
+
+        return $tasks->map(fn($task) => [
+            'type' => $task->getTypeLabel(),
+            'started_at' => $task->started_at?->format('H:i'),
+            'completed_at' => $task->completed_at?->format('H:i'),
+            'duration_min' => $task->started_at && $task->completed_at
+                ? round($task->started_at->diffInMinutes($task->completed_at))
+                : $task->getDuration(),
+            'post' => $task->servicePost?->name ?? '—',
+        ])->toArray();
     }
 
     /**
