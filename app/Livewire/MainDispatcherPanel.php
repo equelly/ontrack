@@ -27,6 +27,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Computed;
 
 
 #[Layout('components.layouts.app')]
@@ -34,6 +35,12 @@ use Livewire\Attributes\Title;
 
 class MainDispatcherPanel extends Component
 {
+    #[Computed]
+    public function delayedTrucksCount()
+    {
+        // Предполагается, что $this->trucks возвращает коллекцию или Builder с машинами
+        return $this->trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count();
+    }
     public $trucks;
     public $miners;
     public $dumps;
@@ -43,6 +50,14 @@ class MainDispatcherPanel extends Component
 
     // Вкладки
     public string $activeTab = 'trucksTab';
+
+    // ==========================================
+    // ФИЛЬТРЫ АНАЛИТИКИ
+    // ==========================================
+    public string $statsPeriod = 'shift';      // shift / today / week / month / year
+    public string $statsShift = 'all';          // all / day / night
+    public string $statsGrouping = 'by_miner';  // by_miner / by_truck / by_rock
+    public ?int $statsMinerId = null;           // null = все экскаваторы
 
     // Назначение маршрута
     public ?int $selectedTruckId = null;
@@ -408,7 +423,7 @@ class MainDispatcherPanel extends Component
 
         // Запрещаем назначать маршрут только сломанным грузовикам
         if ($truck->status === 'breakdown') {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал в поломке']);
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал неисправен']);
             return;
         }
 
@@ -1312,11 +1327,13 @@ class MainDispatcherPanel extends Component
     }
 
     /**
-     * Количество забоев в задержке (все кроме active)
+     * Количество забоев в задержке (вспомогательные работы, НЕ breakdown).
      */
     public function getMinerDelayedCountProperty(): int
     {
-        return $this->miners->where('status', '!=', 'active')->count();
+        return $this->miners
+            ->whereIn('status', ['maintenance', 'face_dismantling', 'access_setup', 'relocation'])
+            ->count();
     }
 
     /**
@@ -2359,6 +2376,193 @@ class MainDispatcherPanel extends Component
                 'label' => $shiftStart->format('H:i') . '–' . $shiftStart->copy()->addHours(12)->format('H:i'),
             ],
         ];
+    }
+
+    // =========================================
+    // АНАЛИТИКА: ФИЛЬТРЫ + ТАБЛИЦА РЕЙСОВ
+    // =========================================
+
+    /**
+     * Начало периода для статистики (по фильтру $statsPeriod).
+     */
+    protected function getStatsPeriodStart(): \Carbon\Carbon
+    {
+        $now = now();
+
+        return match($this->statsPeriod) {
+            'today'  => $now->copy()->startOfDay(),
+            'week'   => $now->copy()->startOfWeek(),
+            'month'  => $now->copy()->startOfMonth(),
+            'year'   => $now->copy()->startOfYear(),
+            default  => $this->getShiftStartForAnalytics(),
+        };
+    }
+
+    /**
+     * Начало текущей смены.
+     */
+    protected function getShiftStartForAnalytics(): \Carbon\Carbon
+    {
+        $now = now();
+        $hour = $now->hour;
+
+        if ($hour > 7 && $hour < 19) {
+            return $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 7 && $now->minute >= 30) {
+            return $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour === 19 && $now->minute < 30) {
+            return $now->copy()->setTime(7, 30, 0);
+        } elseif ($hour >= 19) {
+            return $now->copy()->setTime(19, 30, 0);
+        } else {
+            return $now->copy()->subDay()->setTime(19, 30, 0);
+        }
+    }
+
+    /**
+     * Метка периода для отображения в UI.
+     */
+    public function getStatsPeriodLabelProperty(): string
+    {
+        return match($this->statsPeriod) {
+            'shift' => 'за смену',
+            'today' => 'за сегодня',
+            'week'  => 'за неделю',
+            'month' => 'за месяц',
+            'year'  => 'за год',
+            default => '',
+        };
+    }
+
+    /**
+     * Сгруппированные рейсы парка по фильтрам.
+     *
+     * Группировка зависит от $statsGrouping:
+     *   - by_miner: экскаватор → отвал → порода
+     *   - by_truck: грузовик → экскаватор → порода
+     *   - by_rock:  порода → отвал (с агрегацией по экскаваторам/грузовикам)
+     */
+    public function getStatsByPeriodProperty(): array
+    {
+        $periodStart = $this->getStatsPeriodStart();
+
+        $query = TruckTrip::whereNotNull('completed_at')
+            ->where('completed_at', '>=', $periodStart)
+            ->with(['truck', 'miner', 'dump', 'rock', 'miningOrder.dump']);
+
+        // Фильтр по смене
+        if ($this->statsShift === 'day') {
+            $query->whereTime('completed_at', '>=', '07:30:00')
+                  ->whereTime('completed_at', '<', '19:30:00');
+        } elseif ($this->statsShift === 'night') {
+            $query->where(function ($q) {
+                $q->whereTime('completed_at', '>=', '19:30:00')
+                  ->orWhereTime('completed_at', '<', '07:30:00');
+            });
+        }
+
+        // Фильтр по экскаватору
+        if ($this->statsMinerId) {
+            $query->where('miner_id', $this->statsMinerId);
+        }
+
+        $trips = $query->get(['id', 'truck_id', 'miner_id', 'dump_id', 'rock_id',
+            'load_volume', 'completed_at', 'mining_order_id', 'distance_km', 'empty_run_km']);
+
+        if ($trips->isEmpty()) {
+            return [];
+        }
+
+        $grouped = [];
+
+        foreach ($trips as $trip) {
+            $minerName = $trip->miner?->name_miner ?? '—';
+            $truckNumber = $trip->truck?->number ?? '—';
+            $dumpName = $trip->dump?->name_dump ?? $trip->miningOrder?->dump?->name_dump ?? '—';
+            $rockName = $trip->rock?->name_rock ?? '—';
+            $volume = (float) ($trip->load_volume ?? 0);
+            $loadedKm = (float) ($trip->distance_km ?? 0);
+            $emptyKm = $trip->empty_run_km !== null ? (float) $trip->empty_run_km : $loadedKm;
+
+            // Ключ группировки
+            $key = match($this->statsGrouping) {
+                'by_truck' => "{$truckNumber}|{$minerName}|{$rockName}",
+                'by_rock'  => "{$rockName}|{$dumpName}",
+                default     => "{$minerName}|{$dumpName}|{$rockName}",
+            };
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = match($this->statsGrouping) {
+                    'by_truck' => [
+                        'col1_label' => 'Грузовик', 'col1' => $truckNumber,
+                        'col2_label' => 'Экскаватор', 'col2' => $minerName,
+                        'col3_label' => 'Порода', 'col3' => $rockName,
+                    ],
+                    'by_rock' => [
+                        'col1_label' => 'Порода', 'col1' => $rockName,
+                        'col2_label' => 'Отвал', 'col2' => $dumpName,
+                        'col3_label' => null, 'col3' => null,
+                    ],
+                    default => [
+                        'col1_label' => 'Экскаватор', 'col1' => $minerName,
+                        'col2_label' => 'Отвал', 'col2' => $dumpName,
+                        'col3_label' => 'Порода', 'col3' => $rockName,
+                    ],
+                };
+                $grouped[$key]['trips'] = 0;
+                $grouped[$key]['volume'] = 0;
+                $grouped[$key]['loaded_km'] = 0;
+                $grouped[$key]['empty_km'] = 0;
+            }
+
+            $grouped[$key]['trips']++;
+            $grouped[$key]['volume'] += $volume;
+            $grouped[$key]['loaded_km'] += $loadedKm;
+            $grouped[$key]['empty_km'] += $emptyKm;
+        }
+
+        $result = array_values($grouped);
+
+        // Округляем
+        foreach ($result as &$row) {
+            $row['volume'] = round($row['volume'], 1);
+            $row['loaded_km'] = round($row['loaded_km'], 1);
+            $row['empty_km'] = round($row['empty_km'], 1);
+        }
+
+        // Сортировка по col1, потом col3
+        usort($result, function ($a, $b) {
+            $cmp = strcmp($a['col1'], $b['col1']);
+            if ($cmp !== 0) return $cmp;
+            return strcmp($a['col3'] ?? '', $b['col3'] ?? '');
+        });
+
+        return $result;
+    }
+
+    /**
+     * Итоги (сумма по всем строкам).
+     */
+    public function getStatsTotalsProperty(): array
+    {
+        $rows = $this->stats_by_period;
+
+        return [
+            'trips'     => array_sum(array_column($rows, 'trips')),
+            'volume'    => round(array_sum(array_column($rows, 'volume')), 1),
+            'loaded_km' => round(array_sum(array_column($rows, 'loaded_km')), 1),
+            'empty_km'  => round(array_sum(array_column($rows, 'empty_km')), 1),
+        ];
+    }
+
+    /**
+     * Список экскаваторов для фильтра.
+     */
+    public function getStatsMinersListProperty()
+    {
+        return Miner::where('active', true)
+            ->orderBy('name_miner')
+            ->pluck('name_miner', 'id');
     }
 
     // =========================================
