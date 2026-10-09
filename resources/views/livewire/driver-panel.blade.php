@@ -344,7 +344,10 @@
                             <tr class="border-b bg-green-50">
                                 <td class="p-2 font-medium">Подкачка шин</td>
                                 <td class="p-2"><span class="px-2 py-0.5 text-xs font-medium rounded-md bg-green-600 text-white">В работе</span></td>
-                                <td class="p-2 text-gray-500">C {{ $currentServiceTask['started_at'] }}</td>
+                                <td class="p-2 text-gray-500">
+                                    @if(!empty($currentServiceTask['started_at']))
+                                        <div class="text-xs text-gray-500 mt-1">Начало: {{ $currentServiceTask['started_at'] }}</div>
+                                    @endif</td>
                                 <td class="p-2 text-green-600 font-medium">Выполняется</td>
                             </tr>
                         </tbody>

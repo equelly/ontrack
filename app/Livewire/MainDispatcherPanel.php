@@ -59,6 +59,13 @@ class MainDispatcherPanel extends Component
     public string $statsGrouping = 'by_miner';  // by_miner / by_truck / by_rock
     public ?int $statsMinerId = null;           // null = все экскаваторы
 
+    // Фильтры аналитики проведённых ТО
+    public string $maintenanceStatsPeriod = 'shift';      // shift / today / week / month / year
+    public string $maintenanceStatsShift = 'all';          // all / day / night
+    public string $maintenanceStatsGrouping = 'by_truck';  // by_truck / by_type / by_post / by_to_type
+    public ?int $maintenanceStatsTruckId = null;           // null = все грузовики
+    public string $maintenanceStatsTaskType = 'all';       // all / maintenance / fueling / tire_inflation / wheel_tightening
+
     // Назначение маршрута
     public ?int $selectedTruckId = null;
     public ?int $selectedMinerId = null;
@@ -423,7 +430,7 @@ class MainDispatcherPanel extends Component
 
         // Запрещаем назначать маршрут только сломанным грузовикам
         if ($truck->status === 'breakdown') {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал неисправен']);
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Самосвал в поломке']);
             return;
         }
 
@@ -2566,6 +2573,212 @@ class MainDispatcherPanel extends Component
     }
 
     // =========================================
+    // АНАЛИТИКА: ПРОВЕДЁННЫЕ ТО (по образцу «Рейсов парка»)
+    // =========================================
+
+    /**
+     * Начало периода для аналитики ТО (по фильтру $maintenanceStatsPeriod).
+     */
+    protected function getMaintenanceStatsPeriodStart(): \Carbon\Carbon
+    {
+        $now = now();
+
+        return match($this->maintenanceStatsPeriod) {
+            'today'  => $now->copy()->startOfDay(),
+            'week'   => $now->copy()->startOfWeek(),
+            'month'  => $now->copy()->startOfMonth(),
+            'year'   => $now->copy()->startOfYear(),
+            default  => $this->getShiftStartForAnalytics(),
+        };
+    }
+
+    /**
+     * Метка периода ТО для отображения в UI.
+     */
+    public function getMaintenanceStatsPeriodLabelProperty(): string
+    {
+        return match($this->maintenanceStatsPeriod) {
+            'shift' => 'за смену',
+            'today' => 'за сегодня',
+            'week'  => 'за неделю',
+            'month' => 'за месяц',
+            'year'  => 'за год',
+            default => '',
+        };
+    }
+
+    /**
+     * Список грузовиков для фильтра аналитики ТО.
+     */
+    public function getMaintenanceStatsTrucksListProperty()
+    {
+        return Truck::orderBy('number')->pluck('number', 'id');
+    }
+
+    /**
+     * Карта типов задач → читабельная метка.
+     */
+    protected function getMaintenanceTaskTypeLabel(string $type): string
+    {
+        return match($type) {
+            TruckPlannedTask::TYPE_FUELING          => 'Заправка',
+            TruckPlannedTask::TYPE_MAINTENANCE      => 'ТО',
+            TruckPlannedTask::TYPE_TIRE_INFLATION   => 'Подкачка шин',
+            TruckPlannedTask::TYPE_WHEEL_TIGHTENING => 'Обтяжка колёс',
+            TruckPlannedTask::TYPE_INSPECTION      => 'Инспекция',
+            default                                 => $type,
+        };
+    }
+
+    /**
+     * Сгруппированные проведённые ТО по фильтрам.
+     *
+     * Группировка зависит от $maintenanceStatsGrouping:
+     *   - by_truck:   грузовик → тип задачи → пост
+     *   - by_type:    тип задачи → грузовик → пост
+     *   - by_post:    пост → грузовик → тип задачи
+     *   - by_to_type: тип ТО (ТО-1 / ТО-2) → грузовик
+     */
+    public function getMaintenanceStatsByPeriodProperty(): array
+    {
+        $periodStart = $this->getMaintenanceStatsPeriodStart();
+
+        $query = TruckPlannedTask::where('completed', true)
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $periodStart)
+            ->with(['truck', 'servicePost']);
+
+        // Фильтр по смене (по времени завершения)
+        if ($this->maintenanceStatsShift === 'day') {
+            $query->whereTime('completed_at', '>=', '07:30:00')
+                  ->whereTime('completed_at', '<', '19:30:00');
+        } elseif ($this->maintenanceStatsShift === 'night') {
+            $query->where(function ($q) {
+                $q->whereTime('completed_at', '>=', '19:30:00')
+                  ->orWhereTime('completed_at', '<', '07:30:00');
+            });
+        }
+
+        // Фильтр по грузовику
+        if ($this->maintenanceStatsTruckId) {
+            $query->where('truck_id', $this->maintenanceStatsTruckId);
+        }
+
+        // Фильтр по типу задачи
+        if ($this->maintenanceStatsTaskType !== 'all') {
+            $query->where('task_type', $this->maintenanceStatsTaskType);
+        }
+
+        $tasks = $query->get([
+            'id', 'truck_id', 'task_type', 'to_type', 'duration_minutes',
+            'started_at', 'completed_at', 'service_post_id', 'notes',
+        ]);
+
+        if ($tasks->isEmpty()) {
+            return [];
+        }
+
+        $grouped = [];
+
+        foreach ($tasks as $task) {
+            $truckNumber = $task->truck?->number ?? '—';
+            $postName    = $task->servicePost?->name ?? '—';
+            $typeLabel   = $this->getMaintenanceTaskTypeLabel($task->task_type);
+            $toType      = $task->to_type ?: '';
+            $plannedDur  = (int) ($task->duration_minutes ?: $task->getDuration());
+
+            // Фактическая длительность
+            $actualDur = 0;
+            if ($task->started_at && $task->completed_at) {
+                $actualDur = (int) \Illuminate\Support\Carbon::parse($task->started_at)
+                    ->diffInMinutes($task->completed_at);
+            }
+
+            // Ключ и метки колонок зависят от группировки
+            $key = match($this->maintenanceStatsGrouping) {
+                'by_type'    => "{$typeLabel}|{$truckNumber}|{$postName}",
+                'by_post'    => "{$postName}|{$truckNumber}|{$typeLabel}",
+                'by_to_type' => trim("{$toType}|{$truckNumber}"),
+                default      => "{$truckNumber}|{$typeLabel}|{$postName}",
+            };
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = match($this->maintenanceStatsGrouping) {
+                    'by_type' => [
+                        'col1_label' => 'Тип',       'col1' => $typeLabel,
+                        'col2_label' => 'Грузовик', 'col2' => $truckNumber,
+                        'col3_label' => 'Пост',     'col3' => $postName,
+                    ],
+                    'by_post' => [
+                        'col1_label' => 'Пост',       'col1' => $postName,
+                        'col2_label' => 'Грузовик',   'col2' => $truckNumber,
+                        'col3_label' => 'Тип',        'col3' => $typeLabel,
+                    ],
+                    'by_to_type' => [
+                        'col1_label' => 'Тип ТО',     'col1' => $toType ?: '—',
+                        'col2_label' => 'Грузовик',   'col2' => $truckNumber,
+                        'col3_label' => null,         'col3' => null,
+                    ],
+                    default => [
+                        'col1_label' => 'Грузовик', 'col1' => $truckNumber,
+                        'col2_label' => 'Тип',       'col2' => $typeLabel,
+                        'col3_label' => 'Пост',      'col3' => $postName,
+                    ],
+                };
+                $grouped[$key]['count']            = 0;
+                $grouped[$key]['planned_minutes']  = 0;
+                $grouped[$key]['actual_minutes']   = 0;
+                $grouped[$key]['to_types']         = [];
+            }
+
+            $grouped[$key]['count']++;
+            $grouped[$key]['planned_minutes'] += $plannedDur;
+            $grouped[$key]['actual_minutes']  += $actualDur;
+            if ($toType && !in_array($toType, $grouped[$key]['to_types'], true)) {
+                $grouped[$key]['to_types'][] = $toType;
+            }
+        }
+
+        $result = array_values($grouped);
+
+        // Округляем и считаем среднее
+        foreach ($result as &$row) {
+            $row['planned_minutes'] = (int) $row['planned_minutes'];
+            $row['actual_minutes']  = (int) $row['actual_minutes'];
+            $row['avg_minutes']     = $row['count'] > 0
+                ? (int) round($row['actual_minutes'] / $row['count'])
+                : 0;
+            $row['to_types_label'] = implode(', ', $row['to_types']) ?: '—';
+        }
+        unset($row);
+
+        // Сортировка по col1, потом col3
+        usort($result, function ($a, $b) {
+            $cmp = strcmp($a['col1'], $b['col1']);
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+            return strcmp($a['col3'] ?? '', $b['col3'] ?? '');
+        });
+
+        return $result;
+    }
+
+    /**
+     * Итоги проведённых ТО.
+     */
+    public function getMaintenanceStatsTotalsProperty(): array
+    {
+        $rows = $this->maintenance_stats_by_period;
+
+        return [
+            'count'           => array_sum(array_column($rows, 'count')),
+            'planned_minutes' => (int) array_sum(array_column($rows, 'planned_minutes')),
+            'actual_minutes'  => (int) array_sum(array_column($rows, 'actual_minutes')),
+        ];
+    }
+
+    // =========================================
     // УПРАВЛЕНИЕ ПОРОГАМИ ПЕРЕГРУЖЕННОСТИ
     // =========================================
 
@@ -2827,7 +3040,15 @@ class MainDispatcherPanel extends Component
     }
 
     /**
-     * Завершить обслуживание
+     * Завершить обслуживание.
+     *
+     * После завершения ТО статус грузовика меняется в БД на STATUS_FREE,
+     * а ServiceSchedulingService::completeService() бродкастит
+     * DispatcherNotification на канал 'dispatcher'. Существующий JS-слушатель
+     * Echo.channel('dispatcher').listen('.truck-updated') ловит событие и
+     * дёргает refresh-dispatcher-data → loadData() → статус самосвала
+     * обновляется в реальном времени во вкладке «Самосвалы» у всех
+     * открытых панелей диспетчера.
      */
     public function completeServiceTask(int $taskId): void
     {

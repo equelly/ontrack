@@ -2,175 +2,229 @@
     <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
-        <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
-        <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl relative">
-            <div class="px-4 py-3 flex flex-col gap-y-4">
-                @php $queueStats = $this->queue_stats; @endphp
-                
-                <!-- Статистика — только ключевая -->
-                <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-                    {{-- АВТО --}}
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-truck text-blue-400"></i>
-                        <div><span class="text-gray-400 block text-[10px] uppercase">Авто в работе</span><strong class="text-blue-400">{{ $this->working_trucks_count }}</strong></div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-clock text-amber-400"></i>
-                        <!-- Используем безопасный подсчет из оригинального кода, чтобы не ломать PHP-класс -->
-                        <div><span class="text-gray-400 block text-[10px] uppercase">Задержки ТС</span><strong class="text-amber-400">{{ $trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count() }}</strong></div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-wrench text-red-400"></i>
-                        <div><span class="text-gray-400 block text-[10px] uppercase">Поломки ТС</span><strong class="text-red-400">{{ $this->breakdown_count }}</strong></div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-tools text-amber-400"></i>
-                        <div class="text-[10px] text-gray-400 uppercase leading-tight">
-                            Очереди обсл.<br>
-                            <span class="text-gray-200 normal-case">
-                                ТО: {{ $queueStats['maintenance']['waiting'] ?? 0 }}/{{ $queueStats['maintenance']['in_progress'] ?? 0 }}, 
-                                Запр: {{ $queueStats['fueling']['waiting'] ?? 0 }}/{{ $queueStats['fueling']['in_progress'] ?? 0 }}
-                            </span>
-                        </div>
-                    </div>
-                    {{-- ЗАБОИ --}}
-                    <div class="flex items-center gap-2 border-l border-slate-700 pl-5">
-                        <i class="fas fa-mountain text-emerald-400"></i>
-                        <div><span class="text-gray-400 block text-[10px] uppercase">Забои в работе</span><strong class="text-emerald-400">{{ $this->active_miners_count }}</strong></div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-pause-circle text-amber-400"></i>
-                        <div><span class="text-gray-400 block text-[10px] uppercase">Задержки забоев</span><strong class="text-amber-400">{{ $this->miner_delayed_count }}</strong></div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-mountain text-red-400"></i>
-                        <div><span class="text-gray-400 block text-[10px] uppercase">Поломки забоев</span><strong class="text-red-400">{{ $this->miner_breakdown_count }}</strong></div>
+    <!-- ТЕМНАЯ ШАПКА СО СТАТИСТИКОЙ -->
+    <header class="bg-slate-900 text-white shadow-lg mb-2 rounded-xl">
+        <div class="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+            @php $queueStats = $this->queue_stats; @endphp
+            <!-- Статистика — только ключевая -->
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                {{-- АВТО --}}
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-truck text-blue-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Авто в работе</span><strong class="text-blue-400">{{ $this->working_trucks_count }}</strong></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-clock text-amber-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Задержки ТС</span><strong class="text-amber-400">{{ $trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count() }}</strong></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-wrench text-red-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Поломки ТС</span><strong class="text-red-400">{{ $this->breakdown_count }}</strong></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-tools text-amber-400"></i>
+                    <div class="text-[10px] text-gray-400 uppercase leading-tight">
+                        Очереди обсл.<br>
+                        <span class="text-gray-200 normal-case">ТО: {{ $queueStats['maintenance']['waiting'] }}/{{ $queueStats['maintenance']['in_progress'] }}, Запр: {{ $queueStats['fueling']['waiting'] }}/{{ $queueStats['fueling']['in_progress'] }}</span>
                     </div>
                 </div>
+                {{-- ЗАБОИ --}}
+                <div class="flex items-center gap-2 border-l border-slate-700 pl-5">
+                    <i class="fas fa-mountain text-emerald-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Забои в работе</span><strong class="text-emerald-400">{{ $this->active_miners_count }}</strong></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-pause-circle text-amber-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Задержки забоев</span><strong class="text-amber-400">{{ $this->miner_delayed_count }}</strong></div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-mountain text-red-400"></i>
+                    <div><span class="text-gray-400 block text-[10px] uppercase">Поломки забоев</span><strong class="text-red-400">{{ $this->miner_breakdown_count }}</strong></div>
+                </div>
+            </div>
 
-                {{-- AI Алерты — виджет --}}
-                @php $newAlertsCount = $this->new_alerts_count; @endphp
-                
-                <div class="flex items-center justify-between w-full gap-4"> {{-- Этот контейнер выстроит всё в одну линию и разнесет по краям --}}
-                    
-                    {{-- ЛЕВЫЙ БЛОК: Виджет алертов --}}
-                    <div x-data="{ showAlerts: false, openFilter: null }" class="relative">
-                        @if($newAlertsCount > 0)
-                            <button @click="showAlerts = !showAlerts"
-                                    class="relative flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
-                                <i class="fas fa-bell"></i>
-                                <span>{{ $newAlertsCount }}</span>
-                                <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
-                            </button>
-                        @else
-                            {{-- Необязательно: кнопка-заглушка, если алертов 0, чтобы не было пустого места --}}
-                            <button class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 text-gray-400 rounded-md text-xs font-semibold uppercase cursor-not-allowed opacity-50" disabled>
-                                <i class="fas fa-bell"></i>
-                                <span>0</span>
-                            </button>
-                        @endif
+            {{-- AI Алерты — виджет --}}
+            @php $newAlertsCount = $this->new_alerts_count; @endphp
+            @if($newAlertsCount > 0)
+            <div x-data="{ showAlerts: false, openFilter: null }" class="relative ml-2">
+                {{-- relative ВАЖЕН на кнопке, чтобы точка -top-1 -right-1
+                     позиционировалась относительно кнопки, а не относительно
+                     родительского div.ml-2 (который выше в header'е) --}}
+                <button @click="showAlerts = !showAlerts"
+                        class="relative flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
+                    <i class="fas fa-bell"></i>
+                    <span>{{ $newAlertsCount }}</span>
+                    <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse border-2 border-slate-900"></span>
+                </button>
 
-                        {{-- Выпадающий список алертов --}}
-                        <div x-show="showAlerts" x-cloak x-transition
-                            @click.outside="showAlerts = false"
-                            class="absolute left-0 top-full mt-1 min-w-[320px] max-w-[480px] w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[85vh] overflow-y-auto">
+                {{-- Выпадающий список алертов --}}
+                {{-- Ширина: растягивается по доступной ширине строки, но не больше 480px
+                          и не больше ширины экрана (с запасом 2rem по бокам). Минимум 320px,
+                          чтобы 2 колонки метрик влезали. --}}
+                <div x-show="showAlerts" x-cloak x-transition
+                     @click.outside="showAlerts = false"
+                     class="absolute right-0 top-full mt-1 min-w-[320px] max-w-[480px] w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-[85vh] overflow-y-auto">
 
-                            <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-20">
-                                <div class="flex items-center gap-2">
-                                    <i class="fas fa-bell text-amber-400"></i>
-                                    <span class="font-semibold text-sm uppercase">AI Алерты</span>
-                                    @if($newAlertsCount > 0)
-                                        <span class="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">{{ $newAlertsCount }} новых</span>
-                                    @endif
-                                </div>
-                                <button wire:click="acknowledgeAllAlerts"
-                                        wire:loading.attr="disabled"
-                                        class="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
-                                    <span wire:loading.remove>Подтвердить все</span>
-                                    <span wire:loading>...</span>
-                                </button>
-                            </div>
-
-                            {{-- Панель фильтров — аккордеон --}}
-                            @php
-                                $filterOptions = $this->alert_filter_options;
-                                $filtersActive = $this->alert_filters_active;
-                                $filterCounts = [
-                                    'type'     => count($this->alertFilters['type'] ?? []),
-                                    'severity' => count($this->alertFilters['severity'] ?? []),
-                                    'entity'   => count($this->alertFilters['entity'] ?? []),
-                                    'status'   => count($this->alertFilters['status'] ?? []),
-                                ];
-                            @endphp
-                            <div class="bg-slate-50 border-b border-gray-200 z-10">
-                                <div class="flex items-center justify-between px-3 py-2">
-                                    <button @click="openFilter = (openFilter === 'all' ? null : 'all')"
-                                            class="text-xs font-semibold text-gray-700 hover:text-emerald-600 flex items-center gap-1.5">
-                                        <i class="fas fa-filter"></i>
-                                        <span>Фильтры</span>
-                                        @if($filtersActive)
-                                            <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">
-                                                {{ array_sum($filterCounts) }} акт.
-                                            </span>
-                                        @endif
-                                        <i class="fas fa-chevron-down text-[10px] transition-transform"
-                                        :class="openFilter === 'all' ? 'rotate-180' : ''"></i>
-                                    </button>
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-[10px] text-gray-500">
-                                            Показано: <strong class="text-gray-700">{{ $this->recent_alerts->count() }}</strong>
-                                        </span>
-                                        @if($filtersActive)
-                                            <button wire:click="resetAlertFilters"
-                                                    class="px-2 py-0.5 text-[11px] rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition">
-                                                <i class="fas fa-times mr-0.5"></i>Сбросить
-                                            </button>
-                                        @endif
-                                    </div>
-                                </div>
-
-                                <div x-show="openFilter === 'all'" x-cloak x-collapse class="px-3 pb-2.5 space-y-1.5">
-                                    {{-- Чекбоксы фильтров --}}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {{-- ПРАВЫЙ БЛОК: Обновить, Пользователь, Выход --}}
-                    <div class="flex items-center gap-4">
-                        <button wire:click="runShiftPlanning" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 rounded-md font-semibold uppercase text-xs tracking-wider hover:bg-emerald-700 whitespace-nowrap text-white">
-                            <span wire:loading.remove><i class="fas fa-calendar-check mr-1"></i> Планировать смену</span>
-                            <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Планирование...</span>
-                        </button>
-                        
-                        <button wire:click="loadData" wire:loading.attr="disabled" class="text-gray-400 hover:text-white" title="Обновить данные">
-                            <i class="fas fa-sync-alt" wire:loading.class="fa-spin"></i>
-                        </button>
-                        
-                        <div class="text-right text-sm hidden md:block">
-                            <p class="text-gray-400">{{ Auth::user()->name }}</p>
-                            @php $currentShift = app(\App\Services\ShiftService::class)->getCurrentShift(); @endphp
-                            @if(is_array($currentShift))
-                                <p class="font-bold text-white">Смена {{ $currentShift['shift_id'] }} ({{ $currentShift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
-                            @else
-                                <p class="font-bold text-red-400">Смена не определена</p>
+                    <div class="sticky top-0 bg-slate-800 text-white px-4 py-2.5 flex justify-between items-center rounded-t-xl z-20">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-bell text-amber-400"></i>
+                            <span class="font-semibold text-sm uppercase">AI Алерты</span>
+                            @if($newAlertsCount > 0)
+                                <span class="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">{{ $newAlertsCount }} новых</span>
                             @endif
                         </div>
-                        
-                        <form action="{{ route('logout') }}" method="POST">
-                            @csrf
-                            <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition">
-                                Выйти
-                            </button>
-                        </form>
+                        <button wire:click="acknowledgeAllAlerts"
+                                wire:loading.attr="disabled"
+                                class="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
+                            <span wire:loading.remove>Подтвердить все</span>
+                            <span wire:loading>...</span>
+                        </button>
                     </div>
 
-                </div> 
-            </div>
-        </header>
-    
+                    {{-- Панель фильтров — аккордеон --}}
+                    @php
+                        $filterOptions = $this->alert_filter_options;
+                        $filtersActive = $this->alert_filters_active;
+                        // Считаем активные фильтры в каждой категории для бейджа
+                        $filterCounts = [
+                            'type'     => count($this->alertFilters['type'] ?? []),
+                            'severity' => count($this->alertFilters['severity'] ?? []),
+                            'entity'   => count($this->alertFilters['entity'] ?? []),
+                            'status'   => count($this->alertFilters['status'] ?? []),
+                        ];
+                    @endphp
+                    <div class="bg-slate-50 border-b border-gray-200 z-10">
+                        {{-- Заголовок панели фильтров: Показать/Скрыть + Сбросить --}}
+                        <div class="flex items-center justify-between px-3 py-2">
+                            <button @click="openFilter = (openFilter === 'all' ? null : 'all')"
+                                    class="text-xs font-semibold text-gray-700 hover:text-emerald-600 flex items-center gap-1.5">
+                                <i class="fas fa-filter"></i>
+                                <span>Фильтры</span>
+                                @if($filtersActive)
+                                    <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">
+                                        {{ array_sum($filterCounts) }} акт.
+                                    </span>
+                                @endif
+                                <i class="fas fa-chevron-down text-[10px] transition-transform"
+                                   :class="openFilter === 'all' ? 'rotate-180' : ''"></i>
+                            </button>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-500">
+                                    Показано: <strong class="text-gray-700">{{ $this->recent_alerts->count() }}</strong>
+                                </span>
+                                @if($filtersActive)
+                                    <button wire:click="resetAlertFilters"
+                                            class="px-2 py-0.5 text-[11px] rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition">
+                                        <i class="fas fa-times mr-0.5"></i>Сбросить
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
 
-        <!-- Навигация (Tabs) -->
+                        {{-- Тело фильтров — раскрывается аккордеоном --}}
+                        <div x-show="openFilter === 'all'" x-cloak x-collapse class="px-3 pb-2.5 space-y-1.5">
+
+                            {{-- Категория: Тип --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Тип:</span>
+                                @foreach($filterOptions['type'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('type', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('type', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Категория: Severity --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Важн:</span>
+                                @foreach($filterOptions['severity'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('severity', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('severity', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Категория: Сущность --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Сущн:</span>
+                                @foreach($filterOptions['entity'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('entity', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('entity', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            {{-- Категория: Статус --}}
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase font-semibold text-gray-500 w-12">Стат:</span>
+                                @foreach($filterOptions['status'] as $opt)
+                                    @php $isActive = $this->isAlertFilterActive('status', $opt['value']); @endphp
+                                    <button wire:click="toggleAlertFilter('status', '{{ $opt['value'] }}')"
+                                            class="px-2 py-0.5 text-[11px] rounded-full transition {{ $isActive ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' }}">
+                                        <i class="fas {{ $opt['icon'] }} mr-0.5"></i>{{ $opt['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divide-y divide-gray-100">
+                        @php $alerts = $this->recent_alerts; @endphp
+                        @foreach($alerts as $alert)
+                            @include('components.ai-alert-card', ['alert' => $alert])
+                        @endforeach
+                        @if($alerts->isEmpty())
+                            <div class="p-8 text-center text-gray-400 text-sm">
+                                <i class="fas {{ $filtersActive ? 'fa-filter' : 'fa-check-circle' }} text-3xl {{ $filtersActive ? 'text-gray-400' : 'text-emerald-400' }} mb-2"></i>
+                                <p>{{ $filtersActive ? 'Нет алертов под фильтрами' : 'Нет активных алертов' }}</p>
+                                <p class="text-xs mt-1">{{ $filtersActive ? 'Измените фильтры или сбросьте их' : 'Система работает нормально' }}</p>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+            @endif
+
+            <!-- ПРАВЫЙ БЛОК: Обновить, Пользователь, Выход -->
+            <div class="ml-auto flex items-center gap-4">
+                <button wire:click="runShiftPlanning" wire:loading.attr="disabled" class="px-4 py-2 bg-emerald-600 rounded-md font-semibold uppercase text-xs tracking-wider hover:bg-emerald-700 whitespace-nowrap">
+                    <span wire:loading.remove><i class="fas fa-calendar-check mr-1"></i> Планировать смену</span>
+                    <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Планирование...</span>
+                </button>
+                <!-- Кнопка обновления данных (только для диспетчера, у остальных можно убрать) -->
+                <button wire:click="loadData" wire:loading.attr="disabled" class="text-gray-400 hover:text-white" title="Обновить данные">
+                    <i class="fas fa-sync-alt" wire:loading.class="fa-spin"></i>
+                </button>
+
+                <!-- Информация о пользователе (скрывается на малых экранах) -->
+                <div class="text-right text-sm hidden md:block">
+                    <p class="text-gray-400">{{ Auth::user()->name }}</p>
+                    @php $currentShift = app(\App\Services\ShiftService::class)->getCurrentShift(); @endphp
+                    @if(is_array($currentShift))
+                        <p class="font-bold text-white">Смена {{ $currentShift['shift_id'] }} ({{ $currentShift['shift_type'] === 'day' ? 'День' : 'Ночь' }})</p>
+                    @else
+                        <p class="font-bold text-red-400">Смена не определена</p>
+                    @endif
+                </div>
+
+                <!-- Кнопка выхода -->
+                <form action="{{ route('logout') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition">
+                        Выйти
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- Навигация (Tabs) -->
     <nav class="bg-white border shadow-sm sticky top-0 z-10 mb-4 rounded-xl">
         <div class="px-4 flex overflow-x-auto gap-1 py-2">
             <button @click="tab='trucksTab'" :class="tab === 'trucksTab' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all">Самосвалы</button>
@@ -1382,7 +1436,7 @@
                     }
                 });
             "
-        >      
+        >
             {{-- Chart.js подключается в layout (components/layouts/app.blade.php) --}}
 
             {{-- Данные для графиков передаются через скрытый JSON-блок, читаются из JS --}}
@@ -1417,106 +1471,220 @@
                     <p class="text-[10px] text-gray-500 uppercase font-semibold">Холостой</p>
                     <p class="text-xl font-bold {{ $kpi['total_empty_km'] > 0 ? 'text-amber-600' : 'text-emerald-600' }}">{{ $kpi['total_empty_km'] }} <span class="text-xs">км</span></p>
                 </div>
-            </div>
-            {{-- ========================================== --}}
-            {{-- ТАБЛИЦА РЕЙСОВ ПАРКА С ФИЛЬТРАМИ --}}
-            {{-- ========================================== --}}
-            @php
-                $statsRows = $this->stats_by_period;
-                $statsTotals = $this->stats_totals;
-                $statsMinersList = $this->stats_miners_list;
-                $periodLabel = $this->stats_period_label;
-            @endphp
-            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                <div class="p-4 border-b">
-                    <div class="flex items-center justify-between flex-wrap gap-3">
-                        <h3 class="font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
-                            <i class="fas fa-chart-bar text-blue-500"></i> Рейсы парка {{ $periodLabel }}
-                        </h3>
-                        <div class="flex items-center gap-2 flex-wrap">
-                            {{-- Фильтр периода --}}
-                            <select wire:model.live="statsPeriod" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
-                                <option value="shift">За смену</option>
-                                <option value="today">За сегодня</option>
-                                <option value="week">За неделю</option>
-                                <option value="month">За месяц</option>
-                                <option value="year">За год</option>
-                            </select>
-                            {{-- Фильтр смены --}}
-                            <select wire:model.live="statsShift" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
-                                <option value="all">Все смены</option>
-                                <option value="day">Дневная</option>
-                                <option value="night">Ночная</option>
-                            </select>
-                            {{-- Фильтр экскаватора --}}
-                            <select wire:model.live="statsMinerId" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
-                                <option value="">Все экскаваторы</option>
-                                @foreach($statsMinersList as $id => $name)
-                                    <option value="{{ $id }}">{{ $name }}</option>
-                                @endforeach
-                            </select>
-                            {{-- Группировка --}}
-                            <select wire:model.live="statsGrouping" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
-                                <option value="by_miner">По экскаваторам</option>
-                                <option value="by_truck">По грузовикам</option>
-                                <option value="by_rock">По породам</option>
-                            </select>
+                {{-- ========================================== --}}
+                {{-- ТАБЛИЦА РЕЙСОВ ПАРКА С ФИЛЬТРАМИ --}}
+                {{-- ========================================== --}}
+                @php
+                    $statsRows = $this->stats_by_period;
+                    $statsTotals = $this->stats_totals;
+                    $statsMinersList = $this->stats_miners_list;
+                    $periodLabel = $this->stats_period_label;
+                @endphp
+                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <div class="p-4 border-b">
+                        <div class="flex items-center justify-between flex-wrap gap-3">
+                            <h3 class="font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                                <i class="fas fa-chart-bar text-blue-500"></i> Рейсы парка {{ $periodLabel }}
+                            </h3>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                {{-- Фильтр периода --}}
+                                <select wire:model.live="statsPeriod" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="shift">За смену</option>
+                                    <option value="today">За сегодня</option>
+                                    <option value="week">За неделю</option>
+                                    <option value="month">За месяц</option>
+                                    <option value="year">За год</option>
+                                </select>
+                                {{-- Фильтр смены --}}
+                                <select wire:model.live="statsShift" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="all">Все смены</option>
+                                    <option value="day">Дневная</option>
+                                    <option value="night">Ночная</option>
+                                </select>
+                                {{-- Фильтр экскаватора --}}
+                                <select wire:model.live="statsMinerId" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="">Все экскаваторы</option>
+                                    @foreach($statsMinersList as $id => $name)
+                                        <option value="{{ $id }}">{{ $name }}</option>
+                                    @endforeach
+                                </select>
+                                {{-- Группировка --}}
+                                <select wire:model.live="statsGrouping" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="by_miner">По экскаваторам</option>
+                                    <option value="by_truck">По грузовикам</option>
+                                    <option value="by_rock">По породам</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="overflow-x-auto">
-                    @if(!empty($statsRows))
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 border-b">
-                            <tr>
-                                @php $first = $statsRows[0]; @endphp
-                                <th class="text-left p-3 font-semibold text-gray-600">{{ $first['col1_label'] }}</th>
-                                <th class="text-left p-3 font-semibold text-gray-600">{{ $first['col2_label'] }}</th>
-                                @if($first['col3_label'])
-                                <th class="text-left p-3 font-semibold text-gray-600">{{ $first['col3_label'] }}</th>
-                                @endif
-                                <th class="text-center p-3 font-semibold text-gray-600">Рейсов</th>
-                                <th class="text-center p-3 font-semibold text-gray-600">Объём (т)</th>
-                                <th class="text-center p-3 font-semibold text-gray-600">Гружёный (км)</th>
-                                <th class="text-center p-3 font-semibold text-gray-600">Холостой (км)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($statsRows as $row)
-                            <tr class="border-b hover:bg-slate-50">
-                                <td class="p-3 font-medium text-gray-800">{{ $row['col1'] }}</td>
-                                <td class="p-3 text-gray-600">{{ $row['col2'] }}</td>
-                                @if($first['col3_label'])
-                                <td class="p-3">
-                                    <span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $row['col3'] }}</span>
-                                </td>
-                                @endif
-                                <td class="p-3 text-center font-bold text-gray-800">{{ $row['trips'] }}</td>
-                                <td class="p-3 text-center text-blue-700 font-medium">{{ number_format($row['volume'], 1) }}</td>
-                                <td class="p-3 text-center text-emerald-600">{{ $row['loaded_km'] }}</td>
-                                <td class="p-3 text-center text-amber-600">{{ $row['empty_km'] }}</td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                        <tfoot class="bg-slate-100 border-t-2 border-slate-300">
-                            <tr>
-                                <td colspan="{{ $first['col3_label'] ? 3 : 2 }}" class="p-3 font-bold text-gray-700 text-right">Итого:</td>
-                                <td class="p-3 text-center font-bold text-emerald-700">{{ $statsTotals['trips'] }}</td>
-                                <td class="p-3 text-center font-bold text-blue-700">{{ number_format($statsTotals['volume'], 1) }}</td>
-                                <td class="p-3 text-center font-bold text-emerald-600">{{ $statsTotals['loaded_km'] }}</td>
-                                <td class="p-3 text-center font-bold text-amber-600">{{ $statsTotals['empty_km'] }}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                    @else
-                    <div class="p-8 text-center text-gray-400 text-sm">
-                        <i class="fas fa-inbox text-3xl text-gray-300 mb-2"></i>
-                        <p>Нет данных за выбранный период</p>
+                    <div class="overflow-x-auto">
+                        @if(!empty($statsRows))
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 border-b">
+                                <tr>
+                                    @php $first = $statsRows[0]; @endphp
+                                    <th class="text-left p-3 font-semibold text-gray-600">{{ $first['col1_label'] }}</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">{{ $first['col2_label'] }}</th>
+                                    @if($first['col3_label'])
+                                    <th class="text-left p-3 font-semibold text-gray-600">{{ $first['col3_label'] }}</th>
+                                    @endif
+                                    <th class="text-center p-3 font-semibold text-gray-600">Рейсов</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Объём (т)</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Гружёный (км)</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Холостой (км)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($statsRows as $row)
+                                <tr class="border-b hover:bg-slate-50">
+                                    <td class="p-3 font-medium text-gray-800">{{ $row['col1'] }}</td>
+                                    <td class="p-3 text-gray-600">{{ $row['col2'] }}</td>
+                                    @if($first['col3_label'])
+                                    <td class="p-3">
+                                        <span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $row['col3'] }}</span>
+                                    </td>
+                                    @endif
+                                    <td class="p-3 text-center font-bold text-gray-800">{{ $row['trips'] }}</td>
+                                    <td class="p-3 text-center text-blue-700 font-medium">{{ number_format($row['volume'], 1) }}</td>
+                                    <td class="p-3 text-center text-emerald-600">{{ $row['loaded_km'] }}</td>
+                                    <td class="p-3 text-center text-amber-600">{{ $row['empty_km'] }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot class="bg-slate-100 border-t-2 border-slate-300">
+                                <tr>
+                                    <td colspan="{{ $first['col3_label'] ? 3 : 2 }}" class="p-3 font-bold text-gray-700 text-right">Итого:</td>
+                                    <td class="p-3 text-center font-bold text-emerald-700">{{ $statsTotals['trips'] }}</td>
+                                    <td class="p-3 text-center font-bold text-blue-700">{{ number_format($statsTotals['volume'], 1) }}</td>
+                                    <td class="p-3 text-center font-bold text-emerald-600">{{ $statsTotals['loaded_km'] }}</td>
+                                    <td class="p-3 text-center font-bold text-amber-600">{{ $statsTotals['empty_km'] }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        @else
+                        <div class="p-8 text-center text-gray-400 text-sm">
+                            <i class="fas fa-inbox text-3xl text-gray-300 mb-2"></i>
+                            <p>Нет данных за выбранный период</p>
+                        </div>
+                        @endif
                     </div>
-                    @endif
                 </div>
-            </div>  
+                {{-- ========================================== --}}
+                {{-- ТАБЛИЦА ПРОВЕДЁННЫХ ТО С ФИЛЬТРАМИ --}}
+                {{-- (по образцу «Рейсов парка») --}}
+                {{-- ========================================== --}}
+                @php
+                    $mRows   = $this->maintenance_stats_by_period;
+                    $mTotals = $this->maintenance_stats_totals;
+                    $mTrucks = $this->maintenance_stats_trucks_list;
+                    $mLabel  = $this->maintenance_stats_period_label;
+                @endphp
+                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+                    <div class="p-4 border-b">
+                        <div class="flex items-center justify-between flex-wrap gap-3">
+                            <h3 class="font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
+                                <i class="fas fa-tools text-amber-500"></i> Проведённые ТО {{ $mLabel }}
+                            </h3>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                {{-- Фильтр периода --}}
+                                <select wire:model.live="maintenanceStatsPeriod" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="shift">За смену</option>
+                                    <option value="today">За сегодня</option>
+                                    <option value="week">За неделю</option>
+                                    <option value="month">За месяц</option>
+                                    <option value="year">За год</option>
+                                </select>
+                                {{-- Фильтр смены --}}
+                                <select wire:model.live="maintenanceStatsShift" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="all">Все смены</option>
+                                    <option value="day">Дневная</option>
+                                    <option value="night">Ночная</option>
+                                </select>
+                                {{-- Фильтр грузовика --}}
+                                <select wire:model.live="maintenanceStatsTruckId" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="">Все грузовики</option>
+                                    @foreach($mTrucks as $id => $number)
+                                        <option value="{{ $id }}">{{ $number }}</option>
+                                    @endforeach
+                                </select>
+                                {{-- Фильтр типа задачи --}}
+                                <select wire:model.live="maintenanceStatsTaskType" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="all">Все типы</option>
+                                    <option value="maintenance">ТО</option>
+                                    <option value="fueling">Заправка</option>
+                                    <option value="tire_inflation">Подкачка шин</option>
+                                    <option value="wheel_tightening">Обтяжка колёс</option>
+                                    <option value="inspection">Инспекция</option>
+                                </select>
+                                {{-- Группировка --}}
+                                <select wire:model.live="maintenanceStatsGrouping" class="text-xs border-gray-300 rounded-md py-1.5 px-2">
+                                    <option value="by_truck">По грузовикам</option>
+                                    <option value="by_type">По типам работ</option>
+                                    <option value="by_post">По постам</option>
+                                    <option value="by_to_type">По типам ТО (ТО-1/ТО-2)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        @if(!empty($mRows))
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 border-b">
+                                <tr>
+                                    @php $mFirst = $mRows[0]; @endphp
+                                    <th class="text-left p-3 font-semibold text-gray-600">{{ $mFirst['col1_label'] }}</th>
+                                    <th class="text-left p-3 font-semibold text-gray-600">{{ $mFirst['col2_label'] }}</th>
+                                    @if($mFirst['col3_label'])
+                                    <th class="text-left p-3 font-semibold text-gray-600">{{ $mFirst['col3_label'] }}</th>
+                                    @endif
+                                    <th class="text-center p-3 font-semibold text-gray-600">Проведено</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Типы ТО</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">План (мин)</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Факт (мин)</th>
+                                    <th class="text-center p-3 font-semibold text-gray-600">Среднее (мин)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($mRows as $row)
+                                <tr class="border-b hover:bg-slate-50">
+                                    <td class="p-3 font-medium text-gray-800">{{ $row['col1'] }}</td>
+                                    <td class="p-3 text-gray-600">{{ $row['col2'] }}</td>
+                                    @if($mFirst['col3_label'])
+                                    <td class="p-3">
+                                        <span class="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">{{ $row['col3'] }}</span>
+                                    </td>
+                                    @endif
+                                    <td class="p-3 text-center font-bold text-gray-800">{{ $row['count'] }}</td>
+                                    <td class="p-3 text-center text-gray-600">{{ $row['to_types_label'] }}</td>
+                                    <td class="p-3 text-center text-blue-700">{{ $row['planned_minutes'] }}</td>
+                                    <td class="p-3 text-center @if($row['actual_minutes'] > $row['planned_minutes']) text-red-600 @else text-emerald-600 @endif">{{ $row['actual_minutes'] }}</td>
+                                    <td class="p-3 text-center font-medium text-gray-700">{{ $row['avg_minutes'] }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot class="bg-slate-100 border-t-2 border-slate-300">
+                                <tr>
+                                    <td colspan="{{ $mFirst['col3_label'] ? 3 : 2 }}" class="p-3 font-bold text-gray-700 text-right">Итого:</td>
+                                    <td class="p-3 text-center font-bold text-emerald-700">{{ $mTotals['count'] }}</td>
+                                    <td class="p-3 text-center text-gray-500">—</td>
+                                    <td class="p-3 text-center font-bold text-blue-700">{{ $mTotals['planned_minutes'] }}</td>
+                                    <td class="p-3 text-center font-bold @if($mTotals['actual_minutes'] > $mTotals['planned_minutes']) text-red-600 @else text-emerald-600 @endif">{{ $mTotals['actual_minutes'] }}</td>
+                                    <td class="p-3 text-center text-gray-400">—</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        @else
+                        <div class="p-8 text-center text-gray-400 text-sm">
+                            <i class="fas fa-tools text-3xl text-gray-300 mb-2"></i>
+                            <p>Нет проведённых ТО за выбранный период</p>
+                        </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
             {{-- Сводка по смене --}}
             <div class="bg-slate-50 rounded-lg border p-3 text-sm text-gray-600 flex items-center gap-4 flex-wrap">
                 <span><i class="fas fa-clock text-blue-500 mr-1"></i> <strong>Смена:</strong> {{ $trends['shift']['label'] }}</span>

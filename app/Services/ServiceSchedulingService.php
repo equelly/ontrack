@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\DispatcherNotification;
 use App\Models\ServicePost;
 use App\Models\Truck;
 use App\Models\TruckPlannedTask;
@@ -621,9 +622,52 @@ class ServiceSchedulingService
 
     public function completeService(TruckPlannedTask $task): void
     {
+        // Сохраняем ID грузовика до завершения (на случай если relation сбросится)
+        $truckId = $task->truck?->id ?? 0;
+        $truckNumber = $task->truck?->number ?? '—';
+
+        // Завершаем задачу (обновляет completed_at, освобождает пост,
+        // обнуляет moto_minutes_since_to / mileage_since_fuel)
         $task->complete();
+
+        // Меняем статус грузовика на «свободен»
         $task->truck->update(['status' => Truck::STATUS_FREE]);
+
+        // Обрабатываем очередь — запускаем следующую задачу этого типа
         $this->processQueue($task->task_type);
+
+        // ==========================================
+        // УВЕДОМЛЕНИЕ ДИСПЕТЧЕРА — real-time обновление статуса
+        // ==========================================
+        // Бродкаст на канал 'dispatcher' ловится JS-слушателем в
+        // main-dispatcher-panel.blade.php → вызывается refresh-dispatcher-data →
+        // loadData() → статус самосвала обновляется во вкладке «Самосвалы»
+        // у всех открытых панелей диспетчера одновременно.
+        try {
+            DispatcherNotification::dispatch(
+                $truckId,
+                'service_completed',
+                [
+                    'truck_id'     => $truckId,
+                    'truck_number' => $truckNumber,
+                    'task_type'    => $task->task_type,
+                    'to_type'      => $task->to_type,
+                ]
+            );
+
+            Log::info('Обслуживание завершено, диспетчер уведомлён (real-time)', [
+                'truck_id'    => $truckId,
+                'truck_number'=> $truckNumber,
+                'task_type'   => $task->task_type,
+                'to_type'     => $task->to_type,
+            ]);
+        } catch (\Throwable $e) {
+            // Не роняем основной flow, если бродкаст упал
+            Log::error('Не удалось отправить уведомление диспетчеру о завершении ТО', [
+                'error'   => $e->getMessage(),
+                'task_id' => $task->id,
+            ]);
+        }
     }
 
     public function processQueue(string $taskType): void
