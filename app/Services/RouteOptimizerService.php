@@ -429,6 +429,18 @@ class RouteOptimizerService
      *     • Зона > порога → СОХРАНЯЕМ эксклюзивный режим (один отвал — один забой),
      *       чтобы избежать "жадного захвата" и обеспечить равномерное заполнение.
      *
+     * FALLBACK «ПОСЛЕДНИЙ ШАНС» (применяется в конце каждого раунда):
+     *   - Если после основной раздачи у забоя НЕТ маршрута (все доступные отвалы
+     *     заняты эксклюзивно), но при этом у него есть физически доступная зона
+     *     (volume < capacity) — разрешаем ему работать на занятый отвал как «второй
+     *     забой», чтобы избежать простоя.
+     *   - Это страховка от простой ситуации: единственная зона для породы
+     *     занята эксклюзивно (fill_pct > 30%), а у второго забоя той же породы
+     *     вообще нет альтернатив — иначе все его маршруты будут «не в работе».
+     *   - Если диспетчеру нужно ещё сильнее «усилить завозку» на отвал — он
+     *     увеличивает вес (MiningOrder::weight), не трогая пороги. Это сохраняет
+     *     предсказуемость распределения и минимизирует «дёргания» маршрутов.
+     *
      * Ограничения:
      *   - В каждом раунде забой может получить только один маршрут
      *   - Один и тот же маршрут не активируется в нескольких раундах
@@ -464,11 +476,17 @@ class RouteOptimizerService
         for ($round = 1; $round <= $roundsCount; $round++) {
             $roundAssignments = [];
             // Каждый отвал может обслуживать несколько забоев, если зона ≤ порога.
-            // Структура: [dump_id => ['miner_id' => X, 'fill_pct' => Y]]
+            // Структура: [dump_id => ['miner_id' => X, 'fill_pct' => Y, 'via_fallback' => bool]]
             $usedDumpsInThisRound = [];
+            // Забои, оставшиеся без маршрута в основной раздаче — кандидаты на fallback
+            $minersWithoutRoute = [];
 
             foreach ($byMiner as $minerId => $minerRoutes) {
                 $assigned = false;
+                /** @var array|null $blockedRoute Последний заблокированный маршрут — нужен для логов */
+                $blockedRoute = null;
+                $blockedDumpId = null;
+                $blockedFillPct = null;
 
                 foreach ($minerRoutes as $route) {
                     $dumpId = $route['dump_id'];
@@ -479,6 +497,7 @@ class RouteOptimizerService
                         $usedDumpsInThisRound[$dumpId] = [
                             'miner_id' => $minerId,
                             'fill_pct' => $this->calculateDumpFillPercent($route),
+                            'via_fallback' => false,
                         ];
                         $assigned = true;
                         break;
@@ -502,6 +521,12 @@ class RouteOptimizerService
                         $assigned = true;
                         break;
                     }
+
+                    // Зона > порога — запоминаем этот маршрут как заблокированный
+                    // (для diagnostic logging и возможного fallback ниже)
+                    $blockedRoute = $route;
+                    $blockedFillPct = $fillPct;
+                    $blockedDumpId = $dumpId;
                     // Зона > порога — продолжаем искать другой отвал (балансировка)
                 }
 
@@ -510,14 +535,90 @@ class RouteOptimizerService
                     $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($route) {
                         return $r['dump_id'] === $route['dump_id'];
                     })->values();
+                } else {
+                    // Забой не получил маршрут в основной раздаче — кандидат на fallback
+                    $minersWithoutRoute[$minerId] = [
+                        'routes' => $minerRoutes,
+                        'blocked_route' => $blockedRoute,
+                        'blocked_dump_id' => $blockedDumpId ?? null,
+                        'blocked_fill_pct' => $blockedFillPct ?? null,
+                    ];
                 }
+            }
+
+            // =====================================================
+            // FALLBACK «ПОСЛЕДНИЙ ШАНС»
+            // =====================================================
+            // Забои, у которых все подходящие отвалы заняты эксклюзивно
+            // (fill_pct > threshold) — не должны простаивать. Если у забоя
+            // есть физически доступная зона (volume < capacity), разрешаем
+            // ему работать на занятый отвал как «второй забой».
+            //
+            // Это страховка от простой ситуации: единственная зона для породы
+            // занята эксклюзивно (т.к. заполнение > 30%), а у второго забоя
+            // той же породы вообще нет альтернатив — иначе все его маршруты
+            // будут «не в работе».
+            //
+            // Если диспетчеру нужно ещё сильнее «усилить завозку» на этот
+            // отвал — он увеличивает вес (MiningOrder::weight), не трогая
+            // пороги. Это сохраняет предсказуемость распределения.
+            foreach ($minersWithoutRoute as $minerId => $info) {
+                $minerRoutes = $info['routes'];
+                if ($minerRoutes->isEmpty()) {
+                    // Альтернативных маршрутов нет вообще — fallback не поможет
+                    continue;
+                }
+
+                // Берём ЛУЧШИЙ по score маршрут забоя (уже отсортированы)
+                $fallbackRoute = $minerRoutes->first();
+                $dumpId = $fallbackRoute['dump_id'];
+                $fillPct = $this->calculateDumpFillPercent($fallbackRoute);
+
+                // Страховка: зона должна быть физически не заполнена.
+                // Если volume >= capacity — fallback не имеет смысла (некуда выгружать)
+                if ($fillPct >= 100.0) {
+                    continue;
+                }
+
+                $roundAssignments[] = $fallbackRoute;
+
+                // Помечаем отвал как пул для нескольких забоев (через fallback)
+                if (isset($usedDumpsInThisRound[$dumpId])) {
+                    $usedDumpsInThisRound[$dumpId]['pooled_via_fallback'] = true;
+                    $usedDumpsInThisRound[$dumpId]['also_used_by'][] = $minerId;
+                } else {
+                    $usedDumpsInThisRound[$dumpId] = [
+                        'miner_id' => $minerId,
+                        'fill_pct' => $fillPct,
+                        'via_fallback' => true,
+                    ];
+                }
+
+                // Удаляем fallback-маршрут из доступных для следующих раундов
+                $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($fallbackRoute) {
+                    return $r['dump_id'] === $fallbackRoute['dump_id'];
+                })->values();
+
+                Log::info('assignByRounds: FALLBACK «последний шанс»', [
+                    'round' => $round,
+                    'miner_id' => $minerId,
+                    'dump_id' => $dumpId,
+                    'dump_fill_pct' => $fillPct,
+                    'threshold_pct' => $sharingThreshold,
+                    'also_used_by' => $usedDumpsInThisRound[$dumpId]['also_used_by']
+                        ?? [$usedDumpsInThisRound[$dumpId]['miner_id'] ?? null],
+                    'reason' => 'все отвалы с породой заняты эксклюзивно, fallback разрешает разделение',
+                ]);
             }
 
             if (!empty($roundAssignments)) {
                 $assignments[$round] = $roundAssignments;
+                $sharedDumps = count(array_filter($usedDumpsInThisRound, fn($d) => ($d['fill_pct'] ?? 100) <= $sharingThreshold));
+                $fallbackDumps = count(array_filter($usedDumpsInThisRound, fn($d) => ($d['via_fallback'] ?? false) === true));
                 Log::info("assignByRounds: раунд {$round} завершён", [
                     'assignments_count' => count($roundAssignments),
-                    'shared_dumps' => count(array_filter($usedDumpsInThisRound, fn($d) => $d['fill_pct'] <= $sharingThreshold)),
+                    'shared_dumps' => $sharedDumps,
+                    'fallback_dumps' => $fallbackDumps,
                 ]);
             } else {
                 // Если раунд пуст — заканчиваем (больше маршрутов нет)
