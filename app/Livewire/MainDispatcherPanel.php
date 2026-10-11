@@ -27,7 +27,6 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
-use Livewire\Attributes\Computed;
 
 
 #[Layout('components.layouts.app')]
@@ -35,12 +34,6 @@ use Livewire\Attributes\Computed;
 
 class MainDispatcherPanel extends Component
 {
-    #[Computed]
-    public function delayedTrucksCount()
-    {
-        // Предполагается, что $this->trucks возвращает коллекцию или Builder с машинами
-        return $this->trucks->whereIn('status', ['delayed', 'waiting_unloading'])->count();
-    }
     public $trucks;
     public $miners;
     public $dumps;
@@ -154,7 +147,7 @@ class MainDispatcherPanel extends Component
      * Каждый массив — список активных значений. Пустой массив = фильтр не применён.
      */
     public array $alertFilters = [
-        'type'     => [],  // truck_anomaly, productivity_drop, empty_run_high, zone_overflow, maintenance_predict
+        'type'     => [],  // truck_anomaly, productivity_drop, empty_run_high, zone_overflow, zone_volume_action, maintenance_predict
         'severity' => [],  // info, warning, critical
         'entity'   => [],  // truck, miner, zone, fleet
         'status'   => [],  // new, acknowledged (по умолчанию active = оба)
@@ -199,11 +192,12 @@ class MainDispatcherPanel extends Component
     {
         return [
             'type' => [
-                ['value' => 'truck_anomaly',        'label' => 'Аномалия рейса',  'icon' => 'fa-truck'],
-                ['value' => 'productivity_drop',    'label' => 'Падение произв.', 'icon' => 'fa-chart-line'],
-                ['value' => 'empty_run_high',       'label' => 'Холостой пробег','icon' => 'fa-route'],
-                ['value' => 'zone_overflow',        'label' => 'Переполнение зоны','icon' => 'fa-layer-group'],
-                ['value' => 'maintenance_predict', 'label' => 'Риск поломки',    'icon' => 'fa-wrench'],
+                ['value' => 'truck_anomaly',         'label' => 'Аномалия рейса',     'icon' => 'fa-truck'],
+                ['value' => 'productivity_drop',     'label' => 'Падение произв.',    'icon' => 'fa-chart-line'],
+                ['value' => 'empty_run_high',        'label' => 'Холостой пробег',    'icon' => 'fa-route'],
+                ['value' => 'zone_overflow',         'label' => 'Переполнение зоны',  'icon' => 'fa-layer-group'],
+                ['value' => 'zone_volume_action',    'label' => 'Мало материала (<760)', 'icon' => 'fa-triangle-exclamation'],
+                ['value' => 'maintenance_predict',  'label' => 'Риск поломки',       'icon' => 'fa-wrench'],
             ],
             'severity' => [
                 ['value' => 'critical', 'label' => 'Критично',  'icon' => 'fa-circle text-red-500'],

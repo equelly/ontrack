@@ -18,6 +18,7 @@ class AiAlert extends Model
     // Типы
     const TYPE_TRUCK_ANOMALY = 'truck_anomaly';
     const TYPE_ZONE_OVERFLOW = 'zone_overflow';
+    const TYPE_ZONE_VOLUME_ACTION = 'zone_volume_action'; // объём в зоне ≥ порога — необходимы действия
     const TYPE_PRODUCTIVITY_DROP = 'productivity_drop';
     const TYPE_EMPTY_RUN_HIGH = 'empty_run_high';
     const TYPE_MAINTENANCE_PREDICT = 'maintenance_predict';

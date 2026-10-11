@@ -45,6 +45,33 @@ class AnomalyDetectionService
     const EMPTY_RUN_ALERT_THRESHOLD = 40.0; // %
 
     /**
+     * Порог ОБЪЁМА в зоне (в м³), ниже которого «необходимы действия».
+     *
+     * 760 м³ = 2 «вертушки» по 380 м³ (типовая вместимость кузова
+     * самосвала-«вертушки» в горной промышленности).
+     *
+     * ВАЖНО: Контекст — зоны не только наполняются самосвалами, но и
+     * ОТГРУЖАЮТСЯ в ж/д транспорт или на конвейер. Отгрузка пока
+     * делается вручную через интерфейс мастера (мастер редактирует
+     * объём зоны), этот процесс медленный и управляется человеком.
+     *
+     * Логика: ёмкость (capacity) НЕ учитываем — только объём (volume)
+     * в зоне. Когда объём в зоне упал ниже 760 м³ (т.е. меньше 2
+     * вертушек) — диспетчер должен обратить внимание:
+     *   - delivery=true  → WARNING  (зона активна для приёма, но материала
+     *                       мало — нужно подвозить больше, иначе отгрузка
+     *                       простаивает)
+     *   - delivery=false → CRITICAL (зона НЕ активна и материала мало —
+     *                       отгрузка не может вестись. Нужно либо активировать
+     *                       зону delivery=true чтобы самосвалы подвезли,
+     *                       либо разбираться, почему нет материала)
+     *
+     * Если объём поднялся до ≥ 760 (после подвоза самосвалами) —
+     * алерт автоматически закрывается (resolve).
+     */
+    const ZONE_VOLUME_ACTION_THRESHOLD = 760; // м³
+
+    /**
      * Анализировать завершённый рейс самосвала.
      *
      * Вызывается из TruckStatusService::onUnloading() после завершения trip.
@@ -106,13 +133,18 @@ class AnomalyDetectionService
                 return;
             }
 
+            // Грузим модель Truck, чтобы в title видеть номер самосвала (а не ID)
+            $truck = Truck::find($trip->truck_id);
+            $truckNumber = $truck?->number ?? "#{$trip->truck_id}";
+
             AiAlert::create([
                 'type'        => AiAlert::TYPE_TRUCK_ANOMALY,
                 'severity'    => $deviationPct > 50 ? AiAlert::SEVERITY_CRITICAL : AiAlert::SEVERITY_WARNING,
-                'title'       => "Аномалия времени рейса: самосвал #{$trip->truck_id}",
+                'title'       => "Аномалия времени рейса: самосвал {$truckNumber}",
                 'message'     => "Время рейса — {$currentTripMinutes} мин (норма: " . round($mean) . " мин, отклонение +{$deviationPct}%). Возможна пробка, неисправность или неэффективный маршрут.",
                 'data'        => [
                     'truck_id'        => $trip->truck_id,
+                    'truck_number'    => $truckNumber,
                     'trip_id'         => $trip->id,
                     'current_minutes' => $currentTripMinutes,
                     'average_minutes' => round($mean, 1),
@@ -125,9 +157,10 @@ class AnomalyDetectionService
             ]);
 
             Log::info('AnomalyDetection: алерт времени рейса', [
-                'truck_id' => $trip->truck_id,
-                'z_score' => round($zScore, 2),
-                'deviation_pct' => $deviationPct,
+                'truck_id'     => $trip->truck_id,
+                'truck_number' => $truckNumber,
+                'z_score'      => round($zScore, 2),
+                'deviation_pct'=> $deviationPct,
             ]);
         }
     }
@@ -178,14 +211,10 @@ class AnomalyDetectionService
                 return;
             }
 
-            // 1. Безопасно формируем имя забоя до сборки массива
-            $minerName = ($miner && isset($miner->name_miner)) ? $miner->name_miner : '#' . $trip->miner_id;
-
-            // 2. Создаем запись в БД
             AiAlert::create([
                 'type'        => AiAlert::TYPE_PRODUCTIVITY_DROP,
                 'severity'    => $deviationPct > 50 ? AiAlert::SEVERITY_CRITICAL : AiAlert::SEVERITY_WARNING,
-                'title'       => "Падение производительности: забой {$minerName}", // Теперь здесь чистая переменная
+                'title' => "Падение производительности: забой " . ($miner?->name_miner ?? "№" . $trip->miner_id),
                 'message'     => "Время погрузки выросло до {$currentLoadMinutes} мин (норма: " . round($mean) . " мин, +{$deviationPct}%). Возможно: износ оборудования, нехватка самосвалов, сложная порода.",
                 'data'        => [
                     'miner_id'         => $trip->miner_id,
@@ -386,8 +415,133 @@ class AnomalyDetectionService
     }
 
     /**
+     * Проверка всех зон по порогу ОБЪЁМА (без учёта capacity).
+     *
+     * Вызывается по cron (раз в час) из analyzeFleetMaintenance() или
+     * вручную. Для каждой зоны:
+     *   - если volume < ZONE_VOLUME_ACTION_THRESHOLD (760 м³)
+     *     → создаётся алерт типа TYPE_ZONE_VOLUME_ACTION;
+     *   - severity зависит от флага delivery:
+     *     • delivery=true  → WARNING  (зона активна для приёма, но материала
+     *                       мало — нужно подвозить больше, иначе отгрузка
+     *                       простаивает)
+     *     • delivery=false → CRITICAL (зона НЕ активна и материала мало —
+     *                       отгрузка не может вестись. Нужно либо активировать
+     *                       зону delivery=true чтобы самосвалы подвезли,
+     *                       либо разбираться, почему нет материала)
+     *
+     * Если по зоне уже есть активный алерт — он обновляется с новыми метриками
+     * (логика как в analyzeZoneFill: одна карточка на зону).
+     *
+     * Если объём поднялся ≥ порога (например, после подвоза самосвалами) —
+     * существующий алерт закрывается (resolve), чтобы не было висящих
+     * «устаревших» алертов.
+     */
+    public function analyzeZoneVolumeAction(): int
+    {
+        $threshold = self::ZONE_VOLUME_ACTION_THRESHOLD;
+
+        // Берём все зоны. НЕ фильтруем по capacity — она не учитывается.
+        $zones = Zone::all();
+
+        $alertsCreated = 0;
+        $alertsUpdated = 0;
+        $alertsResolved = 0;
+
+        foreach ($zones as $zone) {
+            $volume = (float) ($zone->volume ?? 0);
+
+            // Ищем существующий активный алерт по этой зоне
+            $existingAlert = AiAlert::active()
+                ->where('type', AiAlert::TYPE_ZONE_VOLUME_ACTION)
+                ->where('entity_type', 'zone')
+                ->where('entity_id', $zone->id)
+                ->first();
+
+            if ($volume >= $threshold) {
+                // Объём в норме (≥ порога) — закрываем висящий алерт, если он был
+                if ($existingAlert) {
+                    $existingAlert->resolve();
+                    $alertsResolved++;
+                    Log::info('AnomalyDetection: алерт объёма зоны закрыт (объём в норме)', [
+                        'zone_id'    => $zone->id,
+                        'zone_name'  => $zone->name_zone,
+                        'volume'     => round($volume, 1),
+                        'threshold'  => $threshold,
+                    ]);
+                }
+                continue;
+            }
+
+            // Нужно создать/обновить алерт — объём ниже порога
+            $severity = $zone->delivery
+                ? AiAlert::SEVERITY_WARNING
+                : AiAlert::SEVERITY_CRITICAL;
+
+            $vertushkiLeft = $volume > 0 ? intdiv($volume, 380) : 0; // сколько «вертушек» ещё в зоне
+
+            $deliveryNote = $zone->delivery
+                ? 'зона активна для приёма (delivery=true), но материала мало — нужно подвозить больше, иначе отгрузка простаивает'
+                : 'зона НЕ активна (delivery=false) и материала мало — отгрузка не может вестись. Нужно либо активировать зону (delivery=true), чтобы самосвалы подвезли, либо разобраться, почему нет материала';
+
+            $title = "Мало материала в зоне: {$zone->name_zone} — " . round($volume) . ' м³ (< порога ' . $threshold . ')';
+            $message = "В зоне «{$zone->name_zone}» всего " . round($volume, 1)
+                . " м³ материала (порог срабатывания — {$threshold} м³, это 2 «вертушки» по 380 м³). "
+                . "Сейчас в зоне ≈ " . max(0, $vertushkiLeft) . " «вертушек». "
+                . $deliveryNote . '.';
+
+            $alertData = [
+                'zone_id'         => $zone->id,
+                'zone_name'       => $zone->name_zone,
+                'dump_id'         => $zone->dump_id,
+                'volume'          => round($volume, 1),
+                'threshold'       => $threshold,
+                'delivery'        => (bool) $zone->delivery,
+                'vertushki_left'  => $vertushkiLeft,
+            ];
+
+            if ($existingAlert) {
+                // Обновляем существующий алерт свежими метриками
+                $existingAlert->update([
+                    'severity' => $severity,
+                    'title'    => $title,
+                    'message'  => $message,
+                    'data'     => $alertData,
+                ]);
+                $alertsUpdated++;
+            } else {
+                AiAlert::create([
+                    'type'        => AiAlert::TYPE_ZONE_VOLUME_ACTION,
+                    'severity'    => $severity,
+                    'title'       => $title,
+                    'message'     => $message,
+                    'data'        => $alertData,
+                    'entity_type' => 'zone',
+                    'entity_id'   => $zone->id,
+                    'status'      => AiAlert::STATUS_NEW,
+                ]);
+                $alertsCreated++;
+            }
+        }
+
+        Log::info('AnomalyDetection: analyzeZoneVolumeAction', [
+            'zones_analyzed'   => $zones->count(),
+            'alerts_created'   => $alertsCreated,
+            'alerts_updated'   => $alertsUpdated,
+            'alerts_resolved'  => $alertsResolved,
+            'threshold_m3'     => $threshold,
+        ]);
+
+        return $alertsCreated + $alertsUpdated;
+    }
+
+    /**
      * Анализ всего парка — предсказание необходимости ТО.
      * Вызывается по cron (раз в час) или вручную.
+     *
+     * В одном проходе:
+     *   1. Сканирует тренды времени рейсов всех самосвалов (Maintenance Predict)
+     *   2. Сканирует все зоны по порогу объёма (Zone Volume Action)
      */
     public function analyzeFleetMaintenance(): array
     {
@@ -427,7 +581,7 @@ class AnomalyDetectionService
                     AiAlert::create([
                         'type'        => AiAlert::TYPE_MAINTENANCE_PREDICT,
                         'severity'    => $trendPct > 50 ? AiAlert::SEVERITY_CRITICAL : AiAlert::SEVERITY_WARNING,
-                        'title'       => "Риск поломки: самосвал #{$truck->id} ({$truck->number})",
+                        'title'       => "Риск поломки: самосвал {$truck->number} (#{$truck->id})",
                         'message'     => "Время рейса выросло на " . round($trendPct) . "% за последние 5 рейсов (норма: " . round($prev5Avg) . " мин, текущее: " . round($last5Avg) . " мин). Рекомендуется диагностика. Moto-часы: {$truck->moto_minutes_since_to}.",
                         'data'        => [
                             'truck_id'            => $truck->id,
@@ -446,12 +600,24 @@ class AnomalyDetectionService
             }
         }
 
+        // === Сканирование всех зон по порогу объёма ===
+        // Вызывается в том же проходе, что и проверка трендов самосвалов —
+        // экономит один запрос к БД при cron-вызове раз в час.
+        $zoneAlerts = $this->analyzeZoneVolumeAction();
+
         Log::info('AnomalyDetection: analyzeFleetMaintenance', [
-            'trucks_analyzed' => $trucks->count(),
-            'alerts_created'  => $alerts,
+            'trucks_analyzed'  => $trucks->count(),
+            'truck_alerts'     => $alerts,
+            'zone_alerts'      => $zoneAlerts,
+            'total_alerts'     => $alerts + $zoneAlerts,
         ]);
 
-        return ['trucks_analyzed' => $trucks->count(), 'alerts_created' => $alerts];
+        return [
+            'trucks_analyzed' => $trucks->count(),
+            'truck_alerts'    => $alerts,
+            'zone_alerts'     => $zoneAlerts,
+            'total_alerts'    => $alerts + $zoneAlerts,
+        ];
     }
 
     /**
