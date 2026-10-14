@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#1e293b"/>
+  <g transform="translate(256, 200)">
+    <path d="M -140 60 L -70 -60 L 0 60 Z" fill="#10b981" opacity="0.7"/>
+    <path d="M -90 80 L 0 -130 L 90 80 Z" fill="#10b981"/>
+    <path d="M 0 60 L 70 -60 L 140 60 Z" fill="#10b981" opacity="0.7"/>
+    <path d="M -25 -90 L 0 -130 L 25 -90 L 15 -82 L 0 -100 L -15 -82 Z" fill="#ffffff" opacity="0.9"/>
+  </g>
+  <text x="256" y="420" font-family="Arial,sans-serif" font-size="64" font-weight="700"
+        text-anchor="middle" fill="#ffffff" letter-spacing="2">SiMqa</text>
+  <rect x="156" y="370" width="200" height="3" fill="#10b981" opacity="0.6"/>
+</svg>

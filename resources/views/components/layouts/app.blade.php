@@ -2,12 +2,52 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>@yield('title', 'SiMqa')</title>
-    
+
     <!-- CSRF-токен для Livewire и fetch -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    
+
+    {{-- ============================================================= --}}
+    {{-- PWA (Progressive Web App) — SiMqa                            --}}
+    {{-- Превращает веб-приложение в устанавливаемое на рабочий стол --}}
+    {{-- со standalone-режимом (без рамки браузера)                  --}}
+    {{-- ============================================================= --}}
+
+    {{-- Манифест — название, иконки, цвета, display: standalone --}}
+    <link rel="manifest" href="/manifest.webmanifest">
+
+    {{-- Цвет темы — slate-800 (#1e293b), индустриальный тёмно-серый --}}
+    <meta name="theme-color" content="#1e293b">
+    <meta name="msapplication-TileColor" content="#1e293b">
+
+    {{-- iOS Safari — standalone mode + цвет status bar --}}
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SiMqa">
+
+    {{-- Иконки для iOS (apple-touch-icon) и старых favicon --}}
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+    <link rel="mask-icon" href="/icons/icon.svg" color="#1e293b">
+
+    {{-- Безопасные отступы для устройств с вырезами/челками (notch) --}}
+    {{-- standalone-режим использует весь экран, нужно учесть safe-area --}}
+    <style>
+        html, body {
+            --safe-area-inset-top: env(safe-area-inset-top, 0px);
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+            padding-top: var(--safe-area-inset-top);
+            padding-bottom: var(--safe-area-inset-bottom);
+        }
+    </style>
+
+    {{-- Подключение Service Worker (только в production; dev-режим с ?sw=1) --}}
+    <script src="{{ asset('js/pwa-register.js') }}" defer></script>
+
     <!-- Стили -->
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.11.2/css/all.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
@@ -25,7 +65,7 @@
 
     {{-- Офлайн-индикатор (показывается когда нет связи с сервером) --}}
     {{-- Использует события window.online/offline + Livewire:disconnect/connect --}}
-    {{-- Логика вынесена в Alpine.data('offlineIndicator', ...) в нижнем блоке <script> --}}
+    {{-- Логика вынесена в Alpine.data('offlineIndicator', ...) в нижнем блоке --}}
     <div x-data="offlineIndicator"
          x-show="show"
          x-cloak

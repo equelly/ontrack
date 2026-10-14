@@ -217,7 +217,7 @@ class AnomalyDetectionService
             AiAlert::create([
                 'type'        => AiAlert::TYPE_PRODUCTIVITY_DROP,
                 'severity'    => $deviationPct > 50 ? AiAlert::SEVERITY_CRITICAL : AiAlert::SEVERITY_WARNING,
-                'title'       => "Падение производительности: забой {$miner?->name_miner ?? '#' . $trip->miner_id}",
+                'title' => "Падение производительности: забой " . ($miner?->name_miner ?? "№" . $trip->miner_id),
                 'message'     => "Время погрузки выросло до {$currentLoadMinutes} мин (норма: " . round($mean) . " мин, +{$deviationPct}%). Возможно: износ оборудования, нехватка самосвалов, сложная порода.",
                 'data'        => [
                     'miner_id'         => $trip->miner_id,
