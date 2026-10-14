@@ -82,7 +82,40 @@
             <div class="flex items-center gap-2 sm:gap-4">
                 <h2 class="text-base sm:text-lg font-bold text-gray-800 uppercase tracking-wider">Маршрут</h2>
                 <span class="px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold rounded-md bg-{{ $statusColor }}-100 text-{{ $statusColor }}-700 border border-{{ $statusColor }}-300">{{ $statusLabel }}</span>
+                @if($this->is_berm_assigned)
+                    <span class="px-2 sm:px-3 py-1 text-xs sm:text-sm font-bold rounded-md bg-amber-500 text-white border border-amber-600 flex items-center gap-1.5">
+                        <i class="fas fa-mountain"></i> Обваловка
+                    </span>
+                @endif
             </div>
+
+            {{-- Баннер «Обваловка» — привлекает внимание, если рейс на обваловку --}}
+            @if($this->is_berm_assigned && $currentTrip)
+                <div class="bg-amber-50 border-l-4 border-amber-500 p-3 sm:p-4 rounded-md flex items-start gap-3">
+                    <i class="fas fa-mountain text-amber-600 text-xl mt-0.5"></i>
+                    <div class="flex-1">
+                        <p class="font-bold text-amber-800 text-sm sm:text-base">Рейс на обваловку зоны</p>
+                        <p class="text-amber-700 text-xs sm:text-sm mt-0.5">
+                            Зона «{{ $currentTrip->zone?->name_zone ?? '—' }}» требует отсыпки предохранительного вала.
+                            Выгружайте горную массу в указанную зону — это повышает безопасность ведения работ.
+                        </p>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Предупреждение по топливу --}}
+            @php $fuelStats = $this->getFuelStatsProperty(); @endphp
+            @if(($fuelStats['fuel_low_warning'] ?? false) && $truck->status !== 'fueling')
+                <div class="bg-red-50 border-l-4 border-red-500 p-3 sm:p-4 rounded-md flex items-start gap-3">
+                    <i class="fas fa-gas-pump text-red-600 text-xl mt-0.5 animate-pulse"></i>
+                    <div class="flex-1">
+                        <p class="font-bold text-red-800 text-sm sm:text-base">Низкий уровень топлива — {{ round($fuelStats['fuel_percent']) }}%</p>
+                        <p class="text-red-700 text-xs sm:text-sm mt-0.5">
+                            Осталось ≈ {{ $fuelStats['estimated_trips'] }} рейсов. После текущего рейса запросите заправку.
+                        </p>
+                    </div>
+                </div>
+            @endif
 
             <!-- Информация о маршруте -->
             <div class="bg-white rounded-xl border shadow-sm p-4 sm:p-6" wire:key="route-info-{{ $currentTrip?->id ?? 'none' }}">
@@ -145,7 +178,7 @@
                         <p class="text-[10px] text-gray-400">{{ $emptyRunNote }}</p>
                     </div>
                     <div>
-                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время в пути</p>
+                        <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold">Время рейса</p>
                         <p class="text-base sm:text-xl font-bold text-gray-800 timer-display" id="trip-time"
                            data-started="{{ $tripStartedAt ?? '' }}"
                            data-pause-started="{{ $pauseStartedAt ?? '' }}"
@@ -187,7 +220,7 @@
                         @if(!$currentTrip)
                             <button wire:click="assignRoute" wire:loading.attr="disabled" class="w-full inline-flex items-center justify-center px-4 sm:px-6 py-3 sm:py-4 bg-emerald-600 border border-transparent rounded-md font-semibold text-white uppercase tracking-widest hover:bg-emerald-700 transition text-sm sm:text-base">
                                 <span wire:loading.remove>Получить маршрут</span>
-                                <span wire:loading class="animate-spin">⏳</span>
+                                <span wire:loading class="animate-spin">⏳ Получение...</span>
                             </button>
                         @endif
                         {{-- Кнопка запроса обслуживания (подкачка/обтяжка/заявка) --}}
@@ -344,10 +377,7 @@
                             <tr class="border-b bg-green-50">
                                 <td class="p-2 font-medium">Подкачка шин</td>
                                 <td class="p-2"><span class="px-2 py-0.5 text-xs font-medium rounded-md bg-green-600 text-white">В работе</span></td>
-                                <td class="p-2 text-gray-500">
-                                    @if(!empty($currentServiceTask['started_at']))
-                                        <div class="text-xs text-gray-500 mt-1">Начало: {{ $currentServiceTask['started_at'] }}</div>
-                                    @endif</td>
+                                <td class="p-2 text-gray-500">0 мин</td>
                                 <td class="p-2 text-green-600 font-medium">Выполняется</td>
                             </tr>
                         </tbody>

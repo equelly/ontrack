@@ -16,6 +16,7 @@ use App\Services\ServiceSchedulingService;
 use App\Services\ShiftPlanningService;
 use App\Exceptions\NoRouteAvailableException;
 use App\Domain\RouteBlockReason;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
@@ -365,6 +366,23 @@ class DriverPanel extends Component
 
     public function assignRoute(): void
     {
+        // === БЛОКИРОВКА ПО ТОПЛИВУ ===
+        // Если топлива меньше чем на 3 рейса — НЕ назначаем новый маршрут.
+        // Водитель должен сначала заправиться (кнопка «Запросить заправку»).
+        // Это предотвращает ситуацию, когда самосвал получил маршрут и заглох
+        // в пути из-за нехватки топлива.
+        $fuelStats = $this->getFuelStatsProperty();
+        if (($fuelStats['fuel_critical'] ?? false)) {
+            $this->isSearchingRoute = false;
+            $this->truck->update(['is_searching_route' => false]);
+            $tripsLeft = (int) ($fuelStats['estimated_trips'] ?? 0);
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => "Запрещено назначение маршрута: топлива осталось на {$tripsLeft} рейсов (нужно ≥ 3). Запросите заправку.",
+            ]);
+            return;
+        }
+
         try {
             $routeService = app(RouteAssignmentService::class);
             $routeService->assignForTruck($this->truck);
@@ -375,9 +393,19 @@ class DriverPanel extends Component
             $this->truck->update(['is_searching_route' => false]);
             $this->loadData();
 
-            // NOTE: notify НЕ диспатчим здесь — RouteAssignmentService::assignForTruck
-            // отправляет DriverRouteUpdated(action='route_assigned') через Echo,
-            // и onRouteUpdated() покажет toast "Назначен новый маршрут!".
+            // === НАПОМИНАНИЕ ПО ТОПЛИВУ ===
+            // Если маршрут назначен успешно, но топлива < 5% — напоминаем водителю
+            // что пора заправиться после этого рейса.
+            if (($fuelStats['fuel_low_warning'] ?? false)) {
+                $this->dispatch('notify', [
+                    'type' => 'warning',
+                    'message' => 'Внимание: остаток топлива меньше 5%. После рейса запросите заправку.',
+                ]);
+            }
+
+            // NOTE: notify о назначении маршрута НЕ диспатчим здесь —
+            // RouteAssignmentService::assignForTruck отправляет DriverRouteUpdated
+            // через Echo, и onRouteUpdated() покажет toast "Назначен новый маршрут!".
             // Раньше тут был дубль (success + info) — теперь только один toast.
 
         } catch (NoRouteAvailableException $e) {
@@ -501,6 +529,19 @@ class DriverPanel extends Component
     public function startLoading(): void
     {
         try {
+            // Идемпотентность: если уже в статусе loading (машинист экскаватора
+            // подтвердил прибытие через свою панель — для дублирования при плохой связи),
+            // не вызываем changeStatus повторно, чтобы не получить "Переход loading → loading запрещён".
+            // Просто обновляем UI и показываем информационный toast.
+            if ($this->truck->status === 'loading') {
+                $this->loadData();
+                $this->dispatch('notify', [
+                    'type' => 'info',
+                    'message' => 'Вы уже на погрузке — машинист экскаватора подтвердил прибытие.',
+                ]);
+                return;
+            }
+
             $statusService = app(TruckStatusService::class);
             $statusService->changeStatus($this->truck, 'loading');
             $this->loadData();
@@ -1022,22 +1063,31 @@ class DriverPanel extends Component
     public function onRouteUpdated(array $data): void
     {
         Log::info('Route updated event', $data);
-        
+
         if ($this->truck && isset($data['truck_id']) && $data['truck_id'] === $this->truck->id) {
             $this->loadData();
-            
+
             // Определяем сообщение по типу действия
             $action = $data['action'] ?? 'route_assigned';
             $message = match ($action) {
-                'route_assigned' => 'Назначен новый маршрут!',
-                'route_reassigned' => 'Маршрут изменён!',
+                'route_assigned'  => 'Назначен новый маршрут!',
+                'route_reassigned'=> 'Маршрут изменён!',
                 'route_completed' => 'Рейс завершён!',
                 'zone_reassigned' => 'Зона изменена!',
-                default => 'Данные обновлены',
+                'berm_assigned'   => $data['message'] ?? 'Назначен на обваловку зоны',
+                default           => 'Данные обновлены',
             };
-            
+
+            // Тип toast: для обваловки — warning (привлекает внимание),
+            // для завершения — success, иначе info
+            $toastType = match ($action) {
+                'route_completed' => 'success',
+                'berm_assigned'    => 'warning',
+                default            => 'info',
+            };
+
             $this->dispatch('notify', [
-                'type' => $action === 'route_completed' ? 'success' : 'info',
+                'type'    => $toastType,
                 'message' => $message,
             ]);
         }
@@ -1255,7 +1305,7 @@ class DriverPanel extends Component
         }
 
         // Прямой SQL-запрос, обходим Eloquent
-        \DB::table('trucks')->where('id', $this->truck->id)->update(['load_capacity' => $newCapacity]);
+        DB::table('trucks')->where('id', $this->truck->id)->update(['load_capacity' => $newCapacity]);
 
         // Обновляем модель в памяти Livewire
         $this->truck->refresh();
@@ -1307,45 +1357,69 @@ class DriverPanel extends Component
                 'fuel_percent' => 0,
                 'avg_distance' => 0,
                 'total_trip_distance' => 0,
-                'estimated_trips' => 0
+                'estimated_trips' => 0,
+                'fuel_low_warning' => false, // < 5%
+                'fuel_critical' => false,    // < 3 рейсов
             ];
         }
         // Подгружаем связь, если она была потеряна после refresh()
         $this->truck->load('truckModel');
-        
+
         $fuelCapacity = $this->truck->truckModel->fuel_capacity ?? 0;
-        
-        // Защита от деления на ноль
-        $fuel_percent = 0;
-        if ($fuelCapacity > 0) {
-            $fuel_percent = (($this->truck->fuel_level ?? 0) / $fuelCapacity) * 100;
-        }
+        $fuelLevel = (float) ($this->truck->fuel_level ?? 0);
 
-        // a) Расчет процента топлива
-        $fuel_percent = ($this->truck->fuel_level / $this->truck->truckModel->fuel_capacity) * 100;
+        // Расчёт процента топлива (с защитой от деления на ноль)
+        $fuel_percent = $fuelCapacity > 0 ? ($fuelLevel / $fuelCapacity) * 100 : 0;
 
-        // b) Среднее расстояние рейса
+        // Среднее расстояние рейса (по активным маршрутам)
         $avg_distance = MiningOrder::where('active', true)
             ->whereNotNull('distance_km')
             ->average('distance_km') ?? 0;
 
-        // c) Общее расстояние с учетом холостого хода
+        // Общее расстояние с учетом холостого хода (× 1.5)
         $total_trip_distance = $avg_distance * 1.5;
 
-        // d) Расчет количества рейсов
+        // Расчёт количества рейсов, которые можно сделать на текущем топливе
         $estimated_trips = 0;
-        if ($avg_distance > 0 && $this->truck->truckModel->fuel_consumption > 0) {
-            $trip_fuel_consumption = ($total_trip_distance / 100) * $this->truck->truckModel->fuel_consumption;
-            $estimated_trips = $trip_fuel_consumption > 0 ? 
-                floor($this->truck->fuel_level / $trip_fuel_consumption) : 0;
+        $fuelConsumption = (float) ($this->truck->truckModel->fuel_consumption ?? 0);
+        if ($avg_distance > 0 && $fuelConsumption > 0) {
+            $trip_fuel_consumption = ($total_trip_distance / 100) * $fuelConsumption;
+            $estimated_trips = $trip_fuel_consumption > 0
+                ? (int) floor($fuelLevel / $trip_fuel_consumption)
+                : 0;
         }
 
         return [
             'fuel_percent' => $fuel_percent,
             'avg_distance' => $avg_distance,
             'total_trip_distance' => $total_trip_distance,
-            'estimated_trips' => $estimated_trips
+            'estimated_trips' => $estimated_trips,
+
+            // Предупреждения для водителя:
+            // - fuel_low_warning = true если остаток топлива < 5% (напоминание «пора заправиться»)
+            // - fuel_critical = true если топлива меньше чем на 3 рейса (запрет назначения новых маршрутов)
+            'fuel_low_warning' => $fuelCapacity > 0 && $fuel_percent < 5.0,
+            'fuel_critical'    => $estimated_trips < 3,
         ];
+    }
+
+    /**
+     * Назначен ли текущий рейс на обваловку зоны.
+     * Используется в UI для показа баннера «Обваловка» над маршрутом.
+     */
+    public function getIsBermAssignedProperty(): bool
+    {
+        if (!$this->currentTrip || !$this->currentTrip->zone_id) {
+            return false;
+        }
+
+        try {
+            $bermService = app(\App\Services\BermService::class);
+            return $bermService->isZoneUnderBerm($this->currentTrip->zone_id);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('isBermAssigned check failed', ['error' => $e->getMessage()]);
+            return false;
+        }
     }
 
     public function updateFuelLevel()
