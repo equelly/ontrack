@@ -4,11 +4,13 @@
 
     // Иконка и цвет акцента по типу алерта
     $typeMeta = [
-        'truck_anomaly'        => ['icon' => 'fa-truck',         'color' => 'text-red-600',   'bg' => 'bg-red-50'],
-        'productivity_drop'   => ['icon' => 'fa-chart-line',    'color' => 'text-amber-600', 'bg' => 'bg-amber-50'],
-        'empty_run_high'       => ['icon' => 'fa-route',         'color' => 'text-purple-600','bg' => 'bg-purple-50'],
-        'zone_overflow'        => ['icon' => 'fa-layer-group',   'color' => 'text-blue-600',  'bg' => 'bg-blue-50'],
-        'maintenance_predict'  => ['icon' => 'fa-wrench',        'color' => 'text-orange-600','bg' => 'bg-orange-50'],
+        'truck_anomaly'         => ['icon' => 'fa-truck',                'color' => 'text-red-600',   'bg' => 'bg-red-50'],
+        'productivity_drop'    => ['icon' => 'fa-chart-line',           'color' => 'text-amber-600', 'bg' => 'bg-amber-50'],
+        'empty_run_high'       => ['icon' => 'fa-route',                'color' => 'text-purple-600','bg' => 'bg-purple-50'],
+        'zone_overflow'        => ['icon' => 'fa-layer-group',         'color' => 'text-blue-600',  'bg' => 'bg-blue-50'],
+        'zone_volume_action'   => ['icon' => 'fa-triangle-exclamation','color' => 'text-amber-600', 'bg' => 'bg-amber-50'],
+        'avg_distance_high'    => ['icon' => 'fa-arrows-left-right-to-line', 'color' => 'text-cyan-600', 'bg' => 'bg-cyan-50'],
+        'maintenance_predict'  => ['icon' => 'fa-wrench',               'color' => 'text-orange-600','bg' => 'bg-orange-50'],
     ];
     $meta = $typeMeta[$alert->type] ?? ['icon' => 'fa-bell', 'color' => 'text-slate-600', 'bg' => 'bg-slate-50'];
 
@@ -48,6 +50,20 @@
             if (isset($data['capacity']))           $metrics[] = ['label' => 'Вместимость', 'value' => round($data['capacity'], 1) . ' м³'];
             if (isset($data['hours_to_overflow']))  $metrics[] = ['label' => 'До переполнения', 'value' => $data['hours_to_overflow'] . ' ч', 'highlight' => $data['hours_to_overflow'] < 3];
             break;
+        case 'zone_volume_action':
+            // Мало материала в зоне — выводим объём + порог + кол-во вертушек + delivery
+            if (isset($data['volume']))         $metrics[] = ['label' => 'Объём',     'value' => round($data['volume'], 0) . ' м³', 'danger' => true];
+            if (isset($data['threshold']))     $metrics[] = ['label' => 'Порог',     'value' => $data['threshold'] . ' м³'];
+            if (isset($data['vertushki_left'])) $metrics[] = ['label' => 'Вертушек',  'value' => max(0, $data['vertushki_left'])];
+            if (isset($data['delivery']))       $metrics[] = ['label' => 'Готовность', 'value' => $data['delivery'] ? '✅ Активна' : '⚠ Не активна', 'highlight' => $data['delivery'], 'danger' => !$data['delivery']];
+            break;
+        case 'avg_distance_high':
+            // Среднее расстояние > порога — выводим факт/порог/рейсов/суммарно
+            if (isset($data['avg_distance']))   $metrics[] = ['label' => 'Фактическое', 'value' => $data['avg_distance'] . ' км', 'danger' => true];
+            if (isset($data['threshold']))      $metrics[] = ['label' => 'Порог',      'value' => $data['threshold'] . ' км'];
+            if (isset($data['trips_count']))    $metrics[] = ['label' => 'Рейсов',     'value' => $data['trips_count']];
+            if (isset($data['total_distance'])) $metrics[] = ['label' => 'Суммарно',   'value' => $data['total_distance'] . ' км'];
+            break;
         case 'maintenance_predict':
             if (isset($data['trend_pct']))             $metrics[] = ['label' => 'Рост времени', 'value' => '+' . $data['trend_pct'] . '%', 'danger' => true];
             if (isset($data['last5_avg_minutes']))     $metrics[] = ['label' => 'Текущее',     'value' => $data['last5_avg_minutes'] . ' мин', 'highlight' => true];
@@ -68,7 +84,7 @@
     }
 @endphp
 
-<div class="p-4 ml-3 {{ $alert->status === 'new' ? $meta['bg'] . ' border-l-4 ' . 'border-' . ($alert->severity === 'critical' ? 'red-500' : 'amber-500') : 'bg-white' }} hover:bg-slate-50 transition">
+<div class="p-4 {{ $alert->status === 'new' ? $meta['bg'] . ' border-l-4 ' . 'border-' . ($alert->severity === 'critical' ? 'red-500' : 'amber-500') : 'bg-white' }} hover:bg-slate-50 transition">
     {{-- Header: иконка + бейдж severity + время --}}
     <div class="flex items-center gap-2 mb-2">
         <i class="fas {{ $meta['icon'] }} {{ $meta['color'] }} text-base"></i>
@@ -96,8 +112,8 @@
     </div>
     @endif
 
-    {{-- Сообщение с переносами --}}
-    <p class="text-xs text-gray-600 leading-relaxed mb-2">{{ $alert->message }}</p>
+    {{-- Сообщение с переносами (whitespace-pre-line сохраняет \n из PHP) --}}
+    <p class="text-xs text-gray-600 leading-relaxed mb-2 whitespace-pre-line">{{ $alert->message }}</p>
 
     {{-- Footer: кнопки действий --}}
     <div class="flex items-center justify-between gap-2 pt-1">

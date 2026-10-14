@@ -7,6 +7,9 @@ use App\Models\Truck;
 use App\Models\TruckTrip;
 use App\Models\Miner;
 use App\Models\Zone;
+use App\Models\Dump;
+use App\Models\MiningOrder;
+use App\Models\MinerDumpDistance;
 use App\Models\SystemSetting;
 use App\Events\RoutesUpdated;
 use App\Events\ZoneFillWarning;
@@ -214,7 +217,7 @@ class AnomalyDetectionService
             AiAlert::create([
                 'type'        => AiAlert::TYPE_PRODUCTIVITY_DROP,
                 'severity'    => $deviationPct > 50 ? AiAlert::SEVERITY_CRITICAL : AiAlert::SEVERITY_WARNING,
-                'title' => "Падение производительности: забой " . ($miner?->name_miner ?? "№" . $trip->miner_id),
+                'title'       => "Падение производительности: забой {$miner?->name_miner ?? '#' . $trip->miner_id}",
                 'message'     => "Время погрузки выросло до {$currentLoadMinutes} мин (норма: " . round($mean) . " мин, +{$deviationPct}%). Возможно: износ оборудования, нехватка самосвалов, сложная порода.",
                 'data'        => [
                     'miner_id'         => $trip->miner_id,
@@ -480,15 +483,19 @@ class AnomalyDetectionService
 
             $vertushkiLeft = $volume > 0 ? intdiv($volume, 380) : 0; // сколько «вертушек» ещё в зоне
 
+            // Лаконичная рекомендация:
+            // - delivery=true  → «зона подготовлена — нужно подвозить больше»
+            // - delivery=false → «зону нужно подготовить для завозки горной массы»
             $deliveryNote = $zone->delivery
-                ? 'зона активна для приёма (delivery=true), но материала мало — нужно подвозить больше, иначе отгрузка простаивает'
-                : 'зона НЕ активна (delivery=false) и материала мало — отгрузка не может вестись. Нужно либо активировать зону (delivery=true), чтобы самосвалы подвезли, либо разобраться, почему нет материала';
+                ? '→ Зона подготовлена — нужно подвозить больше'
+                : '→ Зону нужно подготовить для завозки горной массы';
 
+            // Заголовок оставляем как есть (информативный)
             $title = "Мало материала в зоне: {$zone->name_zone} — " . round($volume) . ' м³ (< порога ' . $threshold . ')';
-            $message = "В зоне «{$zone->name_zone}» всего " . round($volume, 1)
-                . " м³ материала (порог срабатывания — {$threshold} м³, это 2 «вертушки» по 380 м³). "
-                . "Сейчас в зоне ≈ " . max(0, $vertushkiLeft) . " «вертушек». "
-                . $deliveryNote . '.';
+
+            // Лаконичное сообщение: объём + вертушки + рекомендация
+            $message = "В зоне " . round($volume, 0) . " м³ (порог {$threshold} м³, ≈ "
+                . max(0, $vertushkiLeft) . " вертушек). " . $deliveryNote;
 
             $alertData = [
                 'zone_id'         => $zone->id,
@@ -536,12 +543,383 @@ class AnomalyDetectionService
     }
 
     /**
+     * Проверка среднего расстояния перевозки за смену.
+     *
+     * Если фактическое среднее расстояние завершённых рейсов за смену
+     * превышает порог (SystemSetting::getAvgDistanceThreshold(), по умолчанию 5 км)
+     * → создаётся AiAlert типа TYPE_AVG_DISTANCE_HIGH с ОДНОЙ сводной рекомендацией
+     * по перенаправлению грузопотоков:
+     *
+     *   Для каждого активного маршрута с distance_km > порога:
+     *     1. Найти все альтернативные отвалы с подходящей породой (с fallback:
+     *        руда_ЦПТ → руда → руда_Sera) и со свободным объёмом (volume < capacity)
+     *     2. Из них выбрать ближайший (минимальное distance_km из miner_dump_distances)
+     *     3. Определить статус:
+     *        • delivery=true → «✅ Готов» — диспетчер может сразу переключать
+     *        • delivery=false → «⚠ Нужна активация» — попросить мастера подготовить зону
+     *        • Нет альтернатив → «❌ Нет альтернатив»
+     *
+     * Логика "одна карточка на алерт" — обновляем существующий, не создаём дубль.
+     * Если среднее опустилось ≤ порога — закрываем существующий алерт (resolve).
+     */
+    public function analyzeAvgTransportDistance(): int
+    {
+        $threshold = SystemSetting::getAvgDistanceThreshold();
+
+        // Получаем смену
+        $shiftService = app(ShiftService::class);
+        $shift = $shiftService->getCurrentShift();
+
+        if (!is_array($shift)) {
+            Log::info('AnomalyDetection: analyzeAvgTransportDistance — getCurrentShift не вернул массив', [
+                'shift_result' => $shift,
+            ]);
+            return 0;
+        }
+
+        // Фактические завершённые рейсы за смену.
+        // ВАЖНО: используем completed_at (как в KPI), а не created_at —
+        // рейс может быть создан в предыдущей смене, а завершён в текущей.
+        // Если фильтровать по created_at — такие рейсы не попадут в выборку,
+        // и среднее будет занижено или равно 0.
+        $trips = TruckTrip::where('completed_at', '>=', $shift['start_time'])
+            ->where('completed_at', '<', $shift['end_time'])
+            ->whereNotNull('completed_at')
+            ->with('miningOrder')
+            ->get();
+
+        Log::info('AnomalyDetection: analyzeAvgTransportDistance — выборка рейсов', [
+            'shift_start'   => $shift['start_time']->format('Y-m-d H:i'),
+            'shift_end'      => $shift['end_time']->format('Y-m-d H:i'),
+            'shift_type'     => $shift['shift_type'] ?? null,
+            'threshold_km'   => $threshold,
+            'trips_found'    => $trips->count(),
+        ]);
+
+        if ($trips->isEmpty()) {
+            // Нет завершённых рейсов за смену — пропускаем
+            Log::info('AnomalyDetection: analyzeAvgTransportDistance — нет завершённых рейсов за смену');
+            return 0;
+        }
+
+        // Считаем расстояние по каждому рейсу с fallback:
+        // trip->distance_km → MiningOrder->distance_km → MinerDumpDistance → 0
+        // (это решает проблему старых рейсов, где distance_km не был сохранён)
+        $tripDistances = [];
+        foreach ($trips as $trip) {
+            $dist = (float) ($trip->distance_km ?? 0);
+            $source = 'trip.distance_km';
+            if ($dist <= 0 && $trip->miningOrder?->distance_km) {
+                $dist = (float) $trip->miningOrder->distance_km;
+                $source = 'miningOrder.distance_km';
+            }
+            if ($dist <= 0 && $trip->miner_id && $trip->dump_id) {
+                $distFromTable = MinerDumpDistance::where('miner_id', $trip->miner_id)
+                    ->where('dump_id', $trip->dump_id)
+                    ->value('distance_km');
+                if ($distFromTable !== null) {
+                    $dist = (float) $distFromTable;
+                    $source = 'miner_dump_distances';
+                }
+            }
+            if ($dist > 0) {
+                $tripDistances[] = $dist;
+                Log::debug('AnomalyDetection: trip distance', [
+                    'trip_id'   => $trip->id,
+                    'distance'   => $dist,
+                    'source'     => $source,
+                ]);
+            } else {
+                Log::warning('AnomalyDetection: trip без расстояния (даже после fallback)', [
+                    'trip_id'    => $trip->id,
+                    'truck_id'   => $trip->truck_id,
+                    'miner_id'   => $trip->miner_id,
+                    'dump_id'    => $trip->dump_id,
+                ]);
+            }
+        }
+
+        if (count($tripDistances) < 1) {
+            // Нет ни одного рейса с известным расстоянием — пропускаем
+            Log::info('AnomalyDetection: analyzeAvgTransportDistance — нет данных о расстоянии', [
+                'trips_count' => $trips->count(),
+                'trips_with_distance' => count($tripDistances),
+            ]);
+            return 0;
+        }
+
+        $tripsCount = count($tripDistances);
+        $totalDistance = array_sum($tripDistances);
+        $avgDistance = $totalDistance / $tripsCount;
+
+        Log::info('AnomalyDetection: analyzeAvgTransportDistance — расчёт среднего', [
+            'trips_with_distance' => $tripsCount,
+            'total_distance'      => round($totalDistance, 2),
+            'avg_distance'        => round($avgDistance, 2),
+            'threshold'           => $threshold,
+            'exceeds_threshold'   => $avgDistance > $threshold,
+        ]);
+
+        // Ищем существующий активный алерт
+        $existingAlert = AiAlert::active()
+            ->where('type', AiAlert::TYPE_AVG_DISTANCE_HIGH)
+            ->where('entity_type', 'fleet')
+            ->first();
+
+        if ($avgDistance <= $threshold) {
+            // Среднее в норме — закрываем висящий алерт
+            if ($existingAlert) {
+                $existingAlert->resolve();
+                Log::info('AnomalyDetection: алерт среднего расстояния закрыт (в норме)', [
+                    'avg_distance' => round($avgDistance, 2),
+                    'threshold'    => $threshold,
+                    'trips_count'  => $tripsCount,
+                ]);
+            }
+            return 0;
+        }
+
+        // Среднее превысило порог — формируем рекомендации
+        $recommendations = $this->buildDistanceRecommendations($threshold, $avgDistance);
+
+        $severity = $avgDistance > $threshold * 1.5
+            ? AiAlert::SEVERITY_CRITICAL
+            : AiAlert::SEVERITY_WARNING;
+
+        // Лаконичный заголовок: «Расстояние перевозки: 4.3 км > 2.5 км (порог)»
+        $title = "Расстояние перевозки: " . round($avgDistance, 1)
+            . " км > {$threshold} км (порог)";
+
+        // Лаконичное сообщение: краткое summary + список рекомендаций по одной строке на маршрут
+        $message = "Рекомендации по перенаправлению грузопотоков:\n";
+
+        if (empty($recommendations)) {
+            $message .= "Нет активных маршрутов с расстоянием выше порога — рекомендации не требуются.";
+        } else {
+            $message .= implode("\n", array_column($recommendations, 'text_message'));
+        }
+
+        $alertData = [
+            'avg_distance'    => round($avgDistance, 2),
+            'threshold'       => $threshold,
+            'trips_count'     => $tripsCount,
+            'total_distance'  => round($totalDistance, 1),
+            'shift_start'     => isset($shift['start_time']) ? $shift['start_time']->format('Y-m-d H:i') : null,
+            'shift_end'       => isset($shift['end_time']) ? $shift['end_time']->format('Y-m-d H:i') : null,
+            'recommendations' => $recommendations,
+        ];
+
+        if ($existingAlert) {
+            $existingAlert->update([
+                'severity' => $severity,
+                'title'    => $title,
+                'message'  => $message,
+                'data'     => $alertData,
+            ]);
+            $action = 'updated';
+        } else {
+            AiAlert::create([
+                'type'        => AiAlert::TYPE_AVG_DISTANCE_HIGH,
+                'severity'    => $severity,
+                'title'       => $title,
+                'message'     => $message,
+                'data'        => $alertData,
+                'entity_type' => 'fleet',
+                'entity_id'   => null,
+                'status'      => AiAlert::STATUS_NEW,
+            ]);
+            $action = 'created';
+        }
+
+        Log::info('AnomalyDetection: алерт среднего расстояния перевозки ' . $action, [
+            'avg_distance'        => round($avgDistance, 2),
+            'threshold'           => $threshold,
+            'trips_count'         => $tripsCount,
+            'recommendations_cnt' => count($recommendations),
+        ]);
+
+        return 1;
+    }
+
+    /**
+     * Сформировать ОДНУ сводную рекомендацию по перенаправлению грузопотоков.
+     *
+     * Для каждого активного маршрута с distance_km > порога:
+     *   1. Найти все альтернативные отвалы с подходящей породой (с fallback:
+     *      руда_ЦПТ → руда → руда_Sera) и со свободным объёмом (volume < capacity)
+     *   2. Из них выбрать ближайший (минимальное distance_km из miner_dump_distances)
+     *   3. Определить статус:
+     *      • delivery=true → «✅ Готов» — диспетчер может сразу переключать
+     *      • delivery=false → «⚠ Нужна активация» — попросить мастера подготовить зону
+     *      • Нет альтернатив → «❌ Нет альтернатив»
+     *
+     * Возвращает структурированный массив recommendations[] для data AiAlert.
+     * Каждый элемент содержит:
+     *   - miner_id, miner_name, rock_name
+     *   - current_dump_id, current_dump_name, current_distance_km
+     *   - recommended_dump_id, recommended_dump_name, recommended_distance_km (null если нет альтернативы)
+     *   - saving_km (null если нет альтернативы)
+     *   - status: ready | needs_activation | no_alternative
+     *   - status_label: читабельный текст
+     *   - text_message: готовый текст для отображения в UI
+     */
+    protected function buildDistanceRecommendations(float $threshold, float $avgDistance): array
+    {
+        $recommendations = [];
+
+        // Подгружаем отвалы с зонами (с capacity) и породами зон
+        $dumps = Dump::with(['zones' => function ($q) {
+            $q->whereNotNull('capacity')->with('rocks');
+        }])->get();
+
+        $miners = Miner::where('active', true)->with('currentRock')->get();
+        $minerIds = $miners->pluck('id')->toArray();
+
+        // Все расстояния от забоев до отвалов
+        $distances = MinerDumpDistance::whereIn('miner_id', $minerIds)->get();
+
+        // Активные маршруты с заполненным distance_km (загружаем dump для текущего отвала)
+        $activeOrders = MiningOrder::where('active', true)
+            ->whereNotNull('distance_km')
+            ->with('dump')
+            ->get();
+
+        foreach ($activeOrders as $order) {
+            $currentDist = (float) $order->distance_km;
+            if ($currentDist <= $threshold) {
+                continue; // маршрут в норме — не включаем в рекомендации
+            }
+
+            $miner = $miners->firstWhere('id', $order->miner_id);
+            if (!$miner || !$miner->currentRock) {
+                continue;
+            }
+            $rockName = $miner->currentRock->name_rock;
+
+            // Допустимые названия пород (с fallback: руда_ЦПТ → руда → руда_Sera)
+            $acceptableRockNames = RouteAssignmentService::ROCK_FALLBACK_CHAIN[$rockName] ?? [$rockName];
+
+            // Ищем лучший альтернативный отвал
+            $bestAlt = null;
+            $bestAltDist = $currentDist;
+            $bestAltZone = null;
+
+            foreach ($dumps as $altDump) {
+                // Не предлагаем тот же отвал
+                if ($altDump->id === $order->dump_id) {
+                    continue;
+                }
+
+                // Проверяем, есть ли в отвалe зона с подходящей породой и свободным объёмом
+                $matchingZone = null;
+                foreach ($altDump->zones as $zone) {
+                    // volume < capacity — есть свободное место
+                    if ((float) $zone->volume >= (float) $zone->capacity) {
+                        continue;
+                    }
+                    // Проверяем породу зоны (с учётом fallback)
+                    $zoneHasAcceptableRock = false;
+                    foreach ($zone->rocks as $zoneRock) {
+                        if (in_array($zoneRock->name_rock, $acceptableRockNames, true)) {
+                            $zoneHasAcceptableRock = true;
+                            break;
+                        }
+                    }
+                    if ($zoneHasAcceptableRock) {
+                        $matchingZone = $zone;
+                        break;
+                    }
+                }
+
+                if (!$matchingZone) {
+                    continue; // нет зоны с подходящей породой и свободным объёмом
+                }
+
+                // Ищем расстояние от забоя до этого отвала
+                $altDistance = $distances->firstWhere(fn($d) => $d->miner_id === $order->miner_id && $d->dump_id === $altDump->id);
+                if (!$altDistance) {
+                    continue; // нет записи о расстоянии — не можем предложить
+                }
+                $altDist = (float) $altDistance->distance_km;
+
+                // Берём ближайший
+                if ($altDist < $bestAltDist) {
+                    $bestAlt = $altDump;
+                    $bestAltDist = $altDist;
+                    $bestAltZone = $matchingZone;
+                }
+            }
+
+            // Формируем элемент рекомендации — лаконично, в одну строку
+            if ($bestAlt && $bestAltZone) {
+                $savingKm = round($currentDist - $bestAltDist, 2);
+                $isReady = (bool) $bestAltZone->delivery;
+                $status = $isReady ? 'ready' : 'needs_activation';
+                $statusLabel = $isReady
+                    ? '✅ Готов — можно переключать'
+                    : '⚠ Нужна активация зоны';
+
+                // Лаконичный формат: ЭКГ-18 → п/п 10(1) (8.2 км) → п/п 12(2) (2.5 км), экономия 5.7 км/рейс
+                // + если нужна активация: « — подготовить зону п/п 12(2)»
+                $textMessage = "• {$miner->name_miner} → {$order->dump->name_dump} ({$currentDist} км)"
+                    . " → {$bestAlt->name_dump} ({$bestAltDist} км), экономия {$savingKm} км/рейс";
+                if (!$isReady) {
+                    $textMessage .= " — подготовить зону {$bestAltZone->name_zone}";
+                }
+
+                $recommendations[] = [
+                    'miner_id'                  => $miner->id,
+                    'miner_name'                => $miner->name_miner,
+                    'rock_name'                 => $rockName,
+                    'current_dump_id'           => $order->dump_id,
+                    'current_dump_name'         => $order->dump->name_dump,
+                    'current_distance_km'       => $currentDist,
+                    'recommended_dump_id'       => $bestAlt->id,
+                    'recommended_dump_name'     => $bestAlt->name_dump,
+                    'recommended_zone_id'       => $bestAltZone->id,
+                    'recommended_zone_name'     => $bestAltZone->name_zone,
+                    'recommended_distance_km'   => $bestAltDist,
+                    'saving_km'                 => $savingKm,
+                    'status'                    => $status,
+                    'status_label'              => $statusLabel,
+                    'text_message'              => $textMessage,
+                ];
+            } else {
+                // Нет альтернатив — лаконично
+                $textMessage = "• {$miner->name_miner} → {$order->dump->name_dump} ({$currentDist} км)"
+                    . " — ❌ нет альтернатив (все другие отвалы дальше или нет зоны с подходящей породой)";
+
+                $recommendations[] = [
+                    'miner_id'                  => $miner->id,
+                    'miner_name'                => $miner->name_miner,
+                    'rock_name'                 => $rockName,
+                    'current_dump_id'           => $order->dump_id,
+                    'current_dump_name'         => $order->dump->name_dump,
+                    'current_distance_km'       => $currentDist,
+                    'recommended_dump_id'       => null,
+                    'recommended_dump_name'     => null,
+                    'recommended_zone_id'       => null,
+                    'recommended_zone_name'     => null,
+                    'recommended_distance_km'   => null,
+                    'saving_km'                 => null,
+                    'status'                    => 'no_alternative',
+                    'status_label'              => '❌ Нет альтернатив',
+                    'text_message'              => $textMessage,
+                ];
+            }
+        }
+
+        return $recommendations;
+    }
+
+    /**
      * Анализ всего парка — предсказание необходимости ТО.
      * Вызывается по cron (раз в час) или вручную.
      *
      * В одном проходе:
      *   1. Сканирует тренды времени рейсов всех самосвалов (Maintenance Predict)
      *   2. Сканирует все зоны по порогу объёма (Zone Volume Action)
+     *   3. Проверяет среднее расстояние перевозки за смену (Avg Distance High)
      */
     public function analyzeFleetMaintenance(): array
     {
@@ -605,18 +983,23 @@ class AnomalyDetectionService
         // экономит один запрос к БД при cron-вызове раз в час.
         $zoneAlerts = $this->analyzeZoneVolumeAction();
 
+        // === Проверка среднего расстояния перевозки за смену ===
+        $distanceAlerts = $this->analyzeAvgTransportDistance();
+
         Log::info('AnomalyDetection: analyzeFleetMaintenance', [
             'trucks_analyzed'  => $trucks->count(),
             'truck_alerts'     => $alerts,
             'zone_alerts'      => $zoneAlerts,
-            'total_alerts'     => $alerts + $zoneAlerts,
+            'distance_alerts'  => $distanceAlerts,
+            'total_alerts'     => $alerts + $zoneAlerts + $distanceAlerts,
         ]);
 
         return [
-            'trucks_analyzed' => $trucks->count(),
-            'truck_alerts'    => $alerts,
-            'zone_alerts'     => $zoneAlerts,
-            'total_alerts'    => $alerts + $zoneAlerts,
+            'trucks_analyzed'  => $trucks->count(),
+            'truck_alerts'     => $alerts,
+            'zone_alerts'      => $zoneAlerts,
+            'distance_alerts'  => $distanceAlerts,
+            'total_alerts'     => $alerts + $zoneAlerts + $distanceAlerts,
         ];
     }
 

@@ -124,6 +124,7 @@ class MainDispatcherPanel extends Component
         $this->loadThresholds();
         $this->loadServicePostSettings();
         $this->zoneSharingThreshold = SystemSetting::getZoneSharingThreshold();
+        $this->avgDistanceThreshold = SystemSetting::getAvgDistanceThreshold();
     }
 
     // ==========================================
@@ -147,7 +148,7 @@ class MainDispatcherPanel extends Component
      * Каждый массив — список активных значений. Пустой массив = фильтр не применён.
      */
     public array $alertFilters = [
-        'type'     => [],  // truck_anomaly, productivity_drop, empty_run_high, zone_overflow, zone_volume_action, maintenance_predict
+        'type'     => [],  // truck_anomaly, productivity_drop, empty_run_high, zone_overflow, zone_volume_action, avg_distance_high, maintenance_predict
         'severity' => [],  // info, warning, critical
         'entity'   => [],  // truck, miner, zone, fleet
         'status'   => [],  // new, acknowledged (по умолчанию active = оба)
@@ -197,6 +198,7 @@ class MainDispatcherPanel extends Component
                 ['value' => 'empty_run_high',        'label' => 'Холостой пробег',    'icon' => 'fa-route'],
                 ['value' => 'zone_overflow',         'label' => 'Переполнение зоны',  'icon' => 'fa-layer-group'],
                 ['value' => 'zone_volume_action',    'label' => 'Мало материала (<760)', 'icon' => 'fa-triangle-exclamation'],
+                ['value' => 'avg_distance_high',     'label' => 'Ср. расстояние > порога', 'icon' => 'fa-arrows-left-right-to-line'],
                 ['value' => 'maintenance_predict',  'label' => 'Риск поломки',       'icon' => 'fa-wrench'],
             ],
             'severity' => [
@@ -2342,6 +2344,43 @@ class MainDispatcherPanel extends Component
         }
         $avgSpeed = $speedCount > 0 ? round($speedSum / $speedCount, 1) : 0;
 
+        // === 5. СРЕДНЕЕ РАССТОЯНИЕ: плановое vs фактическое ===
+        // Плановое: среднее по активным MiningOrder (как система настроила маршруты)
+        // Фактическое: среднее по завершённым рейсам за смену (с fallback на MiningOrder
+        // и MinerDumpDistance, как в analyzeAvgTransportDistance)
+        $plannedDistances = MiningOrder::where('active', true)
+            ->whereNotNull('distance_km')
+            ->pluck('distance_km')
+            ->map(fn($d) => (float) $d)
+            ->filter(fn($d) => $d > 0)
+            ->values();
+        $avgPlannedDistance = $plannedDistances->isNotEmpty()
+            ? round($plannedDistances->avg(), 2)
+            : 0;
+
+        // Фактическое — с тем же fallback, что и в AnomalyDetectionService
+        $actualDistances = [];
+        foreach ($trips as $trip) {
+            $dist = (float) ($trip->distance_km ?? 0);
+            if ($dist <= 0 && $trip->miningOrder?->distance_km) {
+                $dist = (float) $trip->miningOrder->distance_km;
+            }
+            if ($dist <= 0 && $trip->miner_id && $trip->dump_id) {
+                $distFromTable = \App\Models\MinerDumpDistance::where('miner_id', $trip->miner_id)
+                    ->where('dump_id', $trip->dump_id)
+                    ->value('distance_km');
+                if ($distFromTable !== null) {
+                    $dist = (float) $distFromTable;
+                }
+            }
+            if ($dist > 0) {
+                $actualDistances[] = $dist;
+            }
+        }
+        $avgActualDistance = count($actualDistances) > 0
+            ? round(array_sum($actualDistances) / count($actualDistances), 2)
+            : 0;
+
         // Метрики для графиков
         return [
             'kpi' => [
@@ -2351,6 +2390,8 @@ class MainDispatcherPanel extends Component
                 'efficiency_pct'      => $efficiency,
                 'total_loaded_km'     => $totalLoadedKm,
                 'total_empty_km'      => $totalEmptyKm,
+                'avg_distance_planned' => $avgPlannedDistance,
+                'avg_distance_actual'  => $avgActualDistance,
                 'total_pause_seconds' => $totalPauseSeconds,
                 'total_pause_formatted' => $this->formatSeconds($totalPauseSeconds),
                 'pauses_count'        => $pauses->count(),
@@ -2482,8 +2523,25 @@ class MainDispatcherPanel extends Component
             $dumpName = $trip->dump?->name_dump ?? $trip->miningOrder?->dump?->name_dump ?? '—';
             $rockName = $trip->rock?->name_rock ?? '—';
             $volume = (float) ($trip->load_volume ?? 0);
+
+            // Загружённый пробег: trip->distance_km → MiningOrder->distance_km → 0
+            // (fallback нужен, т.к. в старых рейсах distance_km мог быть null)
             $loadedKm = (float) ($trip->distance_km ?? 0);
-            $emptyKm = $trip->empty_run_km !== null ? (float) $trip->empty_run_km : $loadedKm;
+            if ($loadedKm <= 0 && $trip->miningOrder?->distance_km) {
+                $loadedKm = (float) $trip->miningOrder->distance_km;
+            }
+
+            // Холостой пробег: trip->empty_run_km → MinerDumpDistance (по miner+dump) → loadedKm
+            // (fallback нужен, т.к. empty_run_km=null если не было данных при создании trip)
+            $emptyKm = $trip->empty_run_km !== null ? (float) $trip->empty_run_km : null;
+            if ($emptyKm === null && $trip->miner_id && $trip->dump_id) {
+                $distFromTable = \App\Models\MinerDumpDistance::where('miner_id', $trip->miner_id)
+                    ->where('dump_id', $trip->dump_id)
+                    ->value('distance_km');
+                $emptyKm = $distFromTable !== null ? (float) $distFromTable : $loadedKm;
+            } elseif ($emptyKm === null) {
+                $emptyKm = $loadedKm;
+            }
 
             // Ключ группировки
             $key = match($this->statsGrouping) {
@@ -2815,6 +2873,67 @@ class MainDispatcherPanel extends Component
     }
 
     /**
+     * Сохранить пороги ожидания (забой + зона) — кнопкой из UI.
+     * Заменяет прежнее автосохранение через wire:model.live.
+     */
+    public function saveThresholds(): void
+    {
+        if ($this->minerThreshold < 1 || $this->minerThreshold > 20) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог ожидания на забое: от 1 до 20']);
+            return;
+        }
+        if ($this->zoneThreshold < 1 || $this->zoneThreshold > 20) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог ожидания в зоне: от 1 до 20']);
+            return;
+        }
+
+        SystemSetting::setMinerOverloadThreshold($this->minerThreshold);
+        SystemSetting::setZoneOverloadThreshold($this->zoneThreshold);
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Пороги перегруженности сохранены: забой {$this->minerThreshold}, зона {$this->zoneThreshold}",
+        ]);
+    }
+
+    /**
+     * Сохранить порог разделения зон — кнопкой из UI.
+     */
+    public function saveZoneSharingThreshold(): void
+    {
+        if ($this->zoneSharingThreshold < 0 || $this->zoneSharingThreshold > 100) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог разделения зон: от 0 до 100%']);
+            return;
+        }
+
+        SystemSetting::setZoneSharingThreshold($this->zoneSharingThreshold);
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Порог разделения зон установлен: {$this->zoneSharingThreshold}%",
+        ]);
+    }
+
+    /**
+     * Сохранить порог среднего расстояния перевозки — кнопкой из UI.
+     * Шаг до сотых (0.01).
+     */
+    public function saveAvgDistanceThreshold(): void
+    {
+        if ($this->avgDistanceThreshold < 0.01 || $this->avgDistanceThreshold > 50.0) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог среднего расстояния: от 0.01 до 50 км']);
+            return;
+        }
+
+        SystemSetting::setAvgDistanceThreshold($this->avgDistanceThreshold);
+
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Порог среднего расстояния установлен: {$this->avgDistanceThreshold} км",
+        ]);
+    }
+
+    /**
      * Сохранить порог зоны
      */
     private function saveZoneThreshold(int $value): void
@@ -2850,6 +2969,9 @@ class MainDispatcherPanel extends Component
 
     // Порог адаптивной балансировки зон (0-100%)
     public int $zoneSharingThreshold = 30;
+
+    // Порог среднего расстояния перевозки за смену (в км, 1-50)
+    public float $avgDistanceThreshold = 5.0;
 
     /**
      * Загрузить настройки сервисных постов

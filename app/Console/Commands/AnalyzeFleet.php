@@ -6,7 +6,8 @@ use App\Services\AnomalyDetectionService;
 use Illuminate\Console\Command;
 
 /**
- * Анализ парка самосвалов — предсказание необходимости ТО + проверка объёмов зон.
+ * Анализ парка самосвалов — предсказание необходимости ТО + проверка объёмов зон
+ * + проверка среднего расстояния перевозки за смену.
  *
  * Запуск: php artisan ai:analyze-fleet
  * Рекомендуется по cron: каждый час.
@@ -16,11 +17,14 @@ use Illuminate\Console\Command;
  *      риск износа/поломки → создаёт AiAlert типа maintenance_predict.
  *   2. Сканирует все зоны по порогу объёма — если volume < 760 м³ (2 вертушки),
  *      создаёт AiAlert типа zone_volume_action.
+ *   3. Проверяет среднее расстояние завершённых рейсов за смену — если больше
+ *      порога (по умолчанию 5 км), создаёт AiAlert типа avg_distance_high
+ *      с 4 типами рекомендаций по отвалам.
  */
 class AnalyzeFleet extends Command
 {
     protected $signature = 'ai:analyze-fleet';
-    protected $description = 'Анализ парка самосвалов + проверка объёмов зон: обнаружение аномалий и предсказание необходимости ТО';
+    protected $description = 'Анализ парка самосвалов + проверка объёмов зон + проверка среднего расстояния';
 
     public function handle(AnomalyDetectionService $service): int
     {
@@ -31,6 +35,7 @@ class AnalyzeFleet extends Command
         $this->info("Самосвалов проверено: {$result['trucks_analyzed']}");
         $this->info("Алертов по самосвалам: {$result['truck_alerts']}");
         $this->info("Алертов по зонам (объём < 760 м³): {$result['zone_alerts']}");
+        $this->info("Алертов по среднему расстоянию: {$result['distance_alerts']}");
         $this->info("Всего алертов: {$result['total_alerts']}");
 
         return self::SUCCESS;

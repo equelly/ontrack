@@ -251,6 +251,28 @@ class SystemSetting extends Model
     }
 
     /**
+     * Порог среднего расстояния перевозки за смену (в км).
+     *
+     * Если фактическое среднее расстояние завершённых рейсов за смену
+     * превышает этот порог — создаётся AiAlert типа avg_distance_high
+     * с рекомендациями по отвалам.
+     *
+     * По умолчанию 5 км — типичное значение для карьеров с компактной
+     * логистикой. Диспетчер может поменять через UI-слайдер.
+     */
+    public static function getAvgDistanceThreshold(): float
+    {
+        return (float) static::get('avg_distance_threshold', 5.0);
+    }
+
+    public static function setAvgDistanceThreshold(float $km): void
+    {
+        // Ограничиваем 1–50 км
+        $km = max(1.0, min(50.0, $km));
+        static::set('avg_distance_threshold', $km, 'Порог среднего расстояния перевозки за смену (км)');
+    }
+
+    /**
      * Получить все настройки сервисных постов
      */
     public static function getServicePostsSettings(): array
