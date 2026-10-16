@@ -2,11 +2,33 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover">
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
   <meta http-equiv="x-ua-compatible" content="ie=edge">
   <title>SiMqa</title>
-  
+
+  {{-- ============================================================= --}}
+  {{-- PWA (Progressive Web App) — SiMqa                            --}}
+  {{-- ============================================================= --}}
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1e293b">
+  <meta name="msapplication-TileColor" content="#1e293b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SiMqa">
+
+  {{-- Иконки с cache-busting (?v=3) --}}
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png?v=3">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=3">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png?v=3">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg?v=3">
+  <link rel="shortcut icon" href="/favicon.ico?v=3">
+  <link rel="mask-icon" href="/icons/icon.svg?v=3" color="#1e293b">
+
+  {{-- Подключение Service Worker (на localhost — только с ?sw=1) --}}
+  <script src="{{ asset('js/pwa-register.js') }}" defer></script>
+
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.11.2/css/all.css">
   <!-- Google Fonts Roboto -->

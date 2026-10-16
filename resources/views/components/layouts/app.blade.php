@@ -28,11 +28,14 @@
     <meta name="apple-mobile-web-app-title" content="SiMqa">
 
     {{-- Иконки для iOS (apple-touch-icon) и старых favicon --}}
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
-    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-    <link rel="mask-icon" href="/icons/icon.svg" color="#1e293b">
+    {{-- ?v=3 — cache-busting: браузеры кэшируют favicon агрессивно.
+        При следующей замене иконок поднять до ?v=4 --}}
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png?v=3">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=3">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png?v=3">
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg?v=3">
+    <link rel="shortcut icon" href="/favicon.ico?v=3">
+    <link rel="mask-icon" href="/icons/icon.svg?v=3" color="#1e293b">
 
     {{-- Безопасные отступы для устройств с вырезами/челками (notch) --}}
     {{-- standalone-режим использует весь экран, нужно учесть safe-area --}}
