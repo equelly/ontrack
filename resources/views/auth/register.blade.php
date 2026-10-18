@@ -12,13 +12,13 @@
                   <div class="col-md-6 mb-5 mt-md-0 white-text text-center text-md-left">
                     <h1 class="m-3 h1-responsive font-weight-bold wow fadeInLeft" data-wow-delay="0.3s">Система мониторинга сервиса</h1>
                     
-					<hr class="bg-white wow fadeInLeft" data-wow-delay="0.3s">
+                                        <hr class="bg-white wow fadeInLeft" data-wow-delay="0.3s">
                     <div class="mb-4 wow fadeInLeft" data-wow-delay="0.3s">
-					<h2 class="text-light">Проект для взаимодействия между эксплуатационным персоналом и персоналом занятым обслуживанием и ремонтом оборудования.</h2>
-					
-					 <p class="text-light"># Получение и предоставление информации 24/7</p>
+                                        <h2 class="text-light">Проект для взаимодействия между эксплуатационным персоналом и персоналом занятым обслуживанием и ремонтом оборудования.</h2>
+                                        
+                                         <p class="text-light"># Получение и предоставление информации 24/7</p>
                      <p class="text-light"># Ведение учета работ</p>
-	                 <p class="text-light"># Снижение аварийных простоев оборудования
+                         <p class="text-light"># Снижение аварийных простоев оборудования
                     </p></div>
                    
                   </div>
@@ -52,72 +52,43 @@
                                 <label for="email" class="active">Ваш email</label>
                                 </div>
                                 <div class="md-form">
-                                <label for="role" id="roles"></label>
-                                <select name="role" id="role" class="form-control @error('role') is-invalid @enderror"" onchange="togglePositionField()">
-                                        <option value="" selected class="option">Категория персонала</option>
-                                        <option value="эксплуатационный">эксплуатационный</option>
-                                        <option value="обслуживающий">обслуживающий</option>
-                                    </select>
-                                    @error('role')
-                                        <div class="alert alert-danger">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                                <div class="md-form" id="position-field" style="display: none;">
                                     <label for="position">Должность</label>
-                                    <select name="position" id="position" class="form-control">
+                                    @php
+                                        $groups = $groupedPositions ?? [
+                                            'operational' => [
+                                                'label' => 'Эксплуатационный персонал',
+                                                'items' => [
+                                                    'driver' => 'Водитель самосвала',
+                                                    'excavator_operator' => 'Машинист экскаватора',
+                                                    'dispatcher' => 'Диспетчер',
+                                                    'master' => 'Мастер',
+                                                ],
+                                            ],
+                                            'maintenance' => [
+                                                'label' => 'Обслуживающий персонал',
+                                                'items' => [
+                                                    'mechanic' => 'Механик',
+                                                    'electric' => 'Электрик',
+                                                    'maintenance_dispatcher' => 'Диспетчер ТОиР',
+                                                ],
+                                            ],
+                                        ];
+                                    @endphp
+                                    <select name="position" id="position" class="form-control @error('position') is-invalid @enderror">
                                         <option value="">Выберите должность</option>
-                                        <!-- Options will be dynamically populated -->
+                                        @foreach ($groups as $group)
+                                            <optgroup label="{{ $group['label'] }}">
+                                                @foreach ($group['items'] as $value => $label)
+                                                    <option value="{{ $value }}" @selected(old('position') === $value)>{{ $label }}</option>
+                                                @endforeach
+                                            </optgroup>
+                                        @endforeach
                                     </select>
                                     @error('position')
                                         <div class="alert alert-danger">{{ $message }}</div>
                                     @enderror
                                 </div>
-                                
-                                <script>
-                                    function togglePositionField() {
-                                        const roleSelect = document.getElementById('role');
-                                        const positionField = document.getElementById('position-field');
-                                        const positionSelect = document.getElementById('position');
-                                        
-                                        if (roleSelect.value === 'эксплуатационный') {
-                                            positionField.style.display = 'block';
-                                            // Define exploitation positions
-                                            const positions = {
-                                                'driver': 'Водитель самосвала',
-                                                'excavator_operator': 'Машинист экскаватора',
-                                                'dispatcher': 'Диспетчер',
-                                                'master': 'Мастер'
-                                            };
-                                            populatePositions(positions);
-                                        } else if (roleSelect.value === 'обслуживающий') {
-                                            positionField.style.display = 'block';
-                                            // Define maintenance positions
-                                            const positions = {
-                                                'mechanic': 'Механик',
-                                                'electric': 'Электрик',
-                                                'dispather_top': 'Диспечер ТОиР'
-                                            };
-                                            populatePositions(positions);
-                                        } else {
-                                            positionField.style.display = 'none';
-                                        }
-                                    }
-                                    
-                                    function populatePositions(positions) {
-                                        const positionSelect = document.getElementById('position');
-                                        // Clear existing options
-                                        positionSelect.innerHTML = '<option value="">Выберите должность</option>';
-                                        
-                                        // Add new options
-                                        for (const [value, text] of Object.entries(positions)) {
-                                            const option = document.createElement('option');
-                                            option.value = value;
-                                            option.textContent = text;
-                                            positionSelect.appendChild(option);
-                                        }
-                                    }
-                                </script>
-                                </div>
+
                                 <div class="md-form">
                                   <i class="fas fa-lock prefix text-light active"></i>
                                     <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password" placeholder="Пароль">
@@ -172,12 +143,12 @@
               <!--Grid column-->
               <div class="col-md-12 text-center">
                 <p>Этот проект создан обеспечить связь и взаимодействие между эксплуатационным персоналом и персоналом 
-				занятым обслуживанием и ремонтом оборудования, для эффективного использования машин и механизмов
-				при ведении горных работ.Доступность и простота предоставления и получения информации, возможность ведения учета 
-				и отчета о выполненных работах и доставке ТМЦ - непосредственно "от первого лица". Легкость обработки полученой и 
-				накопленной информации в базе данных дает возможность определить частоту возникновения работ по видам, конкретной 
-				машине и по парку в целом.</p>
-			</div>
+                                занятым обслуживанием и ремонтом оборудования, для эффективного использования машин и механизмов
+                                при ведении горных работ.Доступность и простота предоставления и получения информации, возможность ведения учета 
+                                и отчета о выполненных работах и доставке ТМЦ - непосредственно "от первого лица". Легкость обработки полученой и 
+                                накопленной информации в базе данных дает возможность определить частоту возникновения работ по видам, конкретной 
+                                машине и по парку в целом.</p>
+                        </div>
               <!--Grid column-->
             </div>
             <!--Grid row-->

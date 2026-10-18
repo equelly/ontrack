@@ -14,6 +14,7 @@ use App\Http\Controllers\DriverRouteController;
 use App\Http\Controllers\DispatcherController;
 use App\Http\Controllers\ExcavatorController;
 use App\Livewire\ExcavatorPanel;
+use App\Livewire\MaintenancePanel;
 use Illuminate\Support\Facades\Log;
 
 
@@ -211,4 +212,12 @@ Route::get('/refresh-csrf', function () {
         Route::post('/dispatcher/assign-all', [DispatcherController::class, 'assignAll']);
         Route::get('/dispatcher/orders/{order}/zones', [DispatcherController::class, 'getAvailableZones']);
         Route::put('/dispatcher/zones/{zone}', [DispatcherController::class, 'updateZone']);
+    });
+
+    // =========================================
+    // МАРШРУТЫ ОБСЛУЖИВАЮЩЕГО ПЕРСОНАЛА
+    // =========================================
+    Route::middleware(['auth', 'roles:mechanic,electric,maintenance_dispatcher,admin'])->group(function () {
+        Route::get('/maintenance', \App\Livewire\MaintenancePanel::class)
+            ->name('maintenance.panel');
     });

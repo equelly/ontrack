@@ -3,96 +3,119 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Providers\RouteServiceProvider;
 use App\Models\User;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
+/**
+ * Регистрация нового пользователя.
+ *
+ * Пользователь выбирает только position (должность).
+ * role (категория) вычисляется автоматически через User::roleForPosition().
+ *
+ * admin НЕ доступен для регистрации — админы создаются через админ-панель.
+ */
 class RegisterController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Register Controller
-    |--------------------------------------------------------------------------
-    |
-    | This controller handles the registration of new users as well as their
-    | validation and creation. By default this controller uses a trait to
-    | provide this functionality without requiring any additional code.
-    |
-    */
-
     use RegistersUsers;
 
     /**
-     * Get the post register redirect path.
-     *
-     * @return string
+     * Куда перенаправить после успешной регистрации.
+     * На основе должности (position).
      */
     protected function redirectTo()
     {
         $user = auth()->user();
-        
-        return match($user->position) {
-            'driver' => '/driver',
-            'dispatcher' => '/dispatcher',
-            'excavator_operator' => '/excavator-operator',
-            'master' => '/master',
-            default => '/home'
+
+        // Админ — в админ-панель
+        if ($user->isAdmin()) {
+            return '/admin';
+        }
+
+        return match ($user->position) {
+            'driver'               => '/driver',
+            'dispatcher'           => '/',
+            'excavator_operator'  => '/excavator',
+            'master'              => '/master',
+            'mechanic',
+            'electric',
+            'maintenance_dispatcher' => '/maintenance',
+            default                => '/home',
         };
     }
 
-    /**
-     * Create a new controller instance.
-     *
-     * @return void
-     */
     public function __construct()
     {
         $this->middleware('guest');
     }
 
     /**
-     * Get a validator for an incoming registration request.
-     *
-     * @param  array  $data
-     * @return \Illuminate\Contracts\Validation\Validator
+     * Валидация данных регистрации.
      */
     protected function validator(array $data)
     {
-        $rules = [
-            'name' => ['required', 'string', 'max:255'],
-            'role' => ['required'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+        return Validator::make($data, [
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'position' => ['required', 'string', 'in:' . implode(',', User::REGISTERABLE_POSITIONS)],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ];
-
-        if($data['role'] === 'эксплуатационный') {
-            $rules['position'] = ['required'];
-        }
-        
-        return Validator::make($data, $rules);
+        ]);
     }
 
     /**
-     * Create a new user instance after a valid registration.
-     *
-     * @param  array  $data
-     * @return \App\Models\User
+     * Создание нового пользователя.
+     * role вычисляется автоматически из position.
      */
     protected function create(array $data)
     {
-        $userData = [
-            'name' => $data['name'],
-            'role' => $data['role'],
-            'email' => $data['email'],
+        $position = $data['position'];
+        $role = User::roleForPosition($position);
+
+        if (!$role) {
+            // Этого не должно случиться — валидатор отсечёт некорректные position.
+            // Но на всякий случай — fallback.
+            $role = User::ROLE_OPERATIONAL;
+        }
+
+        return User::create([
+            'name'     => $data['name'],
+            'email'    => $data['email'],
+            'role'     => $role,
+            'position' => $position,
             'password' => Hash::make($data['password']),
+        ]);
+    }
+
+    /**
+     * Переопределяем showRegistrationForm, чтобы передать в шаблон
+     * список доступных должностей с человекочитаемыми подписями.
+     */
+    public function showRegistrationForm()
+    {
+        $positions = [];
+        foreach (User::REGISTERABLE_POSITIONS as $position) {
+            $positions[$position] = User::POSITION_LABELS[$position] ?? $position;
+        }
+
+        // Группировка по категориям для удобства UI
+        $groupedPositions = [
+            'operational' => [
+                'label' => User::ROLE_LABELS[User::ROLE_OPERATIONAL],
+                'items' => array_filter($positions, fn($label, $key) =>
+                    User::POSITION_ROLE_MAP[$key] === User::ROLE_OPERATIONAL,
+                    ARRAY_FILTER_USE_BOTH),
+            ],
+            'maintenance' => [
+                'label' => User::ROLE_LABELS[User::ROLE_MAINTENANCE],
+                'items' => array_filter($positions, fn($label, $key) =>
+                    User::POSITION_ROLE_MAP[$key] === User::ROLE_MAINTENANCE,
+                    ARRAY_FILTER_USE_BOTH),
+            ],
         ];
 
-        if(isset($data['position'])) {
-            $userData['position'] = $data['position'];
-        }
-        
-        return User::create($userData);
+        return view('auth.register', [
+            'groupedPositions' => $groupedPositions,
+        ]);
     }
 }
