@@ -9,6 +9,7 @@ use App\Console\Commands\CleanMiningOrders;
 use App\Console\Commands\OptimizeRoutes;
 use App\Console\Commands\AssignRocksToMiners;
 use App\Console\Commands\RouteMode;
+use App\Console\Commands\PlanMaintenanceBalance;
 
 class Kernel extends ConsoleKernel
 {
@@ -18,6 +19,7 @@ class Kernel extends ConsoleKernel
         OptimizeRoutes::class,
         AssignRocksToMiners::class,
         RouteMode::class,
+        PlanMaintenanceBalance::class,
     ];
 
 protected function schedule(Schedule $schedule): void
@@ -49,6 +51,12 @@ protected function schedule(Schedule $schedule): void
     // добавь ->onOneServer() к каждой команде, чтобы избежать дублей.
     // Например:
     //   $schedule->command('ai:analyze-fleet')->hourly()->onOneServer();
+
+        // Балансировка парка: анализ забои↔самосвалы + очередь заявок
+        // Запускается в начале каждой смены — 07:30 (дневная) и 19:30 (ночная)
+        $schedule->command('maintenance:plan-balance')->dailyAt('07:30');
+        $schedule->command('maintenance:plan-balance')->dailyAt('19:30');
+
 }
 
     protected function commands(): void

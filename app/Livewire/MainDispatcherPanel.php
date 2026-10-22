@@ -199,6 +199,7 @@ class MainDispatcherPanel extends Component
                 ['value' => 'zone_overflow',         'label' => 'Переполнение зоны',  'icon' => 'fa-layer-group'],
                 ['value' => 'zone_volume_action',    'label' => 'Мало материала (<760)', 'icon' => 'fa-triangle-exclamation'],
                 ['value' => 'avg_distance_high',     'label' => 'Ср. расстояние > порога', 'icon' => 'fa-arrows-left-right-to-line'],
+                ['value' => 'balance_suggestion',    'label' => 'Балансировка парка',  'icon' => 'fa-scale-balanced'],
                 ['value' => 'maintenance_predict',  'label' => 'Риск поломки',       'icon' => 'fa-wrench'],
             ],
             'severity' => [

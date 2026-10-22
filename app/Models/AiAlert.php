@@ -20,6 +20,7 @@ class AiAlert extends Model
     const TYPE_ZONE_OVERFLOW = 'zone_overflow';
     const TYPE_ZONE_VOLUME_ACTION = 'zone_volume_action'; // объём в зоне ≥ порога — необходимы действия
     const TYPE_AVG_DISTANCE_HIGH = 'avg_distance_high';   // среднее расстояние перевозки за смену > порога
+    const TYPE_BALANCE_SUGGESTION = 'balance_suggestion'; // балансировка парка (ТО/ремонты для выравнивания забои↔грузовики)
     const TYPE_PRODUCTIVITY_DROP = 'productivity_drop';
     const TYPE_EMPTY_RUN_HIGH = 'empty_run_high';
     const TYPE_MAINTENANCE_PREDICT = 'maintenance_predict';

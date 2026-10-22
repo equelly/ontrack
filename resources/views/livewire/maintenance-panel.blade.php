@@ -29,7 +29,7 @@
             <button @click="tab='kits'" :class="tab === 'kits' ? 'bg-amber-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'"
                     class="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-1.5">
                 <span><i class="fas fa-boxes-stacked"></i></span>
-                <span class="hidden sm:inline">Комплектация</span>
+                <span class="hidden sm:inline">Комплектация для завозки</span>
                 @if($this->kits_count > 0)
                     <span class="ml-1 bg-amber-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{{ $this->kits_count }}</span>
                 @endif
@@ -107,6 +107,12 @@
                 <input type="checkbox" wire:model.live="showOnlyMine" class="rounded text-emerald-600">
                 <span>Только мои</span>
             </label>
+
+            <label class="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer" title="Только заявки, у оборудования которых есть комплектация (расходники для завозки)">
+                <input type="checkbox" wire:model.live="showWithSetsOnly" class="rounded text-amber-600">
+                <span><i class="fas fa-boxes-stacked mr-0.5"></i> С комплектацией</span>
+            </label>
+
             <button wire:click="resetFilters" class="ml-auto px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 rounded-md text-gray-700">
                 <i class="fas fa-times mr-1"></i> Сбросить
             </button>
@@ -145,12 +151,46 @@
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded bg-slate-100 text-slate-700">
                                         {{ $order->workTypeLabel() }}
                                     </span>
-                                    <span class="px-2 py-0.5 text-[10px] font-semibold rounded bg-{{ $order->priorityColor() }}-100 text-{{ $order->priorityColor() }}-700">
-                                        {{ $order->priorityLabel() }}
-                                    </span>
+                                    {{-- Инлайн-редактирование приоритета (Variан C) --}}
+                                    <select wire:change="updatePriority({{ $order->id }}, $event.target.value)"
+                                            class="text-[10px] font-semibold border-0 rounded bg-{{ $order->priorityColor() }}-100 text-{{ $order->priorityColor() }}-700 cursor-pointer hover:bg-{{ $order->priorityColor() }}-200 px-1.5 py-0.5"
+                                            title="Изменить приоритет">
+                                        @foreach (\App\Models\Order::PRIORITY_LABELS as $value => $label)
+                                            <option value="{{ $value }}" @selected($order->priority === $value)>{{ $label }}</option>
+                                        @endforeach
+                                    </select>
                                     <span class="text-xs text-gray-400 ml-auto">
                                         {{ $order->created_at->diffForHumans() }}
                                     </span>
+                                </div>
+
+                                {{-- Инлайн-редактирование оценки времени ремонта --}}
+                                <div class="flex items-center gap-2 mb-2 text-xs">
+                                    <i class="fas fa-clock text-gray-400"></i>
+                                    <span class="text-gray-500">Оценка времени:</span>
+                                    @php
+                                        $estHours = $order->estimated_minutes ? intdiv($order->estimated_minutes, 60) : 0;
+                                        $estMins = $order->estimated_minutes ? $order->estimated_minutes % 60 : 0;
+                                    @endphp
+                                    <div class="flex items-center gap-1" x-data="{ hours: {{ $estHours }}, mins: {{ $estMins }} }">
+                                        <input type="number" min="0" max="8" x-model="hours"
+                                               class="w-12 text-xs border border-gray-300 rounded px-1 py-0.5 text-center"
+                                               placeholder="ч">
+                                        <span class="text-gray-400">ч</span>
+                                        <input type="number" min="0" max="59" x-model="mins"
+                                               class="w-12 text-xs border border-gray-300 rounded px-1 py-0.5 text-center"
+                                               placeholder="мин">
+                                        <span class="text-gray-400">мин</span>
+                                        <button x-on:click="$wire.updateEstimatedTime({{ $order->id }}, hours, mins)"
+                                                class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold">
+                                            <i class="fas fa-save"></i>
+                                        </button>
+                                    </div>
+                                    @if($order->isInspected())
+                                        <span class="text-[10px] text-emerald-600 ml-auto" title="Осмотрел: {{ $order->inspector?->name ?? '—' }}">
+                                            <i class="fas fa-check-circle"></i> осмотрено
+                                        </span>
+                                    @endif
                                 </div>
 
                                 <p class="text-sm text-gray-800 mb-2">{{ $order->content }}</p>
@@ -233,7 +273,7 @@
     {{-- ========================================== --}}
     <div x-show="tab === 'kits'" x-cloak class="space-y-4">
         <div class="flex items-center gap-2">
-            <h2 class="text-base sm:text-lg font-bold text-gray-800 uppercase tracking-wider">Комплектация</h2>
+            <h2 class="text-base sm:text-lg font-bold text-gray-800 uppercase tracking-wider">Комплектация для завозки</h2>
             <span class="text-xs text-gray-500">— расходники, которые нужно завезти на оборудование</span>
         </div>
 

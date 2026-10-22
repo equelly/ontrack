@@ -10,6 +10,7 @@
         'zone_overflow'        => ['icon' => 'fa-layer-group',         'color' => 'text-blue-600',  'bg' => 'bg-blue-50'],
         'zone_volume_action'   => ['icon' => 'fa-triangle-exclamation','color' => 'text-amber-600', 'bg' => 'bg-amber-50'],
         'avg_distance_high'    => ['icon' => 'fa-arrows-left-right-to-line', 'color' => 'text-cyan-600', 'bg' => 'bg-cyan-50'],
+        'balance_suggestion'   => ['icon' => 'fa-scale-balanced',      'color' => 'text-indigo-600','bg' => 'bg-indigo-50'],
         'maintenance_predict'  => ['icon' => 'fa-wrench',               'color' => 'text-orange-600','bg' => 'bg-orange-50'],
     ];
     $meta = $typeMeta[$alert->type] ?? ['icon' => 'fa-bell', 'color' => 'text-slate-600', 'bg' => 'bg-slate-50'];
@@ -63,6 +64,18 @@
             if (isset($data['threshold']))      $metrics[] = ['label' => 'Порог',      'value' => $data['threshold'] . ' км'];
             if (isset($data['trips_count']))    $metrics[] = ['label' => 'Рейсов',     'value' => $data['trips_count']];
             if (isset($data['total_distance'])) $metrics[] = ['label' => 'Суммарно',   'value' => $data['total_distance'] . ' км'];
+            break;
+        case 'balance_suggestion':
+            // Балансировка парка — выводим самосвалы (факт vs треб), заявки, посты
+            $minersData = $data['miners_analysis'] ?? [];
+            $ordersData = $data['orders_analysis'] ?? [];
+            $postsData = $data['posts_analysis'] ?? [];
+            if (isset($minersData['total_current']))     $metrics[] = ['label' => 'Самосвалов факт', 'value' => $minersData['total_current']];
+            if (isset($minersData['total_recommended']))  $metrics[] = ['label' => 'Требуется',     'value' => $minersData['total_recommended']];
+            if (isset($minersData['total_diff']))          $metrics[] = ['label' => 'Перекос',       'value' => ($minersData['total_diff'] > 0 ? '+' : '') . $minersData['total_diff'], 'danger' => abs($minersData['total_diff']) >= 2];
+            if (isset($ordersData['active_with_estimate'])) $metrics[] = ['label' => 'Заявок с оценкой', 'value' => $ordersData['active_with_estimate']];
+            if (isset($ordersData['total_estimated_hours'])) $metrics[] = ['label' => 'Объём работ', 'value' => $ordersData['total_estimated_hours'] . ' ч'];
+            if (isset($postsData['free']))                  $metrics[] = ['label' => 'Свободно постов', 'value' => $postsData['free'] . ' / ' . ($postsData['total'] ?? 0), 'highlight' => $postsData['free'] > 0];
             break;
         case 'maintenance_predict':
             if (isset($data['trend_pct']))             $metrics[] = ['label' => 'Рост времени', 'value' => '+' . $data['trend_pct'] . '%', 'danger' => true];

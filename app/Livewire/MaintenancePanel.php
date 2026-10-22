@@ -551,6 +551,75 @@ class MaintenancePanel extends Component
         ]);
     }
 
+    // ==========================================
+    // ИНЛАЙН-РЕДАКТИРОВАНИЕ (Вариант C — прямо в карточке заявки)
+    // ==========================================
+
+    /**
+     * Обновить приоритет заявки (после осмотра механиком).
+     */
+    public function updatePriority(int $orderId, string $priority): void
+    {
+        $order = Order::findOrFail($orderId);
+        $user = Auth::user();
+
+        // Любой обслуживающий персонал может осматривать и оценивать заявки
+        // (механик/электрик/maintenance_dispatcher/admin)
+        if (!$user->isMaintenance() && !$user->isAdmin()) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Недостаточно прав']);
+            return;
+        }
+
+        if (!array_key_exists($priority, Order::PRIORITY_LABELS)) {
+            return;
+        }
+
+        $order->update([
+            'priority'     => $priority,
+            'inspector_id' => $user->id,
+            'inspected_at' => now(),
+        ]);
+
+        $this->loadData();
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Приоритет заявки #{$order->id}: " . Order::PRIORITY_LABELS[$priority],
+        ]);
+    }
+
+    /**
+     * Обновить оценку времени ремонта (часы + минуты → estimated_minutes).
+     */
+    public function updateEstimatedTime(int $orderId, int $hours = 0, int $minutes = 0): void
+    {
+        $order = Order::findOrFail($orderId);
+        $user = Auth::user();
+
+        // Любой обслуживающий персонал может осматривать и оценивать заявки
+        if (!$user->isMaintenance() && !$user->isAdmin()) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Недостаточно прав']);
+            return;
+        }
+
+        $totalMinutes = ($hours * 60) + $minutes;
+        if ($totalMinutes < 0 || $totalMinutes > 8 * 60) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'Время должно быть от 0 до 8 часов']);
+            return;
+        }
+
+        $order->update([
+            'estimated_minutes' => $totalMinutes > 0 ? $totalMinutes : null,
+            'inspector_id'      => $user->id,
+            'inspected_at'      => now(),
+        ]);
+
+        $this->loadData();
+        $this->dispatch('notify', [
+            'type' => 'success',
+            'message' => "Оценка времени: " . $order->fresh()->estimatedTimeFormatted(),
+        ]);
+    }
+
     public function render()
     {
         return view('livewire.maintenance-panel');

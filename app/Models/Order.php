@@ -43,6 +43,29 @@ class Order extends Model
     protected $guarded = [];
 
     // ==========================================
+    // ДОБАВЛЕНО: поля оценки ремонта (механик/электрик после осмотра)
+    // ==========================================
+    protected $fillable = [
+        'mashine_id',
+        'category_id',
+        'user_id_req',
+        'user_exec',
+        'content',
+        'image',
+        'status',
+        'work_type',
+        'priority',
+        'assigned_to',
+        'started_at',
+        'completed_at',
+        'cancelled_at',
+        'cancelled_reason',
+        'estimated_minutes',
+        'inspector_id',
+        'inspected_at',
+    ];
+
+    // ==========================================
     // СТАТУСЫ
     // ==========================================
     const STATUS_NEW         = 'new';
@@ -160,6 +183,14 @@ class Order extends Model
     }
 
     /**
+     * Инспектор (механик/электрик, который осмотрел оборудование).
+     */
+    public function inspector(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'inspector_id', 'id');
+    }
+
+    /**
      * Исполнитель (новое поле assigned_to — кто взял заявку в работу).
      * Для новых заявок — кто взял в работу. Для legacy user_exec — тот же человек.
      */
@@ -267,5 +298,36 @@ class Order extends Model
     public function priorityWeight(): int
     {
         return self::PRIORITY_WEIGHTS[$this->priority] ?? 2;
+    }
+
+    /**
+     * Оценка времени ремонта в читабельном формате.
+     * Например: 90 минут → "1 ч 30 мин"
+     *           60 минут → "1 ч"
+     *           45 минут → "45 мин"
+     */
+    public function estimatedTimeFormatted(): string
+    {
+        if (!$this->estimated_minutes) {
+            return '—';
+        }
+        $hours = intdiv($this->estimated_minutes, 60);
+        $mins = $this->estimated_minutes % 60;
+
+        if ($hours > 0 && $mins > 0) {
+            return "{$hours} ч {$mins} мин";
+        } elseif ($hours > 0) {
+            return "{$hours} ч";
+        } else {
+            return "{$mins} мин";
+        }
+    }
+
+    /**
+     * Осмотрена ли заявка (есть inspector_id + inspected_at).
+     */
+    public function isInspected(): bool
+    {
+        return !empty($this->inspector_id) && !empty($this->inspected_at);
     }
 }
