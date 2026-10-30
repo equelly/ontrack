@@ -1,4 +1,17 @@
 <div class="dispatcher-panel-wrapper" x-data="{ tab: @entangle('activeTab') }">
+    {{-- Глобальный CSS: предотвращает дёргание кнопок при Livewire-загрузке --}}
+    <style>
+        /* Все кнопки: nowrap — текст не переносится, кнопка не меняет размер при загрузке */
+        .dispatcher-panel-wrapper button { white-space: nowrap; }
+        /* Кнопки в состоянии disabled (идёт загрузка): фиксируем курсор */
+        .dispatcher-panel-wrapper button:disabled { cursor: not-allowed; }
+        /* Иконные кнопки с wire:loading: фиксированная ширина чтобы символ→спиннер не дёргал */
+        .dispatcher-panel-wrapper button:has(span[wire\:loading]) { min-width: 32px; }
+    </style>
+    
+    <!-- Глобальный индикатор загрузки — тонкая полоска наверху при любом Livewire-запросе -->
+    <div wire:loading.delay class="fixed top-0 left-0 right-0 z-[99999] h-1 bg-blue-600 animate-pulse"></div>
+    
     <!-- Toast контейнер для уведомлений -->
     <div id="global-toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -890,9 +903,9 @@
                                         <td class="p-3 text-gray-600">{{ $order->distance_km ?? '—' }} км</td>
                                         <td class="p-3">
                                             <div class="flex items-center gap-1">
-                                                <button class="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm font-bold border rounded" wire:click="adjustWeight({{ $order->id }}, -10)" title="Уменьшить вес">−</button>
+                                                <button class="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm font-bold border rounded disabled:opacity-40 disabled:cursor-not-allowed" wire:click="adjustWeight({{ $order->id }}, -10)" wire:loading.attr="disabled" title="Уменьшить вес"><span wire:loading.remove>−</span><span wire:loading>⟳</span></button>
                                                 <span class="px-2 py-0.5 text-xs font-bold rounded-md {{ $order->active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-700' }}" style="min-width: 35px; text-align: center;">{{ $order->weight }}</span>
-                                                <button class="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm font-bold border rounded" wire:click="adjustWeight({{ $order->id }}, 10)" title="Увеличить вес">+</button>
+                                                <button class="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm font-bold border rounded disabled:opacity-40 disabled:cursor-not-allowed" wire:click="adjustWeight({{ $order->id }}, 10)" wire:loading.attr="disabled" title="Увеличить вес"><span wire:loading.remove>+</span><span wire:loading>⟳</span></button>
                                             </div>
                                         </td>
                                         <td class="p-3">
@@ -941,12 +954,12 @@
                                         <td class="p-3">
                                             <div class="flex gap-2">
                                                 @if($order->active)
-                                                    <button class="text-gray-600 hover:text-amber-600 px-2 py-1 text-sm border rounded" wire:click="deactivateOrder({{ $order->id }})" title="Деактивировать">⏸</button>
+                                                    <button class="text-gray-600 hover:text-amber-600 px-2 py-1 text-sm border rounded disabled:opacity-40 disabled:cursor-not-allowed" wire:click="deactivateOrder({{ $order->id }})" wire:loading.attr="disabled" title="Деактивировать"><span wire:loading.remove>⏸</span><span wire:loading>⟳</span></button>
                                                 @else
-                                                    <button class="text-gray-600 hover:text-emerald-600 px-2 py-1 text-sm border rounded" wire:click="activateOrder({{ $order->id }})" title="Активировать">▶</button>
+                                                    <button class="text-gray-600 hover:text-emerald-600 px-2 py-1 text-sm border rounded disabled:opacity-40 disabled:cursor-not-allowed" wire:click="activateOrder({{ $order->id }})" wire:loading.attr="disabled" title="Активировать"><span wire:loading.remove>▶</span><span wire:loading>⟳</span></button>
                                                 @endif
-                                                <button class="text-gray-600 hover:text-blue-600 px-2 py-1 text-sm border rounded" wire:click="openEditOrder({{ $order->id }})" title="Редактировать">✎</button>
-                                                <button class="text-gray-600 hover:text-red-600 px-2 py-1 text-sm border rounded" wire:click="deleteOrder({{ $order->id }})" wire:confirm="Удалить маршрут?" title="Удалить">🗑</button>
+                                                <button class="text-gray-600 hover:text-blue-600 px-2 py-1 text-sm border rounded disabled:opacity-40 disabled:cursor-not-allowed" wire:click="openEditOrder({{ $order->id }})" wire:loading.attr="disabled" title="Редактировать"><span wire:loading.remove>✎</span><span wire:loading>⟳</span></button>
+                                                <button class="text-gray-600 hover:text-red-600 px-2 py-1 text-sm border rounded disabled:opacity-40 disabled:cursor-not-allowed" wire:click="deleteOrder({{ $order->id }})" wire:confirm="Удалить маршрут?" wire:loading.attr="disabled" title="Удалить"><span wire:loading.remove>🗑</span><span wire:loading>⟳</span></button>
                                             </div>
                                         </td>
                                     </tr>
