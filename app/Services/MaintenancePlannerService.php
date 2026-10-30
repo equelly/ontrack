@@ -113,7 +113,7 @@ class MaintenancePlannerService
      */
     protected function analyzeMiners(): array
     {
-        $miners = Miner::where('active', true)
+        $miners = Miner::where('status', Miner::STATUS_ACTIVE)
             ->where('status', Miner::STATUS_ACTIVE)
             ->get();
 

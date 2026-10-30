@@ -50,7 +50,6 @@ class MinersController extends Controller
             'name_miner' => $data['name_miner'],
             'capacity_per_trip' => $data['capacity_per_trip'] ?? null,
             'description' => $data['description'] ?? null,
-            'active' => true,
         ]);
 
         // Сохраняем расстояния до мест разгрузки
@@ -97,14 +96,12 @@ class MinersController extends Controller
             'name_miner' => 'required|string|max:255',
             'capacity_per_trip' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
-            'active' => 'boolean',
         ]);
 
         $miner->update([
             'name_miner' => $data['name_miner'],
             'capacity_per_trip' => $data['capacity_per_trip'] ?? null,
             'description' => $data['description'] ?? null,
-            'active' => $data['active'] ?? $miner->active,
         ]);
 
         // Породы обновляются автоматически через syncWithoutDetaching при работе экскаваторщика

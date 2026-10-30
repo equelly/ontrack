@@ -174,7 +174,7 @@ class MiningOrderSyncService
     protected function activateEmergencyRoutes(): int
     {
         // Находим забои, у которых нет ни одного активного маршрута
-        $minersWithoutActiveRoutes = Miner::where('active', true)
+        $minersWithoutActiveRoutes = Miner::where('status', Miner::STATUS_ACTIVE)
             ->where('status', Miner::STATUS_ACTIVE)
             ->whereDoesntHave('orders', function ($q) {
                 $q->where('active', true);

@@ -29,7 +29,7 @@ class AssignRocksToMiners extends Command
             return Command::FAILURE;
         }
         
-        $activeMiners = Miner::where('active', true)->get();
+        $activeMiners = Miner::where('status', Miner::STATUS_ACTIVE)->get();
         $this->info("\nАктивных забоев: {$activeMiners->count()}");
         
         if (!$this->confirm("Назначить породу '{$rock->name_rock}' всем активным забоям?")) {

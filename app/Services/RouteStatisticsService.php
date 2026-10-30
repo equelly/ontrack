@@ -63,7 +63,7 @@ class RouteStatisticsService
     {
         return [
             'total_miners' => Miner::count(),
-            'active_miners' => Miner::where('active', true)->count(),
+            'active_miners' => Miner::where('status', Miner::STATUS_ACTIVE)->count(),
             'total_dumps' => Dump::count(),
             'total_zones' => Zone::count(),
             'active_zones' => Zone::where('delivery', true)->count(),

@@ -8,6 +8,7 @@ use App\Console\Commands\InitMiningOrders;
 use App\Console\Commands\CleanMiningOrders;
 use App\Console\Commands\OptimizeRoutes;
 use App\Console\Commands\AssignRocksToMiners;
+use App\Console\Commands\DebugRoutes;
 use App\Console\Commands\RouteMode;
 use App\Console\Commands\PlanMaintenanceBalance;
 
@@ -20,6 +21,7 @@ class Kernel extends ConsoleKernel
         AssignRocksToMiners::class,
         RouteMode::class,
         PlanMaintenanceBalance::class,
+        DebugRoutes::class,
     ];
 
 protected function schedule(Schedule $schedule): void

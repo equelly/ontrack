@@ -772,7 +772,7 @@ class AnomalyDetectionService
             $q->whereNotNull('capacity')->with('rocks');
         }])->get();
 
-        $miners = Miner::where('active', true)->with('currentRock')->get();
+        $miners = Miner::where('status', Miner::STATUS_ACTIVE)->with('currentRock')->get();
         $minerIds = $miners->pluck('id')->toArray();
 
         // Все расстояния от забоев до отвалов

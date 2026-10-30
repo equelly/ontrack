@@ -75,7 +75,7 @@ class OptimizeRoutes extends Command
         $this->info("\n=== ОТЛАДКА ===");
         
         // 1. Активные забои
-        $activeMiners = Miner::where('active', true)->get();
+        $activeMiners = Miner::where('status', Miner::STATUS_ACTIVE)->get();
         $this->info("Активных забоев: {$activeMiners->count()}");
         
         foreach ($activeMiners as $miner) {

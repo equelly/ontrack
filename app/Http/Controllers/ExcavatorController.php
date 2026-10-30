@@ -21,7 +21,7 @@ class ExcavatorController extends Controller
         $minerId = $request->cookie('selected_miner');
         $miner = $minerId ? Miner::with('rocks')->find($minerId) : null;
 
-        $miners = Miner::where('active', true)->orderBy('name_miner')->get();
+        $miners = Miner::where('status', Miner::STATUS_ACTIVE)->orderBy('name_miner')->get();
         $rocks = Rock::orderBy('name_rock')->get();
 
         $trucks = collect();
@@ -56,7 +56,7 @@ class ExcavatorController extends Controller
 
         $miner = Miner::find($request->miner_id);
 
-        if (!$miner || !$miner->active) {
+        if (!$miner || $miner->status !== Miner::STATUS_ACTIVE) {
             return response()->json(['success' => false, 'message' => 'Экскаватор не найден или неактивен']);
         }
 

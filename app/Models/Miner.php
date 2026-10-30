@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\Log;
  * - face_dismantling: Разбор забоя (грузовики доезжают, новые не назначаются)
  * - access_setup: Устройство подъезда (грузовики доезжают, новые не назначаются)
  * - relocation: Переезд (грузовики доезжают, новые не назначаются)
+ *
+ * ВАЖНО: ранее было булево поле `active` (наследие) — оно УБРАНО.
+ * Фильтрация «забой в работе» делается ТОЛЬКО по status === self::STATUS_ACTIVE.
  */
 class Miner extends Model
 {
@@ -49,7 +52,6 @@ class Miner extends Model
     protected $fillable = [
         'name_miner',
         'capacity_per_trip',
-        'active',
         'description',
         'current_rock_id',
         'target_load_time',
@@ -61,7 +63,6 @@ class Miner extends Model
     ];
 
     protected $casts = [
-        'active' => 'boolean',
         'capacity_per_trip' => 'decimal:2',
         'last_updated_at' => 'datetime',
         'status_changed_at' => 'datetime',
@@ -69,7 +70,6 @@ class Miner extends Model
 
     protected $attributes = [
         'status' => self::STATUS_ACTIVE,
-        'active' => true,
     ];
 
     // ==========================================
@@ -364,19 +364,20 @@ class Miner extends Model
             $recommended = max(2, round(2 + ($avgWaitTime / $loadTime)));
         }
 
-        // CLAMP: в реальной карьере на один забой никогда не нужно >10 самосвалов.
-        // Если recommended > 10 — это значит, что либо avgTripTime аномально большой,
-        // либо loadTime аномально маленький (например, target_load_time в секундах
-        // обработано как минуты). Возвращаем безопасный минимум = 2.
+        // CLAMP: в реальной карьере на один забой никогда не нужно >5 самосвалов
+        // одновременно. Если recommended > 5 — это значит, что либо avgTripTime
+        // аномально большой, либо loadTime аномально маленький (например,
+        // target_load_time в секундах обработано как минуты).
+        // Возвращаем безопасный максимум = 5.
         //
-        // Раньше тут вылетало recommended=7267 / 10289 / 80 → приоритет не считал
-        // забой недозагруженным (current=1 vs recommended-1=7266 → balanced).
+        // Раньше clamp был >10, но это приводило к багу:
+        //   target_load_time=180с (3 мин), avgTripTime=30 → recommended=10
+        //   canAssignToMiner: current=3, max=11 → НЕ перегружен → назначаем ещё!
+        //   В итоге на забое 4 самосвала, хотя реально перегружен.
         //
-        // Используем 2 (а не 5) — потому что 2 это безопасный минимум:
-        // - При current=0: 0 < 2-1=1 → -20 (недозагруженный) ✅ правильно
-        // - При current=2: 2 >= 2 → +50 (перегруженный) — перестраховка,
-        //   но безопаснее чем думать что забор вместит 5
-        if ($recommended > 10 || $recommended < 1) {
+        // 5 — это абсолютный максимум для любого карьера (даже большого).
+        // Если реально нужно больше — нужно настраивать target_load_time.
+        if ($recommended > 5 || $recommended < 1) {
             Log::warning('Miner.getRecommendedTruckCount: аномальное recommended, клампим', [
                 'miner_id'        => $this->id,
                 'miner_name'      => $this->name_miner,
@@ -387,7 +388,7 @@ class Miner extends Model
                 'raw_recommended' => $recommended,
                 'clamped_to'      => 2,
             ]);
-            $recommended = 2; // Безопасный минимум — забой не резиновый
+            $recommended = 2; // Безопасный минимум
         }
 
         return [

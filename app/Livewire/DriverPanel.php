@@ -16,7 +16,6 @@ use App\Services\ServiceSchedulingService;
 use App\Services\ShiftPlanningService;
 use App\Exceptions\NoRouteAvailableException;
 use App\Domain\RouteBlockReason;
-use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Log;
@@ -1305,7 +1304,7 @@ class DriverPanel extends Component
         }
 
         // Прямой SQL-запрос, обходим Eloquent
-        DB::table('trucks')->where('id', $this->truck->id)->update(['load_capacity' => $newCapacity]);
+        \DB::table('trucks')->where('id', $this->truck->id)->update(['load_capacity' => $newCapacity]);
 
         // Обновляем модель в памяти Livewire
         $this->truck->refresh();

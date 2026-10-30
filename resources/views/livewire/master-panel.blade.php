@@ -1,6 +1,6 @@
 <div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'dumps' }">
     <!-- Dark Header -->
-    <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl ">
+    <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
             <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1> 
 
@@ -8,7 +8,9 @@
                 {{-- AI Алерты — виджет (как у диспетчера) --}}
                 @php $newAlertsCount = $this->new_alerts_count; @endphp
                 <div x-data="{ showAlerts: false, openFilter: null }" class="relative">
-                    {{-- relative ВАЖЕН на кнопке, чтобы точка -top-1 -right-1 позиционировалась относительно кнопки, а не относительно родительского div --}}
+                    {{-- relative ВАЖЕН на кнопке, чтобы точка -top-1 -right-1
+                         позиционировалась относительно кнопки, а не относительно
+                         родительского div --}}
                     <button @click="showAlerts = !showAlerts"
                             class="relative flex items-center gap-1.5 px-3 py-1.5 {{ $newAlertsCount > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-700 hover:bg-slate-600' }} text-white rounded-md text-xs font-semibold uppercase transition">
                         <i class="fas fa-bell"></i>
@@ -1032,9 +1034,16 @@
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Количество самосвалов</label>
-                <input type="number" wire:model.live="bermTrucksNeeded" min="1" max="50" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
+                <input type="number" wire:model.blur="bermTrucksNeeded" min="1" max="50" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
                 <p class="mt-1 text-xs text-gray-500">Сколько самосвалов нужно для отсыпки предохранительного вала</p>
-            </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-md p-3">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Порода зоны (автоматически)</label>
+                @php
+                    $bermRockName = \App\Models\Rock::find($bermRockId)?->name_rock ?? '—';
+                @endphp
+                <p class="text-sm font-semibold text-slate-800">{{ $bermRockName }}</p>
+                <p class="mt-1 text-[10px] text-slate-400">Определяется по породе зоны — смешивание запрещено</p>
+
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Порода (необязательно)</label>
                 <select wire:model.live="bermRockId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
@@ -1072,7 +1081,7 @@
     x-on:keydown.escape.window="open = false"
 >
     <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
-    <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
             <div class="flex items-center gap-3">
                 <i class="fas fa-clipboard-list text-2xl"></i>
@@ -1164,7 +1173,7 @@
     x-on:keydown.escape.window="open = false"
 >
     <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
-    <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div x-show="open" x-transition class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">

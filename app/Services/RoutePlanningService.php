@@ -17,7 +17,7 @@ class RoutePlanningService
     public function recalcRoutes()
     {
         // Получаем активных miners и dump с delivery = true
-        $activeMiners = Miner::where('active', 1)->get();
+        $activeMiners = Miner::where('status', Miner::STATUS_ACTIVE)->get();
         $activeDumps = Dump::whereHas('zones', fn($q)=>$q->where('delivery', true))->get();
 
         // Берём все candidate маршруты

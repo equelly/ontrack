@@ -602,10 +602,19 @@ class TruckStatusService
                 // Если эта зона под активным запросом обваловки — увеличиваем счётчик
                 // завершённых рейсов. Когда trucks_completed достиг trucks_needed,
                 // запрос автоматически закроется.
+                Log::info('onCompleted: проверка обваловки', [
+                    'truck_id' => $truck->id,
+                    'zone_id'  => $zone->id,
+                    'trip_id'  => $trip->id,
+                ]);
                 try {
                     app(\App\Services\BermService::class)->onTruckUnloaded($truck->id, $zone->id);
                 } catch (\Exception $e) {
-                    Log::error('BermService::onTruckUnloaded failed: ' . $e->getMessage());
+                    Log::error('BermService::onTruckUnloaded failed: ' . $e->getMessage(), [
+                        'truck_id' => $truck->id,
+                        'zone_id'  => $zone->id,
+                        'trace'    => $e->getTraceAsString(),
+                    ]);
                 }
 
                 // === AI: Анализ аномалий после завершения рейса ===

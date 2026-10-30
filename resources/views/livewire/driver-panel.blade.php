@@ -97,7 +97,6 @@
                         <p class="font-bold text-amber-800 text-sm sm:text-base">Рейс на обваловку зоны</p>
                         <p class="text-amber-700 text-xs sm:text-sm mt-0.5">
                             Зона «{{ $currentTrip->zone?->name_zone ?? '—' }}» требует отсыпки предохранительного вала.
-                            Выгружайте горную массу в указанную зону — это повышает безопасность ведения работ.
                         </p>
                     </div>
                 </div>
@@ -220,7 +219,7 @@
                         @if(!$currentTrip)
                             <button wire:click="assignRoute" wire:loading.attr="disabled" class="w-full inline-flex items-center justify-center px-4 sm:px-6 py-3 sm:py-4 bg-emerald-600 border border-transparent rounded-md font-semibold text-white uppercase tracking-widest hover:bg-emerald-700 transition text-sm sm:text-base">
                                 <span wire:loading.remove>Получить маршрут</span>
-                                <span wire:loading class="animate-spin">⏳ Получение...</span>
+                                <span wire:loading class="animate-spin">⏳</span>
                             </button>
                         @endif
                         {{-- Кнопка запроса обслуживания (подкачка/обтяжка/заявка) --}}

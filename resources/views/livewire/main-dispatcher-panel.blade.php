@@ -55,7 +55,7 @@
                         class="relative flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold uppercase transition">
                     <i class="fas fa-bell"></i>
                     <span>{{ $newAlertsCount }}</span>
-                    <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse border-2 border-slate-900"></span>
+                    <span class="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full animate-pulse"></span>
                 </button>
 
                 {{-- Выпадающий список алертов --}}
@@ -314,6 +314,12 @@
                                         <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-{{ $status['color'] }}-100 text-{{ $status['color'] }}-700">
                                             <i class="fas {{ $status['icon'] }} mr-1"></i>{{ $status['label'] }}
                                         </span>
+                                        {{-- Бейдж «Обваловка» если рейс назначен на зону под обваловкой --}}
+                                        @if($trip && $trip->zone_id && in_array($trip->zone_id, $bermZoneIds))
+                                            <span class="ml-1 px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-500 text-white" title="Рейс на обваловку зоны {{ $trip->zone?->name_zone ?? '' }}">
+                                                <i class="fas fa-mountain mr-0.5"></i>Обваловка
+                                            </span>
+                                        @endif
                                         {{-- Для свободных самосвалов без маршрута показываем точную причину --}}
                                         @if(in_array($truck->status, ['free', 'completed']))
                                             @php
@@ -636,23 +642,9 @@
                     </small>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto flex-wrap">
-                    <button class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 w-full sm:w-auto" wire:click="generateAllPairs" wire:loading.attr="disabled" wire:confirm="Сгенерировать маршруты для всех пар забой-отвал, которых ещё нет в БД? Существующие маршруты с пустым distance_km будут обновлены.">
-                        <span wire:loading.remove><i class="fas fa-layer-group mr-1"></i> Сгенерировать все пары</span>
-                        <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Генерация...</span>
-                    </button>
                     <button class="px-4 py-2 bg-blue-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-blue-700 w-full sm:w-auto" wire:click="openCreateOrderModal">
                         <i class="fas fa-plus mr-1"></i> Добавить маршрут
                     </button>
-                    @if($this->routeMode === 'auto')
-                        <button class="px-4 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold uppercase hover:bg-emerald-700 w-full sm:w-auto" wire:click="optimizeRoutes" wire:loading.attr="disabled">
-                            <span wire:loading.remove><i class="fas fa-magic mr-1"></i> Оптимизировать</span>
-                            <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i> Оптимизация...</span>
-                        </button>
-                    @else
-                        <button class="px-4 py-2 bg-slate-200 text-slate-700 rounded-md text-xs font-semibold uppercase hover:bg-slate-300 w-full sm:w-auto" wire:click="optimizeRoutes" wire:loading.attr="disabled" title="Принудительная оптимизация (ручной режим)">
-                            <i class="fas fa-magic mr-1"></i> Оптимизировать
-                        </button>
-                    @endif
                     {{-- Кнопка справки --}}
                     <button type="button" @click="$dispatch('open-routes-help')" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold uppercase hover:bg-slate-200 hover:text-slate-800 transition" title="Шпаргалка по вкладке «Маршруты»">
                         <i class="fas fa-question-circle"></i>
@@ -898,13 +890,9 @@
                                         <td class="p-3 text-gray-600">{{ $order->distance_km ?? '—' }} км</td>
                                         <td class="p-3">
                                             <div class="flex items-center gap-1">
-                                                <button class="text-gray-400 hover:text-gray-600 px-1" wire:click="adjustWeight({{ $order->id }}, -10)" title="Уменьшить вес">
-                                                    <i class="fas fa-minus text-[10px]"></i>
-                                                </button>
+                                                <button class="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm font-bold border rounded" wire:click="adjustWeight({{ $order->id }}, -10)" title="Уменьшить вес">−</button>
                                                 <span class="px-2 py-0.5 text-xs font-bold rounded-md {{ $order->active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-700' }}" style="min-width: 35px; text-align: center;">{{ $order->weight }}</span>
-                                                <button class="text-gray-400 hover:text-gray-600 px-1" wire:click="adjustWeight({{ $order->id }}, 10)" title="Увеличить вес">
-                                                    <i class="fas fa-plus text-[10px]"></i>
-                                                </button>
+                                                <button class="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm font-bold border rounded" wire:click="adjustWeight({{ $order->id }}, 10)" title="Увеличить вес">+</button>
                                             </div>
                                         </td>
                                         <td class="p-3">
@@ -953,20 +941,12 @@
                                         <td class="p-3">
                                             <div class="flex gap-2">
                                                 @if($order->active)
-                                                    <button class="text-gray-400 hover:text-amber-600" wire:click="deactivateOrder({{ $order->id }})" title="Деактивировать">
-                                                        <i class="fas fa-pause"></i>
-                                                    </button>
+                                                    <button class="text-gray-600 hover:text-amber-600 px-2 py-1 text-sm border rounded" wire:click="deactivateOrder({{ $order->id }})" title="Деактивировать">⏸</button>
                                                 @else
-                                                    <button class="text-gray-400 hover:text-emerald-600" wire:click="activateOrder({{ $order->id }})" title="Активировать">
-                                                        <i class="fas fa-play"></i>
-                                                    </button>
+                                                    <button class="text-gray-600 hover:text-emerald-600 px-2 py-1 text-sm border rounded" wire:click="activateOrder({{ $order->id }})" title="Активировать">▶</button>
                                                 @endif
-                                                <button class="text-gray-400 hover:text-blue-600" wire:click="openEditOrder({{ $order->id }})" title="Редактировать">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="text-gray-400 hover:text-red-600" wire:click="deleteOrder({{ $order->id }})" wire:confirm="Удалить маршрут?" title="Удалить">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
+                                                <button class="text-gray-600 hover:text-blue-600 px-2 py-1 text-sm border rounded" wire:click="openEditOrder({{ $order->id }})" title="Редактировать">✎</button>
+                                                <button class="text-gray-600 hover:text-red-600 px-2 py-1 text-sm border rounded" wire:click="deleteOrder({{ $order->id }})" wire:confirm="Удалить маршрут?" title="Удалить">🗑</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1287,7 +1267,18 @@
                                 <span class="font-medium">{{ number_format($zone->volume, 0) }} / {{ number_format($zone->capacity, 0) }}</span>
                             </div>
                             <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                <div class="h-2.5 rounded-full {{ $fillPercent > 90 ? 'bg-red-500' : ($fillPercent > 70 ? 'bg-amber-500' : 'bg-emerald-500') }}" style="width: {{ $fillPercent }}%"></div>
+                                <div 
+                                    x-data="{ fillPercent: 75 }" 
+                                    class="h-2.5 rounded-full"
+                                    :class="{
+                                        'bg-red-500': fillPercent < 40,
+                                        'bg-amber-500': fillPercent >= 40 && fillPercent < 80,
+                                        'bg-emerald-500': fillPercent >= 80
+                                    }"
+                                    :style="`width: ${fillPercent}%`"
+                                    >
+                                </div>
+
                             </div>
                         </div>
 
@@ -1424,18 +1415,16 @@
         <!-- Аналитика скоростей по маршрутам + тренды -->
         <div x-show="tab === 'analyticsTab'" x-cloak class="mt-4 space-y-6" id="analyticsTab"
              x-data="analyticsCharts"
-             x-init="
-                // Если пользователь уже на вкладке analyticsTab при загрузке — инициализируем сразу
+             x-init="(() => {
                 if (tab === 'analyticsTab') {
                     $nextTick(() => initCharts());
                 }
-                // Подписываемся на переключение вкладок
                 $watch('tab', (v) => {
                     if (v === 'analyticsTab') {
                         $nextTick(() => initCharts());
                     }
                 });
-            "
+            })()"
         >
             {{-- Chart.js подключается в layout (components/layouts/app.blade.php) --}}
 
@@ -1480,41 +1469,7 @@
                 <span class="ml-auto"><i class="fas fa-route text-emerald-500 mr-1"></i> <strong>Всего пробег:</strong> {{ $kpi['total_loaded_km'] + $kpi['total_empty_km'] }} км</span>
             </div>
 
-            {{-- Графики --}}
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {{-- График 1: Добыча по часам --}}
-                <div class="bg-white rounded-xl border shadow-sm p-4">
-                    <h3 class="font-bold text-gray-800 uppercase text-sm mb-3 flex items-center gap-2">
-                        <i class="fas fa-chart-bar text-emerald-500"></i> Добыча по часам
-                    </h3>
-                    <div style="height: 280px;">
-                        <canvas id="volumeChart"></canvas>
-                    </div>
-                </div>
-
-                {{-- График 2: Эффективность (гружёный vs холостой) --}}
-                <div class="bg-white rounded-xl border shadow-sm p-4">
-                    <h3 class="font-bold text-gray-800 uppercase text-sm mb-3 flex items-center gap-2">
-                        <i class="fas fa-route text-blue-500"></i> Эффективность пробега по часам
-                    </h3>
-                    <div style="height: 280px;">
-                        <canvas id="efficiencyChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            {{-- График 3: Простои по типам — на всю ширину --}}
-            <div class="bg-white rounded-xl border shadow-sm p-4">
-                <h3 class="font-bold text-gray-800 uppercase text-sm mb-3 flex items-center gap-2">
-                    <i class="fas fa-pause-circle text-amber-500"></i> Простои по типам
-                    <span class="text-gray-400 normal-case font-normal text-xs">всего: {{ $trends['pauses']['total_formatted'] }}</span>
-                </h3>
-                <div style="height: 280px;">
-                    <canvas id="pausesChart"></canvas>
-                </div>
-            </div>
-
-            {{-- Таблица скоростей (была раньше — оставили) --}}
+            {{-- Таблица скоростей --}}
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
                 <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Средняя скорость по маршрутам <span class="text-gray-400 normal-case font-normal">(за смену)</span></div>
                 <div class="overflow-x-auto">
@@ -1552,7 +1507,6 @@
                     <i class="fas fa-info-circle"></i> Маршруты отсортированы по скорости (проблемные вверху). Низкая: &lt; 20 км/ч, Средняя: 20-25 км/ч, Высокая: &ge; 25 км/ч.
                 </div>
             </div>
-        </div>
 
         {{-- Alpine-компонент для графиков Аналитики.
              Вынесен из x-data="..." в отдельный script, потому что внутри JS
@@ -1937,57 +1891,42 @@
                 @endif
             </div>
         </div>
+        </div>
 
         <!-- Настройки порогов и сервисных постов -->
         <div x-show="tab === 'settingsTab'" x-cloak class="mt-4 space-y-4" id="settingsTab">
             
-            <!-- Алгоритм WRR -->
-            <div class="bg-white rounded-xl border shadow-sm p-6">
-                <h3 class="font-bold text-gray-800 uppercase text-sm mb-4 flex items-center gap-2"><i class="fas fa-route text-blue-500"></i> Алгоритм распределения маршрутов (WRR)</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <label class="block text-xs uppercase text-gray-500 mb-2">Количество раундов</label>
-                        <div class="p-3 bg-blue-50 rounded-md text-blue-700 text-sm">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            <strong>Динамическое</strong> (до 5)
-                        </div>
-                        <small class="text-gray-400 block mt-2">
-                            Система автоматически определяет количество раундов: Раунд 1 = основной, Раунд 2+ = резервные.
-                        </small>
-                    </div>
-                    <div>
-                        <label class="block text-xs uppercase text-gray-500 mb-2">Порог разделения зон (%)</label>
-                        <div class="flex items-center gap-2">
-                            <input type="number" min="0" max="100" step="1" wire:model="zoneSharingThreshold" class="flex-1 border-gray-300 rounded-md shadow-sm py-2 px-3 text-emerald-700 font-bold">
-                            <span class="text-xs text-gray-500">%</span>
-                        </div>
-                        <small class="text-gray-400 block mt-2">
-                            Если зона отвалa заполнена ≤ порога — несколько забоев могут работать на этот отвал (минимизация расстояния).
-                            Если > порога — эксклюзивный режим (один отвал — один забой, защита от «жадного захвата»).
-                        </small>
-                    </div>
-                    <div>
-                        <label class="block text-xs uppercase text-gray-500 mb-2">Текущий режим</label>
-                        <div class="flex items-center gap-2 p-3 rounded-md {{ $this->routeMode === 'auto' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700' }}">
-                            <i class="fas {{ $this->routeMode === 'auto' ? 'fa-robot' : 'fa-hand-paper' }}"></i>
-                            <span class="font-semibold uppercase text-sm">{{ $this->routeMode === 'auto' ? 'Авто' : 'Ручной' }}</span>
-                        </div>
-                        <small class="text-gray-400 block mt-2">
-                            @if($this->routeMode === 'auto')
-                                Оптимизация при начале смены, структурных изменениях и по кнопке.
-                            @else
-                                Только ручное управление. syncAllOrders при событиях работает.
-                            @endif
-                        </small>
-                        <div class="mt-3">
-                            <button wire:click="saveZoneSharingThreshold" wire:loading.attr="disabled" class="w-full px-3 py-2 bg-orange-500 text-white rounded-md uppercase text-xs hover:bg-orange-600">
-                                <span wire:loading.remove>Сохранить порог разделения</span>
-                                <span wire:loading>...</span>
-                            </button>
-                        </div>
-                    </div>
+            {{-- Аварийные действия — только в ручном режиме.
+                 В авто-режиме система сама оптимизирует и генерирует пары.
+                 В ручном режиме — эти кнопки нужны для вмешательства. --}}
+            @if($this->routeMode === 'manual')
+            <div class="bg-white rounded-xl border-2 border-amber-300 shadow-sm p-6">
+                <h3 class="font-bold text-gray-800 uppercase text-sm mb-4 flex items-center gap-2">
+                    <i class="fas fa-tools text-amber-500"></i> Аварийные действия
+                    <span class="ml-auto px-2 py-0.5 text-xs font-medium rounded-md bg-amber-100 text-amber-700">ручной режим</span>
+                </h3>
+                <p class="text-xs text-gray-500 mb-4">
+                    В авто-режиме эти кнопки не нужны — система сама пересчитывает маршруты.
+                    Здесь — для ручного вмешательства, если что-то пошло не так.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <button class="px-4 py-2 bg-slate-200 text-slate-700 rounded-md text-xs font-semibold uppercase hover:bg-slate-300"
+                            wire:click="generateAllPairs"
+                            wire:loading.attr="disabled"
+                            wire:confirm="Сгенерировать маршруты для всех пар забой-отвал?">
+                        <span wire:loading.remove><i class="fas fa-layer-group mr-1"></i> Сгенерировать все пары</span>
+                        <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i></span>
+                    </button>
+                    <button class="px-4 py-2 bg-amber-500 text-white rounded-md text-xs font-semibold uppercase hover:bg-amber-600"
+                            wire:click="optimizeRoutes"
+                            wire:loading.attr="disabled"
+                            title="Принудительная оптимизация маршрутов">
+                        <span wire:loading.remove><i class="fas fa-magic mr-1"></i> Оптимизировать</span>
+                        <span wire:loading><i class="fas fa-spinner fa-spin mr-1"></i></span>
+                    </button>
                 </div>
             </div>
+            @endif
 
             <!-- Пороги перегруженности -->
             <div class="bg-white rounded-xl border shadow-sm p-6">

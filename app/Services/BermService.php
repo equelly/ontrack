@@ -9,6 +9,7 @@ use App\Models\TruckTrip;
 use App\Models\MiningOrder;
 use App\Events\BermProgress;
 use App\Events\RoutesUpdated;
+use App\Models\Miner;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -201,7 +202,26 @@ class BermService
             'zone_id'     => $request->zone_id,
         ]);
 
-        // Ищем подходящий MiningOrder: забой с нужной породой → отвал зоны обваловки
+        // ==========================================
+        // ПОИСК ЗАБОЯ ДЛЯ ОБВАЛОВКИ
+        // ==========================================
+        // Обваловка — это БЕЗОПАСНОСТЬ, а не обычная логистика.
+        // Она НЕ зависит от активных MiningOrder:
+        //   - Если есть активный маршрут → используем его (проще)
+        //   - Если нет → ищем любой работающий забой с подходящей породой
+        //     и создаём trip напрямую (без MiningOrder)
+        //
+        // Зона обваловки может быть delivery=false (закрыта для обычных
+        // маршрутов) или переполнена — для обваловки это нормально.
+
+        $zone = $request->zone;
+        $order = null;
+        $miner = null;
+        $currentRock = null;
+        $loadedDistance = 0;
+        $miningOrderId = null;
+
+        // 1. Пытаемся найти активный MiningOrder (быстрый путь)
         $query = MiningOrder::where('active', true)
             ->where('dump_id', $request->dump_id)
             ->with(['miner.currentRock', 'dump.zones.rocks']);
@@ -214,23 +234,91 @@ class BermService
 
         $order = $query->lockForUpdate()->first();
 
-        if (!$order) {
-            throw new \RuntimeException('Нет подходящего маршрута для обваловки');
+        if ($order) {
+            // Есть активный маршрут — используем его
+            $miner = $order->miner;
+            $currentRock = $miner?->currentRock;
+            $loadedDistance = (float) ($order->distance_km ?? 0);
+            $miningOrderId = $order->id;
+
+            Log::info('assignTruckToBerm: найден активный маршрут', [
+                'order_id'  => $order->id,
+                'miner_id'   => $order->miner_id,
+            ]);
         }
 
-        $miner = $order->miner;
+        // 2. Если нет активного маршрута — ищем забой напрямую
+        if (!$order) {
+            Log::info('assignTruckToBerm: нет активного маршрута, ищем забой напрямую');
+
+            // Получаем породы, которые зона принимает (rock_zone)
+            $zoneRockIds = $zone->rocks->pluck('id')->toArray();
+
+            if (empty($zoneRockIds)) {
+                throw new \RuntimeException('У зоны обваловки не заданы породы — нельзя смешивать');
+            }
+
+            // Если в BermRequest задан rock_id — проверяем что он есть в зоне
+            if ($request->rock_id && !in_array($request->rock_id, $zoneRockIds, true)) {
+                throw new \RuntimeException('Указанная порода не соответствует породе зоны — смешивание запрещено');
+            }
+
+            // Определяем список подходящих rock_ids для поиска забоя:
+            // - Если rock_id задан в BermRequest → только он (проверен выше)
+            // - Если не задан → все породы зоны (забой с любой из них подойдёт)
+            $targetRockIds = $request->rock_id ? [$request->rock_id] : $zoneRockIds;
+
+            Log::info('assignTruckToBerm: поиск забоя по породам зоны', [
+                'zone_id'      => $zone->id,
+                'zone_rocks'   => $zone->rocks->pluck('name_rock')->toArray(),
+                'target_rocks' => $targetRockIds,
+            ]);
+
+            // Ищем работающий забой, у которого current_rock_id совпадает с породой зоны.
+            // Сортировка по расстоянию до отвала обваловки — ближайший первый.
+            // Если расстояние не задано (нет записи в miner_dump_distances) —
+            // ставим в конец (COALESCE → 999999).
+            $miner = Miner::select('miners.*', 'mdd.distance_km as route_distance')
+                ->leftJoin('miner_dump_distances as mdd', function ($join) use ($request) {
+                    $join->on('mdd.miner_id', '=', 'miners.id')
+                         ->where('mdd.dump_id', '=', $request->dump_id);
+                })
+                ->where('miners.active', true)
+                ->where('miners.status', Miner::STATUS_ACTIVE)
+                ->whereIn('miners.current_rock_id', $targetRockIds)
+                ->orderByRaw('COALESCE(mdd.distance_km, 999999) ASC')
+                ->first();
+
+            if (!$miner) {
+                $rockNames = $zone->rocks->pluck('name_rock')->implode(', ');
+                throw new \RuntimeException("Нет работающего забоя с породой зоны ({$rockNames}) для обваловки");
+            }
+
+            $currentRock = $miner->currentRock;
+            if (!$currentRock) {
+                throw new \RuntimeException('У забоя не задана порода');
+            }
+
+            // Расстояние от забоя до отвала обваловки (из JOIN, может быть null)
+            $loadedDistance = (float) ($miner->route_distance ?? 0);
+
+            Log::info('assignTruckToBerm: забой найден напрямую (ближайший, порода совпадает)', [
+                'miner_id'     => $miner->id,
+                'miner_name'   => $miner->name_miner,
+                'rock_name'    => $currentRock->name_rock,
+                'distance_km'  => $loadedDistance,
+            ]);
+        }
+
+        // Проверки
         if (!$miner || !$miner->isWorking()) {
             throw new \RuntimeException('Забой не работает');
         }
-
-        $currentRock = $miner->currentRock;
         if (!$currentRock) {
             throw new \RuntimeException('У забоя не задана порода');
         }
 
-        $zone = $request->zone;
-
-        DB::transaction(function () use ($truck, $order, $zone, $currentRock, $request) {
+        DB::transaction(function () use ($truck, $order, $zone, $currentRock, $request, $miner, $loadedDistance, $miningOrderId) {
             // Завершаем старые незавершённые trip самосвала
             TruckTrip::where('truck_id', $truck->id)
                 ->whereNull('completed_at')
@@ -240,31 +328,31 @@ class BermService
                 ]);
 
             // Создаём новый trip с zone_id = зоне обваловки
-            // Сохраняем холостой пробег и гружёное расстояние для статистики
             $routeService = app(\App\Services\RouteAssignmentService::class);
-            $emptyRunKm = $routeService->calculateEmptyRun($truck, $order->miner_id);
-            $loadedDistance = (float) ($order->distance_km ?? 0);
+            $emptyRunKm = $routeService->calculateEmptyRun($truck, $miner->id);
 
             $trip = TruckTrip::create([
                 'truck_id'        => $truck->id,
                 'driver_id'       => $truck->driver_id,
-                'miner_id'        => $order->miner_id,
-                'dump_id'         => $order->dump_id,
+                'miner_id'        => $miner->id,
+                'dump_id'         => $request->dump_id,
                 'zone_id'         => $zone->id,
                 'rock_id'         => $currentRock->id,
-                'mining_order_id' => $order->id,
+                'mining_order_id' => $miningOrderId,
                 'distance_km'     => $loadedDistance,
                 'started_at'      => now(),
                 'empty_run_km'    => $emptyRunKm,
             ]);
 
-            // Обновляем mining_order: привязываем к зоне обваловки
-            $order->update([
-                'zone_id'           => $zone->id,
-                'rock_id'           => $currentRock->id,
-                'wrr_cursor'        => ($order->wrr_cursor ?? 0) + 1,
-                'last_assigned_at'  => now(),
-            ]);
+            // Обновляем mining_order (если есть) — привязываем к зоне обваловки
+            if ($order) {
+                $order->update([
+                    'zone_id'           => $zone->id,
+                    'rock_id'           => $currentRock->id,
+                    'wrr_cursor'        => ($order->wrr_cursor ?? 0) + 1,
+                    'last_assigned_at'  => now(),
+                ]);
+            }
 
             // Меняем статус самосвала
             $truck->update(['status' => Truck::STATUS_TO_MINER]);
@@ -280,12 +368,17 @@ class BermService
                 'trip_id'         => $trip->id,
                 'truck_id'        => $truck->id,
                 'zone_id'         => $zone->id,
+                'zone_name'       => $zone->name_zone,
+                'berm_zone_id'    => $request->zone_id,
+                'dump_id'         => $request->dump_id,
+                'miner_id'        => $miner->id,
+                'mining_order_id' => $miningOrderId,
                 'assigned_total'  => $request->trucks_assigned,
                 'remaining'       => $request->remainingToAssign(),
             ]);
 
             // Уведомления
-            $this->notifyDriver($truck, $order, $zone, 'berm_assigned');
+            $this->notifyDriver($truck, $order ?? $request, $zone, 'berm_assigned');
             $this->broadcastProgress($request);
         });
     }
@@ -396,8 +489,9 @@ class BermService
 
     /**
      * Уведомить водителя о назначении на обваловку.
+     * $order может быть null (если обваловка без активного маршрута).
      */
-    protected function notifyDriver(Truck $truck, MiningOrder $order, Zone $zone, string $action): void
+    protected function notifyDriver(Truck $truck, $order, Zone $zone, string $action): void
     {
         if (!$truck->driver_id) {
             return;
@@ -409,9 +503,9 @@ class BermService
                 [
                     'truck_id' => $truck->id,
                     'action'   => $action,
-                    'order_id' => $order->id,
-                    'miner_id' => $order->miner_id,
-                    'dump_id'  => $order->dump_id,
+                    'order_id' => $order?->id,
+                    'miner_id' => $order?->miner_id,
+                    'dump_id'  => $order?->dump_id ?? $zone->dump_id,
                     'zone_id'  => $zone->id,
                     'message'  => 'Назначен на обваловку зоны ' . $zone->name_zone,
                 ]

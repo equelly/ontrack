@@ -787,10 +787,18 @@ class MasterPanel extends Component
             return;
         }
 
+        // Проверяем, что у зоны заданы породы
+        if ($zone->rocks->isEmpty()) {
+            $this->dispatch('notify', ['type' => 'error', 'message' => 'У зоны не заданы породы. Сначала укажите породу через панель мастера.']);
+            return;
+        }
+
         $this->bermZoneId = $zoneId;
         $this->bermZoneName = $zone->name_zone . ' (' . $zone->dump?->name_dump . ')';
         $this->bermTrucksNeeded = 1;
-        $this->bermRockId = null;
+        // Порода берётся автоматически из зоны (первая порода)
+        // — селект выбора убран, т.к. порода определяется зоной
+        $this->bermRockId = $zone->rocks->first()->id;
         $this->showBermModal = true;
     }
 
@@ -830,10 +838,44 @@ class MasterPanel extends Component
                 auth()->id()
             );
 
-            $this->dispatch('notify', [
-                'type' => 'success',
-                'message' => "Запрос на обваловку создан. Самосвалов нужно: {$request->trucks_needed}. Свободные самосвалы будут направлены автоматически.",
-            ]);
+            // Проверяем результат — сколько реально назначено сейчас
+            $request->refresh();
+            $assigned = $request->trucks_assigned;
+            $needed = $request->trucks_needed;
+            $remaining = $request->remainingToAssign();
+
+            if ($assigned > 0 && $remaining === 0) {
+                // Все назначены сразу
+                $this->dispatch('notify', [
+                    'type' => 'success',
+                    'message' => "Запрос на обваловку создан. Назначено: {$assigned}/{$needed}.",
+                ]);
+            } elseif ($assigned > 0) {
+                // Часть назначена, часть в очереди
+                $this->dispatch('notify', [
+                    'type' => 'success',
+                    'message' => "Запрос на обваловку создан. Назначено: {$assigned}/{$needed}, остаток: {$remaining} — будут назначены по мере освобождения самосвалов.",
+                ]);
+            } else {
+                // Никто не назначен сейчас — это нормально!
+                // Запрос создан и ждёт в очереди. Самосвалы назначатся автоматически
+                // когда освободятся (через RouteAssignmentService::assignForTruck → BermService::assignTrucks)
+                $freeTrucks = \App\Models\Truck::whereIn('status', ['free', 'completed'])->count();
+
+                \Illuminate\Support\Facades\Log::info('BermRequest: создан, самосвалы в очереди', [
+                    'request_id'      => $request->id,
+                    'zone_id'         => $this->bermZoneId,
+                    'dump_id'         => $request->dump_id,
+                    'trucks_needed'   => $needed,
+                    'trucks_assigned' => $assigned,
+                    'free_trucks'     => $freeTrucks,
+                ]);
+
+                $this->dispatch('notify', [
+                    'type' => 'success',
+                    'message' => "Запрос на обваловку создан (нужно {$needed}). Самосвалы будут назначены автоматически по мере их освобождения.",
+                ]);
+            }
 
             $this->closeBermModal();
 
@@ -841,6 +883,7 @@ class MasterPanel extends Component
             $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
 
         } catch (\Exception $e) {
+            Log::error('createBermRequest failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
         }
     }

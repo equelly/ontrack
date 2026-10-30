@@ -37,6 +37,7 @@ class MainDispatcherPanel extends Component
     public $trucks;
     public $miners;
     public $dumps;
+    public array $bermZoneIds = []; // ID зон под обваловкой — для отметки в таблице самосвалов
     public $zones;
     public $rocks;
     public $orders;
@@ -123,7 +124,7 @@ class MainDispatcherPanel extends Component
         $this->loadData();
         $this->loadThresholds();
         $this->loadServicePostSettings();
-        $this->zoneSharingThreshold = SystemSetting::getZoneSharingThreshold();
+        // zoneSharingThreshold убран — больше не используется (переход на зонный перебор)
         $this->avgDistanceThreshold = SystemSetting::getAvgDistanceThreshold();
     }
 
@@ -333,6 +334,9 @@ class MainDispatcherPanel extends Component
                 ])
                 ->latest();
         }])->get();
+
+        // ID зон, которые сейчас под обваловкой — для отметки в таблице самосвалов
+        $this->bermZoneIds = \App\Models\BermRequest::active()->pluck('zone_id')->toArray();
 
         $this->miners = Miner::with(['rocks', 'currentRock'])->get();
 
@@ -560,7 +564,7 @@ class MainDispatcherPanel extends Component
                 $zone = \App\Models\Zone::with('dump')
                     ->where('delivery', true)
                     ->whereRaw('volume < capacity')
-                    ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
+                    ->whereHas('rocks', function ($q) use ($rock) { $acceptable = \App\Services\RouteAssignmentService::ROCK_FALLBACK_CHAIN[$rock->name_rock] ?? [$rock->name_rock]; $q->whereIn('rocks.name_rock', $acceptable); })
                     ->orderBy('volume', 'asc')
                     ->first();
             }
@@ -866,7 +870,7 @@ class MainDispatcherPanel extends Component
      */
     public function generateAllPairs(): void
     {
-        $miners = Miner::where('active', true)->get();
+        $miners = Miner::where('status', Miner::STATUS_ACTIVE)->get();
         $dumps  = \App\Models\Dump::all();
 
         if ($miners->isEmpty() || $dumps->isEmpty()) {
@@ -964,12 +968,18 @@ class MainDispatcherPanel extends Component
                 $currentRock = $order->miner?->currentRock;
 
                 // Доступные зоны для текущей породы на перегрузке
+                // Используем fallback-цепочку пород (руда → руда_S → руда_Sera)
                 $availableZones = collect();
                 if ($currentRock && $order->dump) {
-                    $availableZones = $order->dump->zones->filter(function ($zone) use ($currentRock) {
+                    $routeService = app(\App\Services\RouteAssignmentService::class);
+                    $acceptableRockNames = $routeService::ROCK_FALLBACK_CHAIN[$currentRock->name_rock] ?? [$currentRock->name_rock];
+
+                    $availableZones = $order->dump->zones->filter(function ($zone) use ($acceptableRockNames) {
+                        // Зона открыта, есть место, и принимает хотя бы одну из fallback-пород
+                        $zoneAccepts = $zone->rocks->whereIn('name_rock', $acceptableRockNames)->isNotEmpty();
                         return $zone->delivery
                             && $zone->volume < $zone->capacity
-                            && $zone->rocks->contains('id', $currentRock->id);
+                            && $zoneAccepts;
                     })->map(fn($z) => [
                         'id' => $z->id,
                         'name' => $z->name_zone,
@@ -1548,7 +1558,7 @@ class MainDispatcherPanel extends Component
             $allZones = \App\Models\Zone::with(['dump', 'rocks'])
                 ->where('delivery', true)
                 ->whereRaw('volume < capacity')
-                ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
+                ->whereHas('rocks', function ($q) use ($rock) { $acceptable = \App\Services\RouteAssignmentService::ROCK_FALLBACK_CHAIN[$rock->name_rock] ?? [$rock->name_rock]; $q->whereIn('rocks.name_rock', $acceptable); })
                 ->get();
 
             $this->availableZones = $allZones->map(fn($z) => [
@@ -1613,7 +1623,7 @@ class MainDispatcherPanel extends Component
                     $allZones = \App\Models\Zone::with(['dump', 'rocks'])
                         ->where('delivery', true)
                         ->whereRaw('volume < capacity')
-                        ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
+                        ->whereHas('rocks', function ($q) use ($rock) { $acceptable = \App\Services\RouteAssignmentService::ROCK_FALLBACK_CHAIN[$rock->name_rock] ?? [$rock->name_rock]; $q->whereIn('rocks.name_rock', $acceptable); })
                         ->get();
 
                     $this->availableZones = $allZones->map(fn($z) => [
@@ -1642,8 +1652,9 @@ class MainDispatcherPanel extends Component
      */
     public function getActiveMinersWithRockProperty()
     {
+        // Фильтруем по status=active (поле active убрано как наследие)
         return $this->miners
-            ->filter(fn($m) => $m->active && ($m->currentRock || $m->rocks->isNotEmpty()))
+            ->filter(fn($m) => $m->status === Miner::STATUS_ACTIVE && ($m->currentRock || $m->rocks->isNotEmpty()))
             ->values();
     }
 
@@ -1821,17 +1832,9 @@ class MainDispatcherPanel extends Component
     // =========================================
     // УПРАВЛЕНИЕ ЗАБОЯМИ
     // =========================================
-
-    public function toggleMinerStatus(int $minerId): void
-    {
-        $miner = Miner::find($minerId);
-        if ($miner) {
-            $miner->update(['active' => !$miner->active]);
-            $this->loadData();
-            $status = $miner->active ? 'активирован' : 'деактивирован';
-            $this->dispatch('notify', ['type' => 'info', 'message' => "Забой {$miner->name_miner} {$status}"]);
-        }
-    }
+    // Раньше тут был метод toggleMinerStatus() — переключал булево поле `active`.
+    // Поле убрано как наследие. Управление статусом забоя — через setStatus()
+    // (status: active / maintenance / breakdown / ...).
 
     /**
      * Открыть модальное окно смены статуса забоя
@@ -1869,6 +1872,8 @@ class MainDispatcherPanel extends Component
             return;
         }
 
+        $oldStatus = $miner->status;
+
         try {
             $statusService = app(MinerStatusService::class);
             $result = $statusService->changeStatus($miner, $this->editMinerStatusNew, Auth::id());
@@ -1881,12 +1886,161 @@ class MainDispatcherPanel extends Component
                     'type' => in_array($this->editMinerStatusNew, Miner::STATUSES_DELAYED) ? 'warning' : 'success',
                     'message' => "Статус забоя {$miner->name_miner}: {$miner->getStatusLabel()}",
                 ]);
+
+                // === EVENT-DRIVEN: пересмотр маршрутов при остановке/запуске забоя ===
+                $wasActive = in_array($oldStatus, [Miner::STATUS_ACTIVE]) || $oldStatus === 'active';
+                $isActive = in_array($this->editMinerStatusNew, [Miner::STATUS_ACTIVE]) || $this->editMinerStatusNew === 'active';
+
+                if ($wasActive && !$isActive) {
+                    // Забой ОСТАНОВЛЕН → деактивировать маршруты + переназначить самосвалы
+                    $this->onMinerStopped($miner->id);
+                } elseif (!$wasActive && $isActive) {
+                    // Забой ЗАПУЩЕН → создать пары + оптимизация (если auto)
+                    $this->onMinerStarted($miner->id);
+                }
             } else {
                 $this->dispatch('notify', ['type' => 'error', 'message' => $result['message']]);
             }
         } catch (\Exception $e) {
             Log::error('setMinerStatus failed', ['error' => $e->getMessage()]);
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Ошибка: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * EVENT-DRIVEN: забой ОСТАНОВЛЕН.
+     *
+     * Что происходит:
+     *   1. Деактивируем все MiningOrder этого забоя
+     *   2. Самосвалы на маршрутах к этому забою → освобождаются
+     *   3. Переназначаем свободные самосвалы (assignRoutesToAllFree)
+     *   4. Если auto-режим → полная оптимизация (optimize)
+     */
+    protected function onMinerStopped(int $minerId): void
+    {
+        $miner = Miner::find($minerId);
+        if (!$miner) return;
+
+        Log::info('EVENT: забой остановлен — пересмотр маршрутов', [
+            'miner_id'   => $minerId,
+            'miner_name' => $miner->name_miner,
+        ]);
+
+        try {
+            // 1. Деактивируем маршруты этого забоя
+            $deactivated = MiningOrder::where('miner_id', $minerId)
+                ->where('active', true)
+                ->update(['active' => false]);
+
+            Log::info('EVENT: деактивировано маршрутов', [
+                'miner_id'    => $minerId,
+                'deactivated' => $deactivated,
+            ]);
+
+            // 2. Освобождаем самосвалы, которые ехали к этому забою
+            $trips = TruckTrip::whereNull('completed_at')
+                ->where('miner_id', $minerId)
+                ->get();
+
+            foreach ($trips as $trip) {
+                $trip->update([
+                    'completed_at'  => now(),
+                    'load_volume'   => 0,
+                ]);
+                $trip->truck->update(['status' => Truck::STATUS_COMPLETED]);
+            }
+
+            // 3. Переназначаем свободные самосвалы
+            app(RouteAssignmentService::class)->assignRoutesToAllFree();
+
+            // 4. Если auto-режим → оптимизация
+            if (SystemSetting::isManualMode() === false) {
+                $optimizer = app(RouteOptimizerService::class);
+                $optimizer->optimize();
+            }
+
+            // Уведомление диспетчеру
+            $this->dispatch('notify', [
+                'type' => 'info',
+                'message' => "Маршруты забоя {$miner->name_miner} пересмотрены автоматически",
+            ]);
+        } catch (\Exception $e) {
+            Log::error('EVENT: onMinerStopped failed', [
+                'miner_id' => $minerId,
+                'error'    => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * EVENT-DRIVEN: забой ЗАПУЩЕН (вышел из ремонта/остановки).
+     *
+     * Что происходит:
+     *   1. Создаём MiningOrder пары (забой → все отвалы, если их нет)
+     *   2. Синхронизируем расстояния
+     *   3. Если auto-режим → полная оптимизация (optimize)
+     *   4. Переназначаем свободные самосвалы
+     */
+    protected function onMinerStarted(int $minerId): void
+    {
+        $miner = Miner::find($minerId);
+        if (!$miner) return;
+
+        Log::info('EVENT: забой запущен — создание пар + оптимизация', [
+            'miner_id'   => $minerId,
+            'miner_name' => $miner->name_miner,
+        ]);
+
+        try {
+            // 1. Создаём пары (забой → все отвалы), если их ещё нет
+            $dumps = Dump::all();
+            $created = 0;
+            foreach ($dumps as $dump) {
+                $existing = MiningOrder::where('miner_id', $minerId)
+                    ->where('dump_id', $dump->id)
+                    ->exists();
+
+                if (!$existing) {
+                    // Берём расстояние из miner_dump_distances
+                    $distance = \App\Models\MinerDumpDistance::where('miner_id', $minerId)
+                        ->where('dump_id', $dump->id)
+                        ->value('distance_km');
+
+                    MiningOrder::create([
+                        'miner_id'    => $minerId,
+                        'dump_id'     => $dump->id,
+                        'distance_km' => $distance,
+                        'active'      => false, // станет active после optimize()
+                        'weight'      => 100,
+                    ]);
+                    $created++;
+                }
+            }
+
+            Log::info('EVENT: создано пар забой-отвал', [
+                'miner_id'  => $minerId,
+                'created'   => $created,
+            ]);
+
+            // 2. Если auto-режим → оптимизация
+            if (SystemSetting::isManualMode() === false) {
+                $optimizer = app(RouteOptimizerService::class);
+                $optimizer->optimize();
+            }
+
+            // 3. Переназначаем свободные самосвалы
+            app(RouteAssignmentService::class)->assignRoutesToAllFree();
+
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => "Забой {$miner->name_miner} запущен. Маршруты пересмотрены" .
+                    ($created > 0 ? " (создано пар: {$created})" : '') . ".",
+            ]);
+        } catch (\Exception $e) {
+            Log::error('EVENT: onMinerStarted failed', [
+                'miner_id' => $minerId,
+                'error'    => $e->getMessage(),
+            ]);
         }
     }
 
@@ -2620,7 +2774,7 @@ class MainDispatcherPanel extends Component
      */
     public function getStatsMinersListProperty()
     {
-        return Miner::where('active', true)
+        return Miner::where('status', Miner::STATUS_ACTIVE)
             ->orderBy('name_miner')
             ->pluck('name_miner', 'id');
     }
@@ -2898,24 +3052,6 @@ class MainDispatcherPanel extends Component
     }
 
     /**
-     * Сохранить порог разделения зон — кнопкой из UI.
-     */
-    public function saveZoneSharingThreshold(): void
-    {
-        if ($this->zoneSharingThreshold < 0 || $this->zoneSharingThreshold > 100) {
-            $this->dispatch('notify', ['type' => 'error', 'message' => 'Порог разделения зон: от 0 до 100%']);
-            return;
-        }
-
-        SystemSetting::setZoneSharingThreshold($this->zoneSharingThreshold);
-
-        $this->dispatch('notify', [
-            'type' => 'success',
-            'message' => "Порог разделения зон установлен: {$this->zoneSharingThreshold}%",
-        ]);
-    }
-
-    /**
      * Сохранить порог среднего расстояния перевозки — кнопкой из UI.
      * Шаг до сотых (0.01).
      */
@@ -2968,8 +3104,7 @@ class MainDispatcherPanel extends Component
     // Коэффициент пустых пробегов
     public float $emptyRunCoefficient = 0.5;
 
-    // Порог адаптивной балансировки зон (0-100%)
-    public int $zoneSharingThreshold = 30;
+    // zoneSharingThreshold убран — переход на зонный перебор сделал его ненужным
 
     // Порог среднего расстояния перевозки за смену (в км, 1-50)
     public float $avgDistanceThreshold = 5.0;

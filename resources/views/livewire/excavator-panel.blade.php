@@ -144,49 +144,6 @@
                     @endif
                 </div>
             </div>
-
-            <!-- Показатели производительности -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">У забоя</p>
-                    <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ $productivityStats['current_trucks'] ?? 0 }}</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Ожидают</p>
-                    <p class="text-xl sm:text-2xl font-bold text-amber-500">{{ $productivityStats['waiting_trucks'] ?? 0 }}</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">На погрузке</p>
-                    <p class="text-xl sm:text-2xl font-bold text-emerald-600">{{ $productivityStats['loading_trucks'] ?? 0 }}</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
-                    @php
-                        $targetForCompare = ($productivityStats['target_load_time'] ?? 0) / 60;
-                        $avgLoadTime = $productivityStats['avg_load_time'];
-                        $avgLoadTimeSource = $productivityStats['avg_load_time_source'] ?? null;
-                        // Цвет: динамическое — зелёный/красный (по сравнению с нормой)
-                        //       установленное — янтарный (ещё нет реальных данных)
-                        //       null — серый (нет данных)
-                        $avgLoadColor = $avgLoadTime === null
-                            ? 'text-slate-400'
-                            : ($avgLoadTimeSource === 'target'
-                                ? 'text-amber-600'
-                                : ($avgLoadTime > $targetForCompare && $targetForCompare > 0
-                                    ? 'text-red-600'
-                                    : 'text-emerald-600'));
-                    @endphp
-                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Ср. погрузка</p>
-                    <p class="text-xl sm:text-2xl font-bold {{ $avgLoadColor }}">
-                        @if($avgLoadTime !== null)
-                            {{ $avgLoadTime }}
-                            <span class="text-sm font-normal text-gray-400">мин{{ $avgLoadTimeSource === 'target' ? '*' : '' }}</span>
-                        @else
-                            <span class="text-sm">нет данных</span>
-                        @endif
-                    </p>
-                </div>
-            </div>
-
             <!-- Таблица самосвалов -->
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
                 <div class="p-4 border-b flex justify-between items-center">
@@ -259,6 +216,49 @@
                     </table>
                 </div>
             </div>
+            <!-- Показатели производительности -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">У забоя</p>
+                    <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ $productivityStats['current_trucks'] ?? 0 }}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Ожидают</p>
+                    <p class="text-xl sm:text-2xl font-bold text-amber-500">{{ $productivityStats['waiting_trucks'] ?? 0 }}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">На погрузке</p>
+                    <p class="text-xl sm:text-2xl font-bold text-emerald-600">{{ $productivityStats['loading_trucks'] ?? 0 }}</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
+                    @php
+                        $targetForCompare = ($productivityStats['target_load_time'] ?? 0) / 60;
+                        $avgLoadTime = $productivityStats['avg_load_time'];
+                        $avgLoadTimeSource = $productivityStats['avg_load_time_source'] ?? null;
+                        // Цвет: динамическое — зелёный/красный (по сравнению с нормой)
+                        //       установленное — янтарный (ещё нет реальных данных)
+                        //       null — серый (нет данных)
+                        $avgLoadColor = $avgLoadTime === null
+                            ? 'text-slate-400'
+                            : ($avgLoadTimeSource === 'target'
+                                ? 'text-amber-600'
+                                : ($avgLoadTime > $targetForCompare && $targetForCompare > 0
+                                    ? 'text-red-600'
+                                    : 'text-emerald-600'));
+                    @endphp
+                    <p class="text-[10px] sm:text-xs text-gray-500 uppercase font-semibold mb-1">Ср. погрузка</p>
+                    <p class="text-xl sm:text-2xl font-bold {{ $avgLoadColor }}">
+                        @if($avgLoadTime !== null)
+                            {{ $avgLoadTime }}
+                            <span class="text-sm font-normal text-gray-400">мин{{ $avgLoadTimeSource === 'target' ? '*' : '' }}</span>
+                        @else
+                            <span class="text-sm">нет данных</span>
+                        @endif
+                    </p>
+                </div>
+            </div>
+
+
         </div> <!-- Конец вкладки Забой -->
 
         <!-- ВКЛАДКА: СТАТИСТИКА -->

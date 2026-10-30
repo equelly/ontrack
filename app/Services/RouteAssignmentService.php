@@ -32,8 +32,14 @@ class RouteAssignmentService
      * Бизнес-правила совместимости пород при выгрузке.
      *
      * Каждая зона принимает только ОДНУ породу (смешивание запрещено).
-     * Исключение: "руда_ЦПТ" может быть выгружена также в зоны,
-     * принимающие "руда", а при их отсутствии — "руда_Sera".
+     *
+     * Правило «в худшее можно добавить лучшее»:
+     *   - Зона, принимающая руда_S (худшее качество), примет и руда (лучшее).
+     *   - Зона, принимающая руда_Sera (самое худшее), примет руда и руда_S.
+     *   - Обратное НЕВЕРНО: в зону под руда (лучшее) нельзя выгружать руда_S.
+     *
+     * Цепочки по убыванию качества:
+     *   руда_ЦПТ (лучшее) → руда → руда_S → руда_Sera (худшее)
      *
      * ВАЖНО: используются НАЗВАНИЯ пород (name_rock), а не ID —
      * это устойчиво к изменению ID при пересоздании таблицы rocks.
@@ -41,7 +47,10 @@ class RouteAssignmentService
      * Формат: ['исходная_порода' => ['приоритетный_список_допустимых_пород']]
      */
     const ROCK_FALLBACK_CHAIN = [
-        'руда_ЦПТ' => ['руда_ЦПТ', 'руда', 'руда_Sera'],
+        // Лучшее качество → может выгружаться в зоны любого худшего качества
+        'руда_ЦПТ' => ['руда_ЦПТ', 'руда', 'руда_S', 'руда_Sera'],
+        // Среднее качество → может выгружаться в зоны своего или худшего качества
+        'руда'      => ['руда', 'руда_S', 'руда_Sera'],
     ];
 
     /**
@@ -294,10 +303,11 @@ class RouteAssignmentService
             $reason = null;
 
             // ===== 1. ПРОВЕРКА ЗАБОЯ =====
+            // Раньше было две проверки: !$miner->active (булево, наследие) + !isWorking().
+            // Поле active убрано — теперь только проверка статуса через isWorking()
+            // (которая внутри проверяет status === STATUS_ACTIVE).
             if (!$miner) {
                 $reason = RouteBlockReason::MINER_NOT_FOUND;
-            } elseif (!$miner->active) {
-                $reason = RouteBlockReason::MINER_INACTIVE;
             } elseif (!$miner->isWorking()) {
                 $reason = RouteBlockReason::MINER_NOT_WORKING;
             }
@@ -1062,8 +1072,11 @@ class RouteAssignmentService
         $recommendations = $miner->getRecommendedTruckCount();
         
         if ($recommendations) {
-            // Используем рассчитанное оптимальное количество + буфер
-            $maxCount = ($recommendations['recommended'] ?? 2) + 1; // +1 буфер
+            // БЕЗ +1 буфера — recommended = max. При current >= recommended → перегружен → НЕ назначать.
+            // Раньше было +1 буфер — это приводило к назначению (recommended+1)-го самосвала
+            // без предупреждения. Например recommended=3, max=4, current=3 → 3<4 → назначаем 4-го.
+            // Теперь: recommended=3, max=3, current=3 → 3<3=false → НЕ назначаем 4-го.
+            $maxCount = $recommendations['recommended'] ?? 2;
             $currentCount = $recommendations['current'] ?? $this->getCountOnMiner($miner->id);
             
             Log::debug('canAssignToMiner using recommendations', [

@@ -43,7 +43,7 @@ class RecalculateMiningOrders extends Command
             $this->info("📉 Деактивировано маршрутов: {$this->stats['deleted']}");
 
             // 2. Загружаем данные
-            $miners = Miner::where('active', true)->with('rocks')->get();
+            $miners = Miner::where('status', Miner::STATUS_ACTIVE)->with('rocks')->get();
             $dumps = Dump::with(['zones.rocks'])->get();
             $distances = MinerDumpDistance::all()->keyBy(fn($d) => "{$d->miner_id}_{$d->dump_id}");
 

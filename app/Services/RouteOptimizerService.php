@@ -46,9 +46,19 @@ use Illuminate\Support\Collection;
 class RouteOptimizerService
 {
     /**
-     * Максимальное количество раундов (защита от избыточной активации).
+     * Максимальное количество раундов.
+     *
+     * Раньше было ограничение MAX_ROUNDS = 5 — но это было костылём,
+     * чтобы предотвратить бесконечный цикл. Теперь алгоритм завершается,
+     * когда:
+     *   - все забои получили маршрут, ИЛИ
+     *   - раунд пустой (ни один забой не нашёл свободную зону)
+     *
+     * Это защитное ограничение оставлено на случай если в данных будет
+     * рассинхрон (например, зона delivery=true но volume > capacity —
+     * такие граничные случаи могут привести к зависанию).
      */
-    const MAX_ROUNDS = 5;
+    const MAX_ROUNDS = 100;
 
     /**
      * Главная функция - оптимизировать маршруты (только в автоматическом режиме)
@@ -83,8 +93,10 @@ class RouteOptimizerService
         Log::info('WRR-курсоры сброшены');
         
         // 3. Получить все работающие забои
-        $activeMiners = Miner::where('active', true)
-            ->where('status', Miner::STATUS_ACTIVE)
+        // ВАЖНО: фильтруем только по status=active.
+        // Раньше было ещё `where('active', true)` — но поле active (булево)
+        // убрано как наследие. Теперь status — единственный источник истины.
+        $activeMiners = Miner::where('status', Miner::STATUS_ACTIVE)
             ->with('currentRock')
             ->get();
         Log::info("Работающих забоев: {$activeMiners->count()}");
@@ -109,15 +121,30 @@ class RouteOptimizerService
             $result['rounds'][$round] = count($roundAssignments);
             
             foreach ($roundAssignments as $assignment) {
+                // Активируем маршрут И фиксируем выбранную зону.
+                // После этого MiningOrder «знает» свою зону — самосвалам
+                // не нужно искать зону в момент назначения, они сразу
+                // едут на нужную (RouteAssignmentService использует
+                // $order->zone_id если он задан).
+                //
+                // Если назначенная зона позже станет недоступна
+                // (заполнится/закроется) — RouteAssignmentService
+                // автоматически найдёт другую через selectZoneForRock()
+                // и обновит zone_id в этой MiningOrder.
                 MiningOrder::where('miner_id', $assignment['miner_id'])
                     ->where('dump_id', $assignment['dump_id'])
-                    ->update(['active' => true]);
-                
+                    ->update([
+                        'active'  => true,
+                        'zone_id' => $assignment['assigned_zone_id'],
+                    ]);
+
                 $result['activated'][] = [
-                    'miner_id' => $assignment['miner_id'],
-                    'dump_id' => $assignment['dump_id'],
-                    'round' => $round,
-                    'score' => $assignment['score'],
+                    'miner_id'   => $assignment['miner_id'],
+                    'dump_id'    => $assignment['dump_id'],
+                    'zone_id'    => $assignment['assigned_zone_id'],
+                    'zone_name'  => $assignment['assigned_zone_name'] ?? null,
+                    'round'      => $round,
+                    'score'      => $assignment['score'],
                 ];
             }
         }
@@ -246,7 +273,7 @@ class RouteOptimizerService
      */
     public function getAllRoutesWithInfo(): Collection
     {
-        $activeMiners = Miner::where('active', true)->with('currentRock')->get();
+        $activeMiners = Miner::where('status', Miner::STATUS_ACTIVE)->with('currentRock')->get();
         $minerIds = $activeMiners->pluck('id')->toArray();
         
         return MiningOrder::whereIn('miner_id', $minerIds)
@@ -399,6 +426,7 @@ class RouteOptimizerService
             ->whereHas('rocks', function ($q) use ($acceptableRockNames) {
                 $q->whereIn('rocks.name_rock', $acceptableRockNames);
             })
+            ->orderBy('volume', 'asc')
             ->get();
 
         if ($zones->isEmpty()) {
@@ -413,38 +441,26 @@ class RouteOptimizerService
     }
     
     /**
-     * Распределить маршруты по раундам (динамическое количество).
+     * Распределить маршруты по раундам — циклический перебор зон.
      *
-     * Количество раундов = min(количество_доступных_маршрутов_для_самого_обеспеченного_забоя, MAX_ROUNDS)
+     * Алгоритм (по логике пользователя):
+     *   1. Раунд 1: перебираем забои → для каждого ищем ЛУЧШУЮ зону
+     *      (по score = distance × volume — ближняя + мало заполненная).
+     *      Выбранная зона ИСКЛЮЧАЕТСЯ из перебора в этом раунде.
+     *   2. Если остались забои без зоны (зон меньше чем забоев) →
+     *      Раунд 2: зоны СНОВА доступны → повторяем перебор.
+     *   3. Продолжаем пока все забои не получат зону
+     *      или пока не останется свободных зон (volume >= capacity).
+     *   4. Если забоев меньше чем зон → ближние к забоям зоны
+     *      заполняются (score = distance × volume обеспечивает это).
      *
-     * Раунд 1: каждому забою — его ЛУЧШИЙ маршрут (с минимальным score)
-     * Раунд 2: каждому забою — СЛЕДУЮЩИЙ лучший (резервный, на другой отвал)
-     * Раунд N: ...
+     * Score (distance × volume) НЕ сбрасывается между раундами —
+     * это уровень контроля объёмов, так же как WRR — уровень контроля
+     * между забоями.
      *
-     * АДАПТИВНАЯ БАЛАНСИРОВКА (через SystemSetting::getZoneSharingThreshold()):
-     *   - Если отвал уже занят в этом раунде другим забоем, проверяем заполненность зоны:
-     *     • Зона ≤ порога (по умолчанию 30%) → РАЗРЕШАЕМ делиться отвалом между забоями
-     *       (минимизация среднего расстояния перевозки). Зона почти пустая — нет смысла
-     *       блокировать её эксклюзивно.
-     *     • Зона > порога → СОХРАНЯЕМ эксклюзивный режим (один отвал — один забой),
-     *       чтобы избежать "жадного захвата" и обеспечить равномерное заполнение.
-     *
-     * FALLBACK «ПОСЛЕДНИЙ ШАНС» (применяется в конце каждого раунда):
-     *   - Если после основной раздачи у забоя НЕТ маршрута (все доступные отвалы
-     *     заняты эксклюзивно), но при этом у него есть физически доступная зона
-     *     (volume < capacity) — разрешаем ему работать на занятый отвал как «второй
-     *     забой», чтобы избежать простоя.
-     *   - Это страховка от простой ситуации: единственная зона для породы
-     *     занята эксклюзивно (fill_pct > 30%), а у второго забоя той же породы
-     *     вообще нет альтернатив — иначе все его маршруты будут «не в работе».
-     *   - Если диспетчеру нужно ещё сильнее «усилить завозку» на отвал — он
-     *     увеличивает вес (MiningOrder::weight), не трогая пороги. Это сохраняет
-     *     предсказуемость распределения и минимизирует «дёргания» маршрутов.
-     *
-     * Ограничения:
-     *   - В каждом раунде забой может получить только один маршрут
-     *   - Один и тот же маршрут не активируется в нескольких раундах
-     *   - Если у забоя больше нет доступных маршрутов — он пропускается в этом раунде
+     * НЕТ FALLBACK — если зона доступна (volume < capacity), забой
+     * получит её в следующем раунде. Если все зоны заполнены —
+     * забой остаётся без маршрута (нечего делать).
      *
      * @param Collection $routes Маршруты с score (отсортированы по возрастанию score)
      * @param Collection $activeMiners Активные забои
@@ -454,176 +470,155 @@ class RouteOptimizerService
     {
         $assignments = [];
 
-        // Порог адаптивной балансировки (по умолчанию 30%)
-        $sharingThreshold = SystemSetting::getZoneSharingThreshold();
-
         // Группируем маршруты по забою, сортируя внутри группы по score (возрастание)
+        // Score = distance × (volume / 1000 + 0.1) — меньше = лучше
         $byMiner = $routes->groupBy('miner_id')->map(function ($group) {
             return $group->sortBy('score')->values();
         });
 
-        // Динамическое количество раундов:
-        // берём max количество маршрутов у одного забоя, но не больше MAX_ROUNDS
-        $maxRoutesPerMiner = $byMiner->map(fn($r) => $r->count())->max() ?: 0;
-        $roundsCount = min($maxRoutesPerMiner, self::MAX_ROUNDS);
+        // Забои, которые ещё не получили маршрут
+        $unassignedMiners = $byMiner->keys()->toArray();
 
-        Log::info('assignByRounds: старт', [
-            'rounds_count' => $roundsCount,
-            'sharing_threshold_pct' => $sharingThreshold,
-            'miners_count' => $byMiner->count(),
+        Log::info('assignByRounds: старт (циклический перебор)', [
+            'miners_count'  => count($unassignedMiners),
+            'routes_count'  => $routes->count(),
         ]);
 
-        for ($round = 1; $round <= $roundsCount; $round++) {
+        $round = 0;
+
+        while (!empty($unassignedMiners) && $round < self::MAX_ROUNDS) {
+            $round++;
             $roundAssignments = [];
-            // Каждый отвал может обслуживать несколько забоев, если зона ≤ порога.
-            // Структура: [dump_id => ['miner_id' => X, 'fill_pct' => Y, 'via_fallback' => bool]]
-            $usedDumpsInThisRound = [];
-            // Забои, оставшиеся без маршрута в основной раздаче — кандидаты на fallback
-            $minersWithoutRoute = [];
+            // В каждом раунде зоны эксклюзивны (одна зона = один забой)
+            // В следующем раунде зоны СНОВА доступны
+            $usedZonesInThisRound = [];
+            $stillUnassigned = [];
 
-            foreach ($byMiner as $minerId => $minerRoutes) {
-                $assigned = false;
-                /** @var array|null $blockedRoute Последний заблокированный маршрут — нужен для логов */
-                $blockedRoute = null;
-                $blockedDumpId = null;
-                $blockedFillPct = null;
-
-                foreach ($minerRoutes as $route) {
-                    $dumpId = $route['dump_id'];
-
-                    // Если отвал ещё не использовался в этом раунде — берём без вопросов
-                    if (!isset($usedDumpsInThisRound[$dumpId])) {
-                        $roundAssignments[] = $route;
-                        $usedDumpsInThisRound[$dumpId] = [
-                            'miner_id' => $minerId,
-                            'fill_pct' => $this->calculateDumpFillPercent($route),
-                            'via_fallback' => false,
-                        ];
-                        $assigned = true;
-                        break;
-                    }
-
-                    // Отвал уже занят другим забоем — проверяем адаптивный порог
-                    $fillPct = $usedDumpsInThisRound[$dumpId]['fill_pct'];
-
-                    if ($fillPct <= $sharingThreshold) {
-                        // Зона почти пустая — разрешаем "поделиться" отвалом
-                        // (минимизация расстояния перевозки)
-                        $roundAssignments[] = $route;
-                        Log::info('assignByRounds: адаптивное разделение отвала', [
-                            'round' => $round,
-                            'dump_id' => $dumpId,
-                            'fill_pct' => $fillPct,
-                            'threshold' => $sharingThreshold,
-                            'miner_id' => $minerId,
-                            'also_used_by' => $usedDumpsInThisRound[$dumpId]['miner_id'],
-                        ]);
-                        $assigned = true;
-                        break;
-                    }
-
-                    // Зона > порога — запоминаем этот маршрут как заблокированный
-                    // (для diagnostic logging и возможного fallback ниже)
-                    $blockedRoute = $route;
-                    $blockedFillPct = $fillPct;
-                    $blockedDumpId = $dumpId;
-                    // Зона > порога — продолжаем искать другой отвал (балансировка)
+            foreach ($unassignedMiners as $minerId) {
+                $minerRoutes = $byMiner[$minerId] ?? collect();
+                if ($minerRoutes->isEmpty()) {
+                    continue;
                 }
 
-                if ($assigned) {
-                    // Удаляем использованный маршрут из доступных для следующих раундов
+                $assigned = false;
+
+                // Ищем ЛУЧШУЮ доступную зону: перебираем маршруты забоя
+                // (по возрастанию score = ближний + мало заполненный отвал),
+                // а внутри каждого маршрута — все зоны этого отвала
+                // (отсортированы по volume asc — менее заполненная впереди).
+                //
+                // РАНЬШЕ был баг: проверяли только ПЕРВУЮ зону отвала.
+                // Если первая занята другим забоем в этом раунде — весь
+                // отвал пропускался, хотя X2/X3 на нём свободны.
+                // Теперь перебираем все зоны отвала.
+                foreach ($minerRoutes as $route) {
+                    $assignedZone = null;
+
+                    foreach ($route['available_zones'] as $zone) {
+                        if (!isset($usedZonesInThisRound[$zone->id])) {
+                            $assignedZone = $zone;
+                            break;
+                        }
+                    }
+
+                    // Все зоны этого отвала заняты в текущем раунде
+                    // → пробуем следующий маршрут (следующий отвал)
+                    if (!$assignedZone) {
+                        continue;
+                    }
+
+                    // Запоминаем выбранную зону в маршруте — оптимизатор
+                    // запишет её в MiningOrder.zone_id при активации
+                    $route['assigned_zone_id'] = $assignedZone->id;
+                    $route['assigned_zone_name'] = $assignedZone->name_zone;
+                    $route['assigned_zone_fill_pct'] = $assignedZone->capacity > 0
+                        ? round(($assignedZone->volume / $assignedZone->capacity) * 100, 1)
+                        : 0;
+
+                    $roundAssignments[] = $route;
+                    $usedZonesInThisRound[$assignedZone->id] = [
+                        'miner_id'    => $minerId,
+                        'dump_id'     => $route['dump_id'],
+                        'zone_id'     => $assignedZone->id,
+                        'zone_name'   => $assignedZone->name_zone,
+                        'fill_pct'    => $route['assigned_zone_fill_pct'],
+                    ];
+                    $assigned = true;
+
+                    // Удаляем использованный маршрут (на этот отвал)
+                    // из доступных для следующих раундов.
+                    // ВАЖНО: забой уже получил маршрут → он не попадёт
+                    // в $unassignedMiners для следующих раундов. Эта
+                    // чистка нужна только чтобы $byMiner не раздувался.
                     $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($route) {
                         return $r['dump_id'] === $route['dump_id'];
                     })->values();
-                } else {
-                    // Забой не получил маршрут в основной раздаче — кандидат на fallback
-                    $minersWithoutRoute[$minerId] = [
-                        'routes' => $minerRoutes,
-                        'blocked_route' => $blockedRoute,
-                        'blocked_dump_id' => $blockedDumpId ?? null,
-                        'blocked_fill_pct' => $blockedFillPct ?? null,
-                    ];
-                }
-            }
 
-            // =====================================================
-            // FALLBACK «ПОСЛЕДНИЙ ШАНС»
-            // =====================================================
-            // Забои, у которых все подходящие отвалы заняты эксклюзивно
-            // (fill_pct > threshold) — не должны простаивать. Если у забоя
-            // есть физически доступная зона (volume < capacity), разрешаем
-            // ему работать на занятый отвал как «второй забой».
-            //
-            // Это страховка от простой ситуации: единственная зона для породы
-            // занята эксклюзивно (т.к. заполнение > 30%), а у второго забоя
-            // той же породы вообще нет альтернатив — иначе все его маршруты
-            // будут «не в работе».
-            //
-            // Если диспетчеру нужно ещё сильнее «усилить завозку» на этот
-            // отвал — он увеличивает вес (MiningOrder::weight), не трогая
-            // пороги. Это сохраняет предсказуемость распределения.
-            foreach ($minersWithoutRoute as $minerId => $info) {
-                $minerRoutes = $info['routes'];
-                if ($minerRoutes->isEmpty()) {
-                    // Альтернативных маршрутов нет вообще — fallback не поможет
-                    continue;
+                    break;
                 }
 
-                // Берём ЛУЧШИЙ по score маршрут забоя (уже отсортированы)
-                $fallbackRoute = $minerRoutes->first();
-                $dumpId = $fallbackRoute['dump_id'];
-                $fillPct = $this->calculateDumpFillPercent($fallbackRoute);
-
-                // Страховка: зона должна быть физически не заполнена.
-                // Если volume >= capacity — fallback не имеет смысла (некуда выгружать)
-                if ($fillPct >= 100.0) {
-                    continue;
+                if (!$assigned) {
+                    // Забой не нашёл свободную зону → остаётся для следующего раунда
+                    $stillUnassigned[] = $minerId;
                 }
-
-                $roundAssignments[] = $fallbackRoute;
-
-                // Помечаем отвал как пул для нескольких забоев (через fallback)
-                if (isset($usedDumpsInThisRound[$dumpId])) {
-                    $usedDumpsInThisRound[$dumpId]['pooled_via_fallback'] = true;
-                    $usedDumpsInThisRound[$dumpId]['also_used_by'][] = $minerId;
-                } else {
-                    $usedDumpsInThisRound[$dumpId] = [
-                        'miner_id' => $minerId,
-                        'fill_pct' => $fillPct,
-                        'via_fallback' => true,
-                    ];
-                }
-
-                // Удаляем fallback-маршрут из доступных для следующих раундов
-                $byMiner[$minerId] = $minerRoutes->reject(function ($r) use ($fallbackRoute) {
-                    return $r['dump_id'] === $fallbackRoute['dump_id'];
-                })->values();
-
-                Log::info('assignByRounds: FALLBACK «последний шанс»', [
-                    'round' => $round,
-                    'miner_id' => $minerId,
-                    'dump_id' => $dumpId,
-                    'dump_fill_pct' => $fillPct,
-                    'threshold_pct' => $sharingThreshold,
-                    'also_used_by' => $usedDumpsInThisRound[$dumpId]['also_used_by']
-                        ?? [$usedDumpsInThisRound[$dumpId]['miner_id'] ?? null],
-                    'reason' => 'все отвалы с породой заняты эксклюзивно, fallback разрешает разделение',
-                ]);
             }
 
             if (!empty($roundAssignments)) {
                 $assignments[$round] = $roundAssignments;
-                $sharedDumps = count(array_filter($usedDumpsInThisRound, fn($d) => ($d['fill_pct'] ?? 100) <= $sharingThreshold));
-                $fallbackDumps = count(array_filter($usedDumpsInThisRound, fn($d) => ($d['via_fallback'] ?? false) === true));
                 Log::info("assignByRounds: раунд {$round} завершён", [
                     'assignments_count' => count($roundAssignments),
-                    'shared_dumps' => $sharedDumps,
-                    'fallback_dumps' => $fallbackDumps,
+                    'used_zones'         => count($usedZonesInThisRound),
+                    'still_unassigned'  => count($stillUnassigned),
                 ]);
-            } else {
-                // Если раунд пуст — заканчиваем (больше маршрутов нет)
+            }
+
+            // Подготовка к следующему раунду
+            $unassignedMiners = $stillUnassigned;
+
+            // Если раунд пустой → заканчиваем (все зоны заняты или нет маршрутов)
+            if (empty($roundAssignments)) {
+                Log::info("assignByRounds: раунд {$round} пустой — завершение");
                 break;
             }
+        }
+
+        if (!empty($unassignedMiners)) {
+            // Детальная диагностика: для каждого забоя без маршрута
+            // показываем, сколько у него было маршрутов и сколько зон.
+            // Это помогает понять: маршрут отфильтрован в getAllRoutesWithScore
+            // (нет available_zones) ИЛИ зоны были заняты другими в каждом раунде.
+            $diagnostics = [];
+            foreach ($unassignedMiners as $minerId) {
+                $minerRoutes = $byMiner[$minerId] ?? collect();
+                $miner = $activeMiners->firstWhere('id', $minerId);
+                $rockName = $miner?->currentRock?->name_rock ?? 'НЕТ';
+
+                $routesInfo = $minerRoutes->map(fn($r) => [
+                    'dump_id'   => $r['dump_id'],
+                    'dump_name' => $r['dump_name'] ?? '?',
+                    'score'     => $r['score'],
+                    'zones_cnt' => $r['available_zones']->count(),
+                    'zones'     => $r['available_zones']->map(fn($z) => [
+                        'id'        => $z->id,
+                        'name'      => $z->name_zone,
+                        'delivery'  => $z->delivery,
+                        'fill_pct'  => $z->capacity > 0 ? round(($z->volume / $z->capacity) * 100, 1) : 0,
+                    ])->toArray(),
+                ])->toArray();
+
+                $diagnostics[] = [
+                    'miner_id'   => $minerId,
+                    'miner_name' => $miner?->name_miner ?? '?',
+                    'rock'       => $rockName,
+                    'routes_left_after_5_rounds' => count($minerRoutes),
+                    'routes'     => $routesInfo,
+                ];
+            }
+
+            Log::warning("assignByRounds: не все забои получили маршрут — детальная диагностика", [
+                'unassigned_count' => count($unassignedMiners),
+                'diagnostics'      => $diagnostics,
+            ]);
         }
 
         return $assignments;

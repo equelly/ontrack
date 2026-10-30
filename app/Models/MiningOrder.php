@@ -133,19 +133,31 @@ class MiningOrder extends Model
     }
 
     /**
-     * Доступные зоны для этого маршрута
+     * Доступные зоны для этого маршрута.
+     *
+     * Использует fallback-цепочку пород из RouteAssignmentService::ROCK_FALLBACK_CHAIN.
+     * Например, для породы «руда» ищутся зоны, принимающие «руда», «руда_S» или «руда_Sera»
+     * (по правилу «в худшее можно класть лучшее»).
+     *
+     * Возвращает коллекцию объектов Zone (с полями name_zone, volume, capacity, delivery).
      */
     public function getAvailableZonesAttribute()
     {
         $rock = $this->current_rock;
-        
+
         if (!$rock) {
             return collect();
         }
 
+        // Получаем fallback-цепочку НАЗВАНИЙ пород
+        $routeService = app(\App\Services\RouteAssignmentService::class);
+        $acceptableRockNames = $routeService::ROCK_FALLBACK_CHAIN[$rock->name_rock] ?? [$rock->name_rock];
+
         return Zone::where('dump_id', $this->dump_id)
             ->where('delivery', true)
-            ->whereHas('rocks', fn($q) => $q->where('rocks.id', $rock->id))
+            ->whereHas('rocks', function ($q) use ($acceptableRockNames) {
+                $q->whereIn('rocks.name_rock', $acceptableRockNames);
+            })
             ->whereRaw('volume < capacity')
             ->orderBy('volume', 'asc')
             ->get();

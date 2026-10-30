@@ -290,6 +290,21 @@ class MinerStatusService
                 $optimizer->optimize();
             }
 
+            // СИНХРОНИЗАЦИЯ с панелью водителя при плановой остановке
+            // (maintenance / face_dismantling / access_setup / relocation).
+            //
+            // Грузовики уже в пути (to_miner / waiting_loading / loading)
+            // НЕ перенаправляются — они доезжают и погружаются как обычно.
+            // Но водитель должен знать, что забой на плановой остановке,
+            // чтобы не удивляться задержкам на погрузке.
+            //
+            // При поломке водителей уведомляет redirectTrucksOnBreakdown()
+            // отдельными событиями (route_reassigned / loading_cancelled /
+            // route_cancelled / continue_to_unload) — там логика другая.
+            if (in_array($newStatus, Miner::STATUSES_PLANNED_DELAY)) {
+                $this->notifyTrucksOnPlannedStop($miner, $newStatus);
+            }
+
             // Активируем маршруты при возвращении в работу
             if ($newStatus === Miner::STATUS_ACTIVE) {
                 $this->activateRoutes($miner);
@@ -575,6 +590,86 @@ class MinerStatusService
         ));
 
         Log::info("Truck {$truck->id} released from trip to stopped miner {$miner->id}");
+    }
+
+    /**
+     * Уведомить водителей самосвалов, едущих к забою, о плановой остановке.
+     *
+     * Вызывается при переходе статуса в maintenance / face_dismantling /
+     * access_setup / relocation (STATUSES_PLANNED_DELAY).
+     *
+     * ВАЖНО: грузовики НЕ перенаправляются и НЕ освобождаются —
+     * они доезжают до забоя и погружаются как обычно (это плановая
+     * остановка, экскаваторщик на месте и продолжит погрузку).
+     *
+     * Метод только отправляет info-уведомление водителям, чтобы они
+     * знали о статусе забоя и не удивлялись возможным задержкам погрузки.
+     *
+     * Это симметрично redirectTrucksOnBreakdown(), который вызывается
+     * при поломке и реально меняет маршрут/статус самосвалов.
+     */
+    protected function notifyTrucksOnPlannedStop(Miner $miner, string $newStatus): int
+    {
+        $statusLabel = \App\Domain\MinerStatus::label($newStatus);
+
+        Log::info("notifyTrucksOnPlannedStop: уведомляем водителей о плановой остановке забоя {$miner->id} ({$statusLabel})");
+
+        // Грузовики в пути к забою или на погрузке/ожидании погрузки
+        $trucks = Truck::whereIn('status', ['to_miner', 'loading', 'waiting_loading'])
+            ->whereHas('trips', function ($q) use ($miner) {
+                $q->where('miner_id', $miner->id)
+                    ->whereNull('completed_at');
+            })
+            ->with(['trips' => function ($q) use ($miner) {
+                $q->where('miner_id', $miner->id)
+                    ->whereNull('completed_at');
+            }])
+            ->get();
+
+        $notifiedCount = 0;
+
+        foreach ($trucks as $truck) {
+            $trip = $truck->trips->first();
+
+            if (!$trip) {
+                continue;
+            }
+
+            // Грузовик уже загружен — он поедет на разгрузку, уведомление
+            // не нужно (погрузка завершена, плановая остановка забоя его
+            // больше не касается).
+            if ($trip->load_volume > 0 && in_array($truck->status, ['loading', 'transporting'])) {
+                continue;
+            }
+
+            if (!$truck->driver_id) {
+                continue;
+            }
+
+            $message = "Забой {$miner->name_miner} на статусе «{$statusLabel}». ";
+            $message .= 'Продолжайте движение — погрузка будет выполнена.';
+
+            event(new DriverRouteUpdated(
+                (int) $truck->driver_id,
+                [
+                    'truck_id'        => $truck->id,
+                    'action'          => 'miner_planned_stop',
+                    'miner_id'        => $miner->id,
+                    'miner_name'      => $miner->name_miner,
+                    'miner_status'    => $newStatus,
+                    'miner_status_label' => $statusLabel,
+                    'message'         => $message,
+                ]
+            ));
+
+            $notifiedCount++;
+
+            Log::info("notifyTrucksOnPlannedStop: водитель грузовика {$truck->id} уведомлён о забое {$miner->id} ({$statusLabel})");
+        }
+
+        Log::info("notifyTrucksOnPlannedStop: уведомлено {$notifiedCount} водителей о забое {$miner->id}");
+
+        return $notifiedCount;
     }
 
     /**
