@@ -43,6 +43,7 @@ class Truck extends Model
     const STATUS_WAITING_LOADING = 'waiting_loading';
     const STATUS_WAITING_UNLOADING = 'waiting_unloading';
     const STATUS_DELAYED = 'delayed';
+    const STATUS_COMPLETED = 'completed';
 
     public function truckModel()
     {
