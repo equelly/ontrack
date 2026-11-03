@@ -1,32 +1,10 @@
 <?php
 
-namespace App\Livewire\Traits;
+namespace App\Livewire\Traits\Dispatcher;
 
 use App\Models\Truck;
-use App\Models\Miner;
-use App\Models\Dump;
-use App\Models\Zone;
-use App\Models\Rock;
-use App\Models\TruckTrip;
-use App\Models\MiningOrder;
-use App\Models\TripPause;
-use App\Models\SystemSetting;
-use App\Models\ServicePost;
-use App\Models\TruckPlannedTask;
-use App\Events\DriverRouteUpdated;
-use App\Events\ExcavatorNotification;
-use App\Services\RouteAssignmentService;
-use App\Services\RouteOptimizerService;
-use App\Services\MinerStatusService;
-use App\Services\ZoneStatusService;
-use App\Services\ServiceSchedulingService;
-use App\Services\ShiftPlanningService;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Livewire\Attributes\Layout;
-use Livewire\Component;
 use Livewire\Attributes\On;
-use Livewire\Attributes\Title;
 
 trait WithTrucks
 {

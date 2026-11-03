@@ -27,13 +27,13 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
-use App\Livewire\Traits\WithAlerts;
-use App\Livewire\Traits\WithAnalytics;
-use App\Livewire\Traits\WithMiners;
-use App\Livewire\Traits\WithRoutes;
-use App\Livewire\Traits\WithSettings;
-use App\Livewire\Traits\WithTrucks;
-use App\Livewire\Traits\WithZones;
+use App\Livewire\Traits\Dispatcher\WithAlerts;
+use App\Livewire\Traits\Dispatcher\WithAnalytics;
+use App\Livewire\Traits\Dispatcher\WithMiners;
+use App\Livewire\Traits\Dispatcher\WithRoutes;
+use App\Livewire\Traits\Dispatcher\WithSettings;
+use App\Livewire\Traits\Dispatcher\WithTrucks;
+use App\Livewire\Traits\Dispatcher\WithZones;
 
 
 
