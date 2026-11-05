@@ -1,8 +1,8 @@
-<div class="min-h-screen flex flex-col bg-slate-50" x-data="{ tab: 'dumps' }">
+<div class="min-h-screen flex flex-col bg-slate-50" x-data="{}">
     <!-- Dark Header -->
     <header class="bg-slate-900 text-white shadow-lg mb-4 rounded-xl">
         <div class="px-4 py-3 flex items-center justify-between">
-            <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1> 
+            <h1 class="text-lg font-bold uppercase tracking-wider">Панель Мастера</h1>
 
             <div class="flex items-center gap-4">
                 {{-- AI Алерты — виджет (как у диспетчера) --}}
@@ -174,47 +174,41 @@
     <!-- Navigation Tabs -->
     <div class="bg-white border-b">
         <div class="mx-auto  p-1">
-            <button @click="tab='dumps'" 
-                :class="tab === 'dumps' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('dumps')"
+                class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'dumps') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Перегрузки
             </button>
-            <button @click="tab='dashboard'"
-                :class="{ 'bg-emerald-600 text-white': tab === 'dashboard', 'text-gray-600 hover:bg-gray-100': tab !== 'dashboard' }"
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('dashboard')"
+                class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'dashboard') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Обзор
             </button>
-            <button @click="tab='equipment'"
-                :class="{ 'bg-emerald-600 text-white': tab === 'equipment', 'text-gray-600 hover:bg-gray-100': tab !== 'equipment' }"
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('equipment')"
+                class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'equipment') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Оборудование
             </button>
-            <button @click="tab='maintenance'"
-                :class="{ 'bg-emerald-600 text-white': tab === 'maintenance', 'text-gray-600 hover:bg-gray-100': tab !== 'maintenance' }"
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('maintenance')"
+                class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'maintenance') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Обслуживание
             </button>
-            <button @click="tab='requests'"
-                :class="{ 'bg-emerald-600 text-white': tab === 'requests', 'text-gray-600 hover:bg-gray-100': tab !== 'requests' }"
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('requests')"
+                class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'requests') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Заявки
             </button>
-            <button @click="tab='miners'" 
-            :class="tab === 'miners' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
-            class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('miners')"
+            class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'miners') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Забои
             </button>
-            <button @click="tab='rocks'" 
-                :class="tab === 'rocks' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'" 
-                class="px-4 py-2 rounded-md font-semibold uppercase">
+            <button wire:click="setTab('rocks')"
+                class="px-4 py-2 rounded-md font-semibold uppercase @if($activeTab === 'rocks') bg-emerald-600 text-white @else text-gray-600 hover:bg-gray-100 @endif">
                 Породы
             </button>
         </div>
     </div>
 
         <!-- ВКЛАДКА: Обзор -->
-        <div x-show="tab === 'dashboard'" x-cloak class="mt-4 space-y-6">
-            
+        @if($activeTab === 'dashboard')
+        <div wire:key="tab-dashboard" class="mt-4 space-y-6">
+
             <!-- Карточки KPI -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="bg-white p-4 rounded-xl border shadow-sm text-center">
@@ -252,7 +246,7 @@
                         </thead>
                         <tbody>
                             @forelse(($activeRoutes ?? []) as $route)
-                                <tr class="border-b hover:bg-slate-50">
+                                <tr wire:key="route-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                     <td class="p-3 text-gray-700">{{ $route->miner?->name_miner ?? '—' }}</td>
                                     <td class="p-3 text-gray-600">{{ $route->dump?->name_dump ?? '—' }}</td>
                                     <td class="p-3 font-medium text-gray-800">{{ $route->zone?->name_zone ?? '—' }}</td>
@@ -291,7 +285,7 @@
                         </thead>
                         <tbody>
                             @forelse(($activeHauls ?? []) as $haul)
-                                <tr class="border-b hover:bg-slate-50">
+                                <tr wire:key="haul-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                     <td class="p-3 font-medium text-gray-800">{{ $haul->truck?->number ?? '—' }}</td>
                                     <td class="p-3 text-gray-600">{{ $haul->miner?->name_miner ?? '—' }}</td>
                                     <td class="p-3"><span class="px-2 py-0.5 text-xs rounded bg-cyan-100 text-cyan-700">{{ $haul->rock?->name_rock ?? '—' }}</span></td>
@@ -309,13 +303,13 @@
 
             <!-- Сводки за смену -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
+
                 <!-- Объемы по зонам -->
                 <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
                     <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Объемы по зонам (за смену)</div>
                     <div class="p-4 space-y-3">
                         @forelse($zoneVolumes as $zv)
-                            <div class="flex justify-between items-center pb-2 border-b last:border-0">
+                            <div wire:key="zv-{{ $loop->iteration }}" class="flex justify-between items-center pb-2 border-b last:border-0">
                                 <span class="text-sm text-gray-700">
                                     {{ $zv->zone?->dump?->name_dump ?? '—' }} - <span class="font-medium">{{ $zv->zone?->name_zone ?? '—' }}</span>
                                 </span>
@@ -342,7 +336,7 @@
                             </thead>
                             <tbody>
                                 @forelse($haulsSummary as $hs)
-                                    <tr class="border-b hover:bg-slate-50">
+                                    <tr wire:key="hs-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                         <td class="p-3 text-gray-700">{{ $hs->miner?->name_miner ?? '—' }}</td>
                                         <td class="p-3 text-gray-600">{{ $hs->zone?->name_zone ?? '—' }}</td>
                                         <td class="p-3 font-medium text-emerald-700">{{ number_format($hs->total_volume, 1) }} т</td>
@@ -357,9 +351,11 @@
                 </div>
             </div>
         </div>
+@endif
         <!-- ВКЛАДКА: Оборудование -->
-        <div x-show="tab === 'equipment'" x-cloak class="mt-4 space-y-6">
-            
+        @if($activeTab === 'equipment')
+        <div wire:key="tab-equipment" class="mt-4 space-y-6">
+
             <!-- Самосвалы -->
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden" x-data="{ showAddTruck: false }">
                 <div class="p-4 border-b flex justify-between items-center">
@@ -372,7 +368,7 @@
                 <!-- Форма добавления самосвала -->
                 <div x-show="showAddTruck" x-cloak class="p-4 bg-slate-50 border-b">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                        
+
                         <!-- Номер -->
                         <div>
                             <label class="block text-xs text-gray-500 uppercase mb-1">Номер</label>
@@ -388,7 +384,7 @@
                             <select wire:model="newTruckModelId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newTruckModelId') border-red-500 bg-red-50 @enderror">
                                 <option value="">Выберите модель</option>
                                 @foreach(\App\Models\TruckModel::all() as $model)
-                                    <option value="{{ $model->id }}">{{ $model->name }}</option>
+                                    <option wire:key="model-{{ $loop->iteration }}" value="{{ $model->id }}">{{ $model->name }}</option>
                                 @endforeach
                             </select>
                             @error('newTruckModelId')
@@ -425,7 +421,7 @@
                         </thead>
                         <tbody>
                             @foreach($trucks as $truck)
-                                <tr class="border-b hover:bg-slate-50">
+                                <tr wire:key="truck-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                     <td class="p-3 font-bold text-gray-800">
                                         <div class="flex items-center gap-2">
                                             <span>{{ $truck->number }}</span>
@@ -435,8 +431,8 @@
                                         </div>
                                     </td>
                                     <td class="p-3">
-                                        <span class="px-2 py-0.5 text-xs font-medium rounded-md 
-                                            {{ $truck->status === 'breakdown' ? 'bg-red-100 text-red-700' : 
+                                        <span class="px-2 py-0.5 text-xs font-medium rounded-md
+                                            {{ $truck->status === 'breakdown' ? 'bg-red-100 text-red-700' :
                                             ($truck->status === 'free' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-700') }}">
                                             {{ \App\Domain\TruckStatus::label($truck->status) }}
                                         </span>
@@ -493,7 +489,7 @@
                             <select wire:model="newMinerRockId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerRockId') border-red-500 bg-red-50 @enderror">
                                 <option value="">— Не указана —</option>
                                 @foreach(\App\Models\Rock::all() as $rock)
-                                    <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                    <option wire:key="rock-{{ $loop->iteration }}" value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
                                 @endforeach
                             </select>
                             @error('newMinerRockId')
@@ -521,11 +517,11 @@
                         </thead>
                         <tbody>
                             @foreach($miners as $miner)
-                                <tr class="border-b hover:bg-slate-50">
+                                <tr wire:key="miner-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                     <td class="p-3 font-bold text-gray-800">{{ $miner->name_miner }}</td>
                                     <td class="p-3">
-                                        <span class="px-2 py-0.5 text-xs font-medium rounded-md 
-                                            {{ $miner->status === 'breakdown' ? 'bg-red-100 text-red-700' : 
+                                        <span class="px-2 py-0.5 text-xs font-medium rounded-md
+                                            {{ $miner->status === 'breakdown' ? 'bg-red-100 text-red-700' :
                                                ($miner->status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') }}">
                                             {{ \App\Domain\MinerStatus::label($miner->status) }}
                                         </span>
@@ -547,10 +543,11 @@
                 </div>
             </div>
         </div>
-
+@endif
         <!-- ВКЛАДКА: Обслуживание -->
-        <div x-show="tab === 'maintenance'" x-cloak class="mt-4 space-y-6">
-            
+        @if($activeTab === 'maintenance')
+        <div wire:key="tab-maintenance" class="mt-4 space-y-6">
+
             <!-- Что проводится сейчас -->
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
                 <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm flex items-center gap-2">
@@ -569,7 +566,7 @@
                         </thead>
                         <tbody>
                             @forelse($activeServiceTasks as $task)
-                                <tr class="border-b hover:bg-slate-50">
+                                <tr wire:key="task-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                     <td class="p-3 font-bold text-gray-800">{{ $task->truck?->number ?? '—' }}</td>
                                     <td class="p-3 text-gray-600">{{ $task->getTypeLabel() }}</td>
                                     <td class="p-3">
@@ -599,7 +596,7 @@
                         </thead>
                         <tbody>
                             @forelse($pendingServiceTasks as $task)
-                                <tr class="border-b hover:bg-slate-50">
+                                <tr wire:key="task-{{ $loop->iteration }}" class="border-b hover:bg-slate-50">
                                     <td class="p-3 font-bold text-gray-800">{{ $task->truck?->number ?? '—' }}</td>
                                     <td class="p-3 text-gray-600">{{ $task->getTypeLabel() }}</td>
                                     <td class="p-3">
@@ -614,9 +611,10 @@
                 </div>
             </div>
         </div>
-
+@endif
         <!-- ВКЛАДКА: Заявки -->
-        <div x-show="tab === 'requests'" x-cloak class="mt-4 space-y-6">
+        @if($activeTab === 'requests')
+        <div wire:key="tab-requests" class="mt-4 space-y-6">
             <!-- Панель фильтрации -->
             <div class="bg-white rounded-xl border shadow-sm p-4 mb-6">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -625,7 +623,7 @@
                         <select wire:model.live="categoryId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
                             <option value="">Все</option>
                             @foreach($categories as $category)
-                                <option value="{{ $category->id }}">{{ $category->title }}</option>
+                                <option wire:key="category-{{ $loop->iteration }}" value="{{ $category->id }}">{{ $category->title }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -634,7 +632,7 @@
                         <select wire:model.live="userId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
                             <option value="">Все</option>
                             @foreach($users as $user)
-                                <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                <option wire:key="user-{{ $loop->iteration }}" value="{{ $user->id }}">{{ $user->name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -643,7 +641,7 @@
                         <select wire:model.live="mashineId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm">
                             <option value="">Все</option>
                             @foreach($allMashines as $mashine)
-                                <option value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
+                                <option wire:key="mashine-{{ $loop->iteration }}" value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -669,13 +667,13 @@
                 @foreach($mashines as $mashine)
                     @if(count($mashine->sets) != 0 || count($mashine->orders) != 0)
                         <div class="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col sm:flex-row">
-                            
+
                             <!-- Левая часть: Заявки -->
                             <div class="flex-1 p-4 border-b sm:border-b-0 sm:border-r">
                                 <h5 class="font-bold text-gray-800 mb-3">ЭКГ №{{ $mashine->number }}</h5>
                                 <div class="space-y-3">
                                     @foreach($mashine->orders as $order)
-                                        <div class="bg-slate-50 p-3 rounded-md border border-slate-200">
+                                        <div wire:key="order-{{ $loop->iteration }}" class="bg-slate-50 p-3 rounded-md border border-slate-200">
                                             <small class="text-gray-500 block mb-1">
                                                 {{ $order->created_at->translatedFormat('d F Y') }} ({{ $order->created_at->diffForHumans() }})
                                             </small>
@@ -697,21 +695,23 @@
                                     <h6 class="font-bold text-gray-600 uppercase text-xs mb-2">Необходимо укомплектовать:</h6>
                                     <ul class="space-y-1">
                                         @foreach($mashine->sets as $set)
-                                            <li class="text-sm text-gray-700 flex items-center gap-2">
+                                            <li wire:key="set-{{ $loop->iteration }}" class="text-sm text-gray-700 flex items-center gap-2">
                                                 <i class="fas fa-circle text-[6px] text-emerald-500"></i> {{ $set->name }}
                                             </li>
                                         @endforeach
                                     </ul>
                                 </div>
                             @endif
-                            
+
                         </div>
                     @endif
                 @endforeach
             </div>
         </div>
+@endif
         <!-- ВКЛАДКА: Забои -->
-        <div x-show="tab === 'miners'" x-cloak class="mt-4 space-y-4">
+        @if($activeTab === 'miners')
+        <div wire:key="tab-miners" class="mt-4 space-y-4">
             {{-- Форма добавления экскаватора (забоя) --}}
             <div class="bg-white p-4 rounded-xl border shadow-sm">
                 <h3 class="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center gap-2">
@@ -745,7 +745,7 @@
                         <select wire:model="newMinerRockId" class="w-full border-gray-300 rounded-md shadow-sm py-2 text-sm @error('newMinerRockId') border-red-500 bg-red-50 @enderror">
                             <option value="">— Не указана —</option>
                             @foreach(\App\Models\Rock::all() as $rock)
-                                <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
+                                <option wire:key="rock-{{ $loop->iteration }}" value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
                             @endforeach
                         </select>
                         @error('newMinerRockId')
@@ -764,7 +764,7 @@
                 <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Список забоев</div>
                 <ul class="divide-y divide-gray-100">
                     @foreach($miners as $miner)
-                        <li class="p-3 hover:bg-slate-50">
+                        <li wire:key="miner-{{ $loop->iteration }}" class="p-3 hover:bg-slate-50">
                             <div class="flex justify-between items-center">
                                 <span class="font-medium text-gray-800">{{ $miner->name_miner }}</span>
                                 <div class="flex gap-3 items-center">
@@ -774,7 +774,7 @@
                                     <button wire:click="deleteMiner({{ $miner->id }})" wire:confirm="Удалить забой?" class="text-red-400 hover:text-red-600 text-sm"><i class="fas fa-trash"></i></button>
                                 </div>
                             </div>
-                            
+
                             <!-- Раскрывающаяся панель расстояний -->
                             @if($editingMinerId === $miner->id)
                                 <div class="mt-4 pt-4 border-t bg-slate-50 p-3 rounded-lg">
@@ -798,9 +798,11 @@
                 </ul>
             </div>
         </div>
+@endif
 
         <!-- ВКЛАДКА: Породы -->
-        <div x-show="tab === 'rocks'" x-cloak class="mt-4 space-y-4">
+        @if($activeTab === 'rocks')
+        <div wire:key="tab-rocks" class="mt-4 space-y-4">
             <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
                 <input type="text" wire:model="newRockName" placeholder="Название новой породы" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
                 @error('newRockName')
@@ -812,7 +814,7 @@
                 <div class="p-4 border-b font-bold text-gray-800 uppercase text-sm">Список пород</div>
                 <ul class="divide-y divide-gray-100">
                     @foreach($rocks as $rock)
-                        <li class="p-3 flex justify-between items-center hover:bg-slate-50">
+                        <li wire:key="rock-{{ $loop->iteration }}" class="p-3 flex justify-between items-center hover:bg-slate-50">
                             <span class="font-medium text-gray-800">{{ $rock->name_rock }}</span>
                             <button wire:click="deleteRock({{ $rock->id }})" wire:confirm="Удалить породу?" class="text-red-400 hover:text-red-600 text-sm"><i class="fas fa-trash"></i></button>
                         </li>
@@ -820,9 +822,11 @@
                 </ul>
             </div>
         </div>
+@endif
 
         <!-- ВКЛАДКА: Перегрузки -->
-        <div x-show="tab === 'dumps'" x-cloak class="mt-4 space-y-4">
+        @if($activeTab === 'dumps')
+        <div wire:key="tab-dumps" class="mt-4 space-y-4">
             <div class="bg-white p-4 rounded-xl border shadow-sm flex gap-2">
                 <input type="text" wire:model="newDumpName" placeholder="Название новой перегрузки" class="flex-1 border-gray-300 rounded-md shadow-sm py-2">
                 @error('newDumpName')
@@ -832,7 +836,7 @@
             </div>
 
             @foreach($dumps as $dump)
-                <div class="bg-white rounded-xl border shadow-sm overflow-hidden {{ $dump->is_service_point ? 'border-amber-400 border-2' : '' }}">
+                <div wire:key="dump-{{ $loop->iteration }}" class="bg-white rounded-xl border shadow-sm overflow-hidden {{ $dump->is_service_point ? 'border-amber-400 border-2' : '' }}">
                     <div class="p-4 border-b bg-slate-50 flex justify-between items-center gap-2">
                         <div class="flex items-center gap-2 flex-1 min-w-0">
                             <h3 class="font-bold text-gray-800 uppercase text-sm truncate">{{ $dump->name_dump }}</h3>
@@ -844,7 +848,7 @@
                             {{-- Бейдж обваловки — компактный, в заголовке --}}
                             @if($this->activeBermRequests->isNotEmpty() && $this->activeBermRequests->contains('dump_id', $dump->id))
                                 @foreach($this->activeBermRequests->where('dump_id', $dump->id) as $berm)
-                                    <span class="px-2 py-0.5 bg-orange-100 text-orange-800 text-xs font-bold rounded-full border border-orange-300 whitespace-nowrap flex items-center gap-1">
+                                    <span wire:key="berm-{{ $loop->iteration }}" class="px-2 py-0.5 bg-orange-100 text-orange-800 text-xs font-bold rounded-full border border-orange-300 whitespace-nowrap flex items-center gap-1">
                                         <i class="fas fa-mountain"></i>
                                         Обваловать {{ $berm->zone?->name_zone }}:
                                         <span class="text-emerald-600">{{ $berm->trucks_completed }}</span><span class="text-gray-400">/</span><span class="text-red-600">{{ $berm->trucks_needed }}</span>
@@ -916,8 +920,8 @@
                         </thead>
                         <tbody>
                             @foreach($dump->zones as $zone)
-                                    @php 
-                                        $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0; 
+                                    @php
+                                        $fillPercent = $zone->capacity > 0 ? min($zone->volume / $zone->capacity * 100, 100) : 0;
                                         $currentRockId = $zone->rocks->first()?->id;
                                     @endphp
                                 <tr class="border-b {{ !$zone->delivery ? 'opacity-50 bg-slate-50' : '' }}">
@@ -934,7 +938,7 @@
                                         <select wire:change="updateZoneField({{ $zone->id }}, 'rock_id', $event.target.value)" class="border-gray-300 rounded-md text-sm py-1 w-full">
                                             <option value="">Не указана</option>
                                             @foreach($rocks as $rock)
-                                                <option value="{{ $rock->id }}" @if($zone->rocks->first()?->id == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
+                                                <option wire:key="rock-{{ $loop->iteration }}" value="{{ $rock->id }}" @if($zone->rocks->first()?->id == $rock->id) selected @endif>{{ $rock->name_rock }}</option>
                                             @endforeach
                                         </select>
                                     </td>
@@ -981,6 +985,7 @@
                 </div>
             @endforeach
         </div>
+@endif
 
 {{-- Модальное окно «Запрос обваловки» — упрощённое --}}
 <div
@@ -1051,7 +1056,7 @@
                 <select wire:model.live="newOrderMashineId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 @error('newOrderMashineId') border-red-500 @enderror">
                     <option value="">— Выберите оборудование —</option>
                     @foreach(\App\Models\Mashine::orderBy('number')->get() as $mashine)
-                        <option value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
+                        <option wire:key="mashine-{{ $loop->iteration }}" value="{{ $mashine->id }}">ЭКГ №{{ $mashine->number }}</option>
                     @endforeach
                 </select>
                 @error('newOrderMashineId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
@@ -1063,7 +1068,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">Комплектация (расходники)</label>
                 <div class="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-md border border-slate-200">
                     @foreach($allSets as $set)
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <label wire:key="set-{{ $loop->iteration }}" class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                             <input type="checkbox" value="{{ $set->id }}" wire:model="newOrderSets" class="rounded text-emerald-600 border-gray-300 focus:ring-emerald-500">
                             {{ $set->name }}
                         </label>
@@ -1233,7 +1238,7 @@
                     <select wire:model.live="editOrderCategoryId" class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">Без категории</option>
                         @foreach(\App\Models\Category::orderBy('title')->get() as $cat)
-                            <option value="{{ $cat->id }}" @selected($viewingOrder->category_id === $cat->id)>{{ $cat->title }}</option>
+                            <option wire:key="cat-{{ $loop->iteration }}" value="{{ $cat->id }}" @selected($viewingOrder->category_id === $cat->id)>{{ $cat->title }}</option>
                         @endforeach
                     </select>
                     <button wire:click="changeOrderCategory({{ $viewingOrder->id }})" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition">
@@ -1272,12 +1277,12 @@
 </div>
 
 <!-- Модальное окно интерактивной карты -->
-<div x-data="{ showMap: false, initMap() { 
+<div x-data="{ showMap: false, initMap() {
         // Инициализируем карту только один раз
         if (!window.leafletMapInstance) {
             // Добавлен параметр { attributionControl: false } для отключения логотипов
             window.leafletMapInstance = L.map('leafletMap', { attributionControl: false }).setView([51.280247, 37.633032], 13); // Координаты вашего карьера
-            
+
             // Спутниковый слой Esri
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: '© Esri',
@@ -1294,7 +1299,7 @@
         }
         // Лекарство от скрытого окна: заставляем карту перерисоваться через 100мс после открытия
         setTimeout(() => window.leafletMapInstance.invalidateSize(), 100);
-    } 
+    }
     }">
     <!-- Кнопка открытия карты -->
     <button @click="showMap = true; initMap()" class="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-md text-xs font-semibold uppercase shadow-lg z-30">
@@ -1308,10 +1313,10 @@
                 <h5 class="font-bold text-gray-800 uppercase">Интерактивная карта карьера</h5>
                 <button @click="showMap = false" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
             </div>
-            
+
             <!-- Контейнер карты. Добавлен h-full -->
             <div id="leafletMap" class="flex-1 w-full h-full bg-slate-200 rounded-b-xl overflow-hidden"></div>
-            
+
             <div class="p-3 bg-slate-50 border-t text-xs text-gray-500">
                 <i class="fas fa-info-circle"></i> Кликните по карте, чтобы поставить точку.
             </div>

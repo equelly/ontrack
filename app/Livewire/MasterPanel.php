@@ -8,9 +8,19 @@ use App\Services\ShiftService;
 use App\Models\TruckTrip;
 use App\Models\Truck;
 use App\Models\Miner;
+use App\Models\Rock;
+use App\Models\Zone;
+use App\Models\Mashine;
+use App\Models\Dump;
+use App\Models\Order;
+use App\Models\Category;
+use App\Models\User;
+use App\Models\MiningOrder;
+use App\Models\TruckPlannedTask;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 
 #[Layout('components.layouts.app')]
@@ -19,16 +29,28 @@ use Illuminate\Support\Facades\Log;
 class MasterPanel extends Component
 {
     public $shift;
-    public $trucksSummary;
-    public $tripMetrics;
-    public $issueSummary;
-    public $zoneVolumes;
-    public $haulsSummary;
-    public $trucks;
-    public $miners;
-    public $rocks;
-    public $activeServiceTasks;
-    public $pendingServiceTasks;
+
+    // Активная вкладка. Обновляется через wire:click="setTab('xxx')" в кнопках.
+    // render() использует её чтобы передавать в view только данные для активной вкладки,
+    // а не все сразу. Снижает SQL с ~46 до ~3-20 на запрос (зависит от вкладки).
+    public string $activeTab = 'dumps';
+
+    /**
+     * Переключить активную вкладку.
+     * Вызывается из кнопок навигации через wire:click="setTab('dashboard')".
+     */
+    public function setTab(string $tab): void
+    {
+        $this->activeTab = $tab;
+    }
+
+    // Тяжёлые коллекции и агрегаты НЕ объявляем как public свойства —
+    // Livewire сериализует public свойства на каждый запрос, что раздувает payload
+    // и тормозит браузер. Вместо этого используются getXxxProperty() методы ниже:
+    // они вычисляются лениво (только при обращении из вьюшки) и кешируются
+    // в рамках одного запроса.
+
+    // Фильтры для заявок (влияют на computed mashines):
     public $categoryId = '';
     public $userId = '';
     public $mashineId = '';
@@ -75,8 +97,9 @@ class MasterPanel extends Component
 
     public function mount(ShiftService $shiftService)
     {
+        // Загружаем только shift — все остальные данные вычисляются лениво
+        // через getXxxProperty() методы при первом обращении из вьюшки.
         $this->shift = $shiftService->getCurrentShift();
-        $this->loadMasterData();
     }
 
     // ==========================================
@@ -243,42 +266,180 @@ class MasterPanel extends Component
     }
 
     /**
-     * Загрузка всех данных панели. Вызывается из mount() и refreshMasterData().
-     * Вынесено в отдельный метод чтобы можно было перезагружать данные
-     * при получении вебсокет-событий без полного ре-инита компонента.
+     * Обновление данных панели. Вызывается из refreshMasterData() при вебсокет-событиях.
+     *
+     * Здесь мы обновляем shift (он нужен в getters для фильтрации по смене)
+     * и сбрасываем кеш getters Livewire, чтобы при следующем render данные были свежими.
      */
-    protected function loadMasterData(): void
+        protected function loadMasterData(): void
     {
-        $this->rocks = \App\Models\Rock::all();
-        // 1. Реальная сводка по самосвалам
-        $this->trucksSummary = [
-            'total' => Truck::count(),
-            'active' => Truck::whereNotIn('status', ['free', 'breakdown', 'maintenance', 'fueling'])->count(),
-            'broken' => Truck::where('status', 'breakdown')->count(),
-        ];
+        $this->shift = app(ShiftService::class)->getCurrentShift();
+        $this->invalidateLivewireCache([
+            'trucks', 'miners',
+            'trucksSummary', 'issueSummary',
+            'tripMetrics', 'zoneVolumes', 'haulsSummary',
+            'activeHauls', 'activeRoutes',
+            'activeServiceTasks', 'pendingServiceTasks',
+            'ordersCount', 'mashines',
+            'recentAlerts', 'alertFiltersActive', 'activeBermRequests',
+        ]);
+    }
+    /**
+     * Сброс серверного кеша для редко меняющихся данных.
+     * Вызывается в mutation-методах (addMiner, deleteTruck, ...) чтобы
+     * последующие запросы получили свежие данные.
+     *
+     * Также сбрасывает Livewire getter cache для соответствующих свойств,
+     * чтобы данные пересчитались на следующем render().
+     *
+     * @param array $keys — список ключей без префикса 'master_panel.'
+     *   Допустимые: 'rocks', 'categories', 'users', 'all_mashines', 'dumps'
+     */
+    protected function invalidateCache(array $keys): void
+    {
+        foreach ($keys as $key) {
+            Cache::forget("master_panel.{$key}");
+            // Сброс Livewire getter cache (если свойство с таким именем существует)
+            if (isset($this->{$key})) {
+                unset($this->{$key});
+            }
+        }
+    }
 
-        // 2. Реальная сводка по проблемам в смене
-        $this->issueSummary = [
-            'breakdowns' => Truck::where('status', 'breakdown')->count() + Miner::where('status', 'breakdown')->count(),
-            'delays' => Truck::whereIn('status', ['delayed', 'waiting_unloading'])->count(),
-            'idle' => Truck::where('status', 'free')->count(),
-        ];
+    /**
+     * Сброс кеша Livewire getters (computed property cache).
+     *
+     * Livewire кеширует результат getXxxProperty() в $computedPropertyCache,
+     * и этот кеш персистит между запросами (через сериализацию компонента).
+     * Если данные в БД изменились — кеш нужно сбросить.
+     *
+     * ВАЖНО: не вызывайте это в render() — foreach unset() даёт 150ms overhead
+     * из-за Livewire __isset reflection на каждом свойстве. Сбрасывайте только
+     * при изменениях — в mutation-методах и loadMasterData().
+     *
+     * @param array $props — имена getter-свойств (camelCase)
+     */
+    protected function invalidateLivewireCache(array $props): void
+    {
+        foreach ($props as $prop) {
+            if (isset($this->{$prop})) {
+                unset($this->{$prop});
+            }
+        }
+    }
 
-        // 3. Реальные метрики рейсов за текущую смену
-        $trips = TruckTrip::with('miningOrder')
-            ->whereBetween('created_at', [$this->shift['start_time'], $this->shift['end_time']])
+    // ==========================================
+    // ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (getters в стиле Livewire 2/3)
+    // ==========================================
+    // Методы getXxxProperty() вызываются лениво при обращении к $this->xxx
+    // или {{ $xxx }} в Blade. Результат кешируется на время HTTP-запроса.
+    // Сброс кеша — через unset($this->xxx) (с защитой isset()).
+
+    /**
+     * Справочник пород — нужен для форм и выпадающих списков.
+     * Кешируется на 1 час, сброс в addRock()/deleteRock().
+     */
+    public function getRocksProperty()
+    {
+        return Cache::remember('master_panel.rocks', 3600, function () {
+            return Rock::orderBy('name_rock')->get();
+        });
+    }
+
+    /** Парк самосвалов с моделью — для вкладки «Оборудование». */
+    public function getTrucksProperty()
+    {
+        return Truck::with('truckModel')->get();
+    }
+
+    /**
+     * Забои с предзагруженной текущей породой и счётчиком активных самосвалов.
+     *
+     * ВАЖНО: N+1 устранён — счётчик active_trucks_count грузится ОДНИМ groupBy
+     * запросом, а не отдельным COUNT на каждый забой (как было раньше).
+     */
+    public function getMinersProperty()
+    {
+        // Один запрос: для каждого miner_id считаем активные рейсы
+        $activeCounts = TruckTrip::whereNull('completed_at')
+            ->selectRaw('miner_id, COUNT(*) as cnt')
+            ->groupBy('miner_id')
+            ->pluck('cnt', 'miner_id');
+
+        return Miner::with('currentRock')
+            ->orderBy('name_miner')
+            ->get()
+            ->map(function ($miner) use ($activeCounts) {
+                $miner->active_trucks_count = $activeCounts[$miner->id] ?? 0;
+                return $miner;
+            });
+    }
+
+    /** Сводка по самосвалам: total/active/broken — одним SQL-агрегатом. */
+    public function getTrucksSummaryProperty(): array
+    {
+        $row = Truck::selectRaw("
+            COUNT(*) as total,
+            SUM(CASE WHEN status NOT IN ('free','breakdown','maintenance','fueling') THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN status = 'breakdown' THEN 1 ELSE 0 END) as broken
+        ")->first();
+
+        return [
+            'total'  => (int) $row->total,
+            'active' => (int) $row->active,
+            'broken' => (int) $row->broken,
+        ];
+    }
+
+    /** Сводка по проблемам в смене: breakdowns/delays/idle — 2 запроса вместо 4. */
+    public function getIssueSummaryProperty(): array
+    {
+        $truckRow = Truck::selectRaw("
+            SUM(CASE WHEN status = 'breakdown' THEN 1 ELSE 0 END) as broken,
+            SUM(CASE WHEN status IN ('delayed','waiting_unloading') THEN 1 ELSE 0 END) as delays,
+            SUM(CASE WHEN status = 'free' THEN 1 ELSE 0 END) as idle
+        ")->first();
+
+        $minersBroken = Miner::where('status', 'breakdown')->count();
+
+        return [
+            'breakdowns' => (int) $truckRow->broken + $minersBroken,
+            'delays'     => (int) $truckRow->delays,
+            'idle'       => (int) $truckRow->idle,
+        ];
+    }
+
+    /** Метрики рейсов за смену: объём, кол-во, средняя скорость и дистанция. */
+    public function getTripMetricsProperty(): array
+    {
+        $start = $this->shift['start_time'] ?? null;
+        $end   = $this->shift['end_time'] ?? null;
+        if (!$start || !$end) {
+            return ['total_volume' => 0, 'total_trips' => 0, 'avg_speed' => null, 'avg_distance' => null];
+        }
+
+        // Скалярные агрегаты — быстро, без загрузки строк
+        $agg = TruckTrip::whereBetween('created_at', [$start, $end])
             ->whereNotNull('completed_at')
-            ->get();
+            ->selectRaw('SUM(load_volume) as total_volume, COUNT(*) as total_trips')
+            ->first();
+
+        // Для avg_speed / avg_distance нужны данные miningOrder и время перевозки —
+        // подгружаем только завершённые рейсы с miningOrder (для расчёта distance/transporting)
+        $trips = TruckTrip::with('miningOrder:id,distance_km')
+            ->whereBetween('created_at', [$start, $end])
+            ->whereNotNull('completed_at')
+            ->get(['id', 'mining_order_id', 'load_volume', 'loaded_at', 'unloading_started_at', 'completed_at']);
 
         $totalDistance = 0;
-        $totalSpeedSum = 0;
+        $totalSpeedSum = 0.0;
         $speedCount = 0;
 
         foreach ($trips as $trip) {
             $distance = $trip->miningOrder?->distance_km ?? 0;
             if ($distance > 0) {
                 $totalDistance += $distance;
-                $transportingHours = $trip->getTransportingHours(); 
+                $transportingHours = $trip->getTransportingHours();
                 if ($transportingHours > 0) {
                     $totalSpeedSum += ($distance / $transportingHours);
                     $speedCount++;
@@ -286,53 +447,208 @@ class MasterPanel extends Component
             }
         }
 
-        $this->tripMetrics = [
-            'total_volume' => $trips->sum('load_volume'),
-            'total_trips' => $trips->count(),
-            'avg_speed' => $speedCount > 0 ? round($totalSpeedSum / $speedCount, 1) : null,
-            'avg_distance' => $trips->count() > 0 ? round($totalDistance / $trips->count(), 1) : null,
+        $tripsCount = $trips->count();
+
+        return [
+            'total_volume' => (float) ($agg->total_volume ?? 0),
+            'total_trips'  => (int) ($agg->total_trips ?? 0),
+            'avg_speed'    => $speedCount > 0 ? round($totalSpeedSum / $speedCount, 1) : null,
+            'avg_distance' => $tripsCount > 0 ? round($totalDistance / $tripsCount, 1) : null,
         ];
-                // 4. Объемы по зонам за смену
-        $this->zoneVolumes = TruckTrip::whereBetween('created_at', [$this->shift['start_time'], $this->shift['end_time']])
+    }
+
+    /** Объёмы по зонам за смену — один groupBy, без жадной загрузки связей. */
+    public function getZoneVolumesProperty()
+    {
+        $start = $this->shift['start_time'] ?? null;
+        $end   = $this->shift['end_time'] ?? null;
+        if (!$start || !$end) {
+            return collect();
+        }
+
+        // Грузим агрегаты и зоны с отвалами в два запроса, связываем в PHP.
+        $rows = TruckTrip::whereBetween('created_at', [$start, $end])
             ->whereNotNull('zone_id')
-            ->with('zone.dump')
             ->selectRaw('zone_id, SUM(load_volume) as total_volume')
             ->groupBy('zone_id')
             ->get();
 
-        // 5. Сводка перевозок (Забой -> Зона) за смену
-        $this->haulsSummary = TruckTrip::whereBetween('created_at', [$this->shift['start_time'], $this->shift['end_time']])
+        if ($rows->isEmpty()) {
+            return $rows;
+        }
+
+        $zones = Zone::with('dump:id,name_dump')
+            ->whereIn('id', $rows->pluck('zone_id'))
+            ->get()
+            ->keyBy('id');
+
+        return $rows->map(function ($row) use ($zones) {
+            $row->setRelation('zone', $zones->get($row->zone_id));
+            return $row;
+        });
+    }
+
+    /** Сводка перевозок Забой → Зона за смену — один groupBy + предзагрузка связей. */
+    public function getHaulsSummaryProperty()
+    {
+        $start = $this->shift['start_time'] ?? null;
+        $end   = $this->shift['end_time'] ?? null;
+        if (!$start || !$end) {
+            return collect();
+        }
+
+        $rows = TruckTrip::whereBetween('created_at', [$start, $end])
             ->whereNotNull('zone_id')
-            ->with(['miner', 'zone.dump', 'rock'])
             ->selectRaw('miner_id, zone_id, rock_id, SUM(load_volume) as total_volume, COUNT(*) as trips_count')
             ->groupBy('miner_id', 'zone_id', 'rock_id')
             ->get();
 
-        // 6. Активные перевозки в данный момент
-        $this->activeHauls = TruckTrip::whereNull('completed_at')
-            ->with(['truck', 'miner', 'zone.dump', 'rock'])
-            ->get();
+        if ($rows->isEmpty()) {
+            return $rows;
+        }
 
-        // 7. Оборудование (Самосвалы и Экскаваторы)
-        $this->trucks = \App\Models\Truck::with('truckModel')->get();
-        
-        $this->miners = \App\Models\Miner::with('currentRock')->get()->map(function ($miner) {
-            $miner->active_trucks_count = \App\Models\TruckTrip::where('miner_id', $miner->id)
-                ->whereNull('completed_at')
-                ->count();
-            return $miner;
+        // Предзагружаем только нужные сущности одним запросом каждого
+        $miners = Miner::whereIn('id', $rows->pluck('miner_id')->unique())->get()->keyBy('id');
+        $zones  = Zone::whereIn('id', $rows->pluck('zone_id')->unique())->get()->keyBy('id');
+        $rocks  = Rock::whereIn('id', $rows->pluck('rock_id')->unique())->get()->keyBy('id');
+
+        return $rows->map(function ($row) use ($miners, $zones, $rocks) {
+            $row->setRelation('miner', $miners->get($row->miner_id));
+            $row->setRelation('zone',  $zones->get($row->zone_id));
+            $row->setRelation('rock',  $rocks->get($row->rock_id));
+            return $row;
         });
-        // 8. Обслуживание: активные (в работе) и запланированные (в очереди)
-        $this->activeServiceTasks = \App\Models\TruckPlannedTask::where('completed', false)
+    }
+
+    /** Активные перевозки в данный момент (с предзагрузкой для отображения). */
+    public function getActiveHaulsProperty()
+    {
+        return TruckTrip::whereNull('completed_at')
+            ->with(['truck:id,number', 'miner:id,name_miner', 'zone.dump', 'rock:id,name_rock'])
+            ->get();
+    }
+
+    /** Активные задачи обслуживания (в работе). */
+    public function getActiveServiceTasksProperty()
+    {
+        return TruckPlannedTask::where('completed', false)
             ->whereNotNull('started_at')
             ->with(['truck', 'servicePost'])
             ->get();
+    }
 
-        $this->pendingServiceTasks = \App\Models\TruckPlannedTask::where('completed', false)
+    /** Запланированные задачи обслуживания (в очереди). */
+    public function getPendingServiceTasksProperty()
+    {
+        return TruckPlannedTask::where('completed', false)
             ->whereNull('started_at')
             ->with('truck')
             ->orderBy('queue_position')
             ->get();
+    }
+
+    // --- Данные для фильтров/выпадающих списков ---
+
+    /**
+     * Категории заявок — кешируются на 1 час (почти не меняются).
+     * Сброс через Cache::forget('master_panel.categories').
+     */
+    public function getCategoriesProperty()
+    {
+        return Cache::remember('master_panel.categories', 3600, function () {
+            return Category::all();
+        });
+    }
+
+    /** Пользователи — для фильтра заявок. Кеш 1 час. */
+    public function getUsersProperty()
+    {
+        return Cache::remember('master_panel.users', 3600, function () {
+            return User::orderBy('name')->get();
+        });
+    }
+
+    /**
+     * Карточки оборудования — для фильтра заявок.
+     * Кеш 5 минут, сброс в addMiner/deleteMiner/addTruck/deleteTruck.
+     */
+    public function getAllMashinesProperty()
+    {
+        return Cache::remember('master_panel.all_mashines', 300, function () {
+            return Mashine::orderBy('number')->get();
+        });
+    }
+
+    /**
+     * Перегрузки с зонами и породами — для вкладки «Перегрузки».
+     * Кеш 5 минут, сброс в addDump/deleteDump/addZone/deleteZone/updateZoneField.
+     */
+    public function getDumpsProperty()
+    {
+        return Cache::remember('master_panel.dumps', 300, function () {
+            return Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        });
+    }
+
+    public function getOrdersCountProperty(): int
+    {
+        return Order::where('content', '!=', '')->count();
+    }
+
+    /** Активные настроенные маршруты (Забой → Зона). */
+    public function getActiveRoutesProperty()
+    {
+        return MiningOrder::where('active', true)
+            ->whereNotNull('zone_id')
+            ->with(['miner', 'dump', 'zone', 'rock'])
+            ->get();
+    }
+
+    /**
+     * Заявки с применением фильтров. Зависит от:
+     * categoryId, userId, mashineId, createdAt, contentSearch.
+     * Кеш сбрасывается в updated() при изменении любого из этих свойств.
+     */
+    public function getMashinesProperty()
+    {
+        return Mashine::with(['orders' => function ($q) {
+            $q->where('content', '!=', '')
+              ->when($this->contentSearch, function ($q) {
+                  $q->where('content', 'like', '%' . $this->contentSearch . '%');
+              })
+              ->when($this->categoryId, function ($q) {
+                  $q->where('category_id', $this->categoryId);
+              })
+              ->when($this->userId, function ($q) {
+                  $q->where('user_id', $this->userId);
+              })
+              ->when($this->createdAt, function ($q) {
+                  $q->whereDate('created_at', $this->createdAt);
+              });
+        }, 'sets'])
+        ->when($this->mashineId, function ($query) {
+            $query->where('id', $this->mashineId);
+        })
+        ->get()
+        ->filter(function ($mashine) {
+            return $mashine->sets->isNotEmpty() || $mashine->orders->isNotEmpty();
+        })
+        ->values();
+    }
+
+    /**
+     * Хук Livewire — вызывается при изменении любого public свойства.
+     * Сбрасываем кеш mashines computed при изменении фильтров.
+     */
+    public function updated($name, $value): void
+    {
+        if (in_array($name, ['categoryId', 'userId', 'mashineId', 'createdAt', 'contentSearch'], true)) {
+            // isset() защита — чтобы не получить PHP Notice "Undefined property"
+            // если getter mashines ни разу не вычислялся в текущем запросе.
+            if (isset($this->mashines)) {
+                unset($this->mashines);
+            }
+        }
     }
 
     // === Управление Забоями ===
@@ -356,6 +672,10 @@ class MasterPanel extends Component
         // 3. Автозапуск оптимизации — добавлен новый забой, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('добавлении забоя');
 
+        // Сброс кеша: серверный (all_mashines) + Livewire getters (miners, activeRoutes)
+        $this->invalidateCache(['all_mashines']);
+        $this->invalidateLivewireCache(['miners', 'activeRoutes']);
+
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Забой добавлен и связан с оборудованием']);
     }
 
@@ -373,6 +693,10 @@ class MasterPanel extends Component
 
             // Автозапуск оптимизации — забой удалён, нужно пересчитать маршруты
             $this->autoOptimizeRoutes('удалении забоя');
+
+            // Сброс кеша карточек оборудования + Livewire getters для забоев и маршрутов
+            $this->invalidateCache(['all_mashines']);
+            $this->invalidateLivewireCache(['miners', 'activeRoutes']);
 
             $this->dispatch('notify', ['type' => 'info', 'message' => 'Забой удален']);
         } catch (\Exception $e) {
@@ -439,6 +763,11 @@ class MasterPanel extends Component
         ]);
 
         $this->reset(['newTruckNumber', 'newTruckModelId', 'newTruckFuel']);
+
+        // Сброс кеша карточек оборудования + Livewire getter trucks
+        $this->invalidateCache(['all_mashines']);
+        $this->invalidateLivewireCache(['trucks']);
+
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Самосвал добавлен и связан с оборудованием']);
     }
         public function deleteTruck($id)
@@ -452,6 +781,9 @@ class MasterPanel extends Component
                 }
                 $truck->delete();
             }
+            // Сброс кеша карточек оборудования + Livewire getter trucks
+            $this->invalidateCache(['all_mashines']);
+            $this->invalidateLivewireCache(['trucks']);
             $this->dispatch('notify', ['type' => 'info', 'message' => 'Самосвал удален']);
         } catch (\Exception $e) {
             $this->dispatch('notify', ['type' => 'error', 'message' => 'Невозможно удалить: есть рейсы или заявки']);
@@ -480,12 +812,15 @@ class MasterPanel extends Component
         $this->validate(['newRockName' => 'required|string|max:255']);
         \App\Models\Rock::create(['name_rock' => $this->newRockName]);
         $this->reset('newRockName');
+        // Сброс кеша пород
+        $this->invalidateCache(['rocks']);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Порода добавлена']);
     }
 
     public function deleteRock($id)
     {
         try { \App\Models\Rock::find($id)->delete(); } catch (\Exception $e) {}
+        $this->invalidateCache(['rocks']);
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Порода удалена']);
     }
 
@@ -505,6 +840,10 @@ class MasterPanel extends Component
         // Автозапуск оптимизации — добавлен новый отвал, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('добавлении отвала');
 
+        // Сброс кеша перегрузок + Livewire getter activeRoutes (маршруты зависят от зон)
+        $this->invalidateCache(['dumps']);
+        $this->invalidateLivewireCache(['activeRoutes']);
+
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Перегрузка добавлена. Создайте зону.']);
     }
 
@@ -514,6 +853,10 @@ class MasterPanel extends Component
 
         // Автозапуск оптимизации — отвал удалён, нужно пересчитать маршруты
         $this->autoOptimizeRoutes('удалении отвала');
+
+        // Сброс кеша перегрузок + Livewire getter activeRoutes
+        $this->invalidateCache(['dumps']);
+        $this->invalidateLivewireCache(['activeRoutes']);
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Перегрузка удалена']);
     }
 
@@ -551,8 +894,11 @@ class MasterPanel extends Component
             ]);
         }
 
-        // Перезагружаем dumps, чтобы UI отобразил изменения
-        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        // Сброс кеша перегрузок — сервисная точка изменилась
+        $this->invalidateCache(['dumps']);
+        if (isset($this->dumps)) {
+            unset($this->dumps);
+        }
     }
 
     public function toggleAddZone($dumpId)
@@ -581,6 +927,10 @@ class MasterPanel extends Component
         $zone->rocks()->sync([$this->newZoneRockId]);
 
         $this->reset(['newZoneName', 'newZoneRockId', 'newZoneCapacity', 'newZoneVolume', 'addZoneDumpId']);
+
+        // Сброс кеша перегрузок + Livewire getter activeRoutes (зона изменилась → маршруты тоже)
+        $this->invalidateCache(['dumps']);
+        $this->invalidateLivewireCache(['activeRoutes']);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона добавлена']);
     }
 
@@ -638,7 +988,9 @@ class MasterPanel extends Component
             }
         }
 
-        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        // Сброс кеша перегрузок + Livewire getter activeRoutes (зона изменилась)
+        $this->invalidateCache(['dumps']);
+        $this->invalidateLivewireCache(['activeRoutes']);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Зона обновлена']);
     }
         public function deleteZone($zoneId)
@@ -655,8 +1007,9 @@ class MasterPanel extends Component
         // 2. Удаляем саму зону
         $zone->delete();
 
-        // 3. Обновляем данные в интерфейсе
-        $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        // Сброс кеша перегрузок + Livewire getter activeRoutes
+        $this->invalidateCache(['dumps']);
+        $this->invalidateLivewireCache(['activeRoutes']);
         $this->dispatch('notify', ['type' => 'info', 'message' => 'Зона удалена']);
     }
 
@@ -879,8 +1232,9 @@ class MasterPanel extends Component
 
             $this->closeBermModal();
 
-            // Обновляем данные — возможно, зона изменилась
-            $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+            // Сброс кеша — создан berm-запрос, dumps и activeBermRequests изменились
+            $this->invalidateCache(['dumps']);
+            $this->invalidateLivewireCache(['activeBermRequests', 'dumps']);
 
         } catch (\Exception $e) {
             Log::error('createBermRequest failed', ['error' => $e->getMessage()]);
@@ -902,7 +1256,9 @@ class MasterPanel extends Component
                 'message' => 'Запрос на обваловку отменён. Обычные маршруты снова доступны.',
             ]);
 
-            $this->dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+            // Сброс кеша — berm-запрос отменён
+            $this->invalidateCache(['dumps']);
+            $this->invalidateLivewireCache(['activeBermRequests', 'dumps']);
 
         } catch (\Exception $e) {
             $this->dispatch('notify', ['type' => 'error', 'message' => $e->getMessage()]);
@@ -1230,68 +1586,83 @@ class MasterPanel extends Component
 
     public function render(ShiftService $shiftService)
     {
-        // 1. Данные для выпадающих списков фильтра
-        $categories = \App\Models\Category::all();
-        $users = \App\Models\User::orderBy('name')->get();
-        $allMashines = \App\Models\Mashine::orderBy('number')->get();
-        $dumps = \App\Models\Dump::with(['zones.rocks'])->orderBy('name_dump')->get();
+        // ====== Ленивый рендер по вкладкам (Вариант A) ======
+        //
+        // Раньше render() передавал в view() ВСЕ getters (46 SQL на каждый запрос).
+        // Теперь передаём только данные, нужные для текущей вкладки ($activeTab),
+        // плюс небольшой набор для шапки (используется на всех вкладках).
+        //
+        // Это снижает SQL с ~46 до ~3-20 на запрос в зависимости от вкладки.
+        //
+        // Серверный кеш (Вариант B) дополнительно убирает SQL для rocks/categories/
+        // users/allMashines/dumps — они читаются из Cache::remember() (0 SQL).
 
-        // 2. Заявки с применением фильтров
-        $mashines = \App\Models\Mashine::with(['orders' => function($q) {
-            $q->where('content', '!=', '')
-              ->when($this->contentSearch, function($q) {
-                  $q->where('content', 'like', '%' . $this->contentSearch . '%');
-              })
-              ->when($this->categoryId, function($q) {
-                  $q->where('category_id', $this->categoryId);
-              })
-              ->when($this->userId, function($q) {
-                  $q->where('user_id', $this->userId);
-              })
-              ->when($this->createdAt, function($q) {
-                  $q->whereDate('created_at', $this->createdAt);
-              });
-        }, 'sets'])
-        ->when($this->mashineId, function($query) {
-            $query->where('id', $this->mashineId);
-        })
-        ->get()
-        ->filter(function($mashine) {
-            return $mashine->sets->isNotEmpty() || $mashine->orders->isNotEmpty();
-        });
+        // ВАЖНО: сброс кеша getters НЕ делаем здесь (раньше был foreach unset —
+        // давал 150ms overhead на каждый запрос из-за Livewire __isset reflection).
+        // Сброс происходит ТОЛЬКО при изменениях — в loadMasterData() и в
+        // mutation-методах через invalidateLivewireCache().
 
-        $ordersCount = \App\Models\Order::where('content', '!=', '')->count();
+        $data = [];
 
-        // 3. Обновляем смену
-        $this->shift = $shiftService->getCurrentShift();
-        
-        // 4. Активные настроенные маршруты (Забой -> Зона)
-        $activeRoutes = \App\Models\MiningOrder::where('active', true)
-            ->whereNotNull('zone_id')
-            ->with(['miner', 'dump', 'zone', 'rock'])
-            ->get();
-            
-        // 5. Активные перевозки (в данный момент)
-        $activeHauls = \App\Models\TruckTrip::whereNull('completed_at')
-            ->with(['truck', 'miner', 'zone.dump', 'rock'])
-            ->get();
-        
-        // 6. Справочники для вкладок Мастера
-        $miners = \App\Models\Miner::orderBy('name_miner')->get();
-        $rocks = \App\Models\Rock::orderBy('name_rock')->get();
-        
-        // 7. Возвращаем вид
-        return view('livewire.master-panel', compact(
-            'dumps', 
-            'mashines', 
-            'ordersCount', 
-            'categories', 
-            'users', 
-            'allMashines', 
-            'miners', 
-            'rocks', 
-            'activeRoutes', 
-            'activeHauls'
-        ));
+        // 3. Данные для активной вкладки.
+        //
+        // Анализ вьюшки показал точное использование переменных:
+        //   dashboard  → tripMetrics, activeHauls, zoneVolumes, haulsSummary, activeRoutes
+        //   equipment  → trucks, miners
+        //   maintenance→ activeServiceTasks, pendingServiceTasks
+        //   requests   → mashines, categories, users, allMashines, ordersCount
+        //   miners     → miners, dumps
+        //   rocks      → rocks
+        //   dumps      → rocks, dumps  (activeBermRequests — через $this->activeBermRequests)
+        //
+        // trucksSummary и issueSummary в вьюшке НЕ используются (legacy) — не передаём.
+        switch ($this->activeTab) {
+            case 'dashboard':
+                $data['tripMetrics']         = $this->tripMetrics;
+                $data['activeHauls']         = $this->activeHauls;
+                $data['zoneVolumes']         = $this->zoneVolumes;
+                $data['haulsSummary']        = $this->haulsSummary;
+                $data['activeRoutes']        = $this->activeRoutes;
+                break;
+
+            case 'equipment':
+                $data['trucks']              = $this->trucks;
+                $data['miners']              = $this->miners;
+                break;
+
+            case 'maintenance':
+                $data['activeServiceTasks']  = $this->activeServiceTasks;
+                $data['pendingServiceTasks'] = $this->pendingServiceTasks;
+                break;
+
+            case 'requests':
+                $data['mashines']            = $this->mashines;
+                $data['categories']          = $this->categories;
+                $data['users']               = $this->users;
+                $data['allMashines']         = $this->allMashines;
+                $data['ordersCount']         = $this->ordersCount;
+                break;
+
+            case 'miners':
+                $data['miners']              = $this->miners;
+                $data['dumps']               = $this->dumps;
+                break;
+
+            case 'rocks':
+                $data['rocks']               = $this->rocks;
+                break;
+
+            case 'dumps':
+            default:
+                // Перегрузки: dumps с зонами, rocks для добавления зон.
+                // activeBermRequests вьюшка получает через $this->activeBermRequests
+                // (magic __get) — не нужно передавать в view data.
+                $this->activeTab = 'dumps'; // нормализуем default
+                $data['dumps']               = $this->dumps;
+                $data['rocks']               = $this->rocks;
+                break;
+        }
+
+        return view('livewire.master-panel', $data);
     }
 }

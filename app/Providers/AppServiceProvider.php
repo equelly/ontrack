@@ -27,25 +27,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Проверяем, используется ли связь с пакетом Doctrine
+        // Doctrine enum mapping (оставляем)
         if (class_exists(\Doctrine\DBAL\Connection::class)) {
             $platform = DB::connection()->getDoctrineSchemaManager()->getDatabasePlatform();
-            // Говорим Doctrine воспринимать enum как обычную строку
             $platform->registerDoctrineTypeMapping('enum', 'string');
         }
-                // Установка московского часового пояса
-        date_default_timezone_set('Europe/Moscow');
 
+        date_default_timezone_set('Europe/Moscow');
         Carbon::setLocale('ru_RU');
 
-        // Регистрация Observer для автоматического создания mining_orders
         Miner::observe(MinerObserver::class);
         Dump::observe(DumpObserver::class);
         MinerDumpDistance::observe(MinerDumpDistanceObserver::class);
 
-        // Очистка OPcache в режиме разработки
-        if ($this->app->environment('local') && function_exists('opcache_reset')) {
-            opcache_reset();
-        }
+        // ⚠️ УБРАТЬ opcache_reset() — он сбрасывает кеш на каждый запрос!
+        // В local окружении OPcache и так проверяет timestamp файлов,
+        // если opcache.validate_timestamps=1 в php.ini.
     }
 }
