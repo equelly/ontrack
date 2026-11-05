@@ -841,6 +841,17 @@
                                     <i class="fas fa-tools"></i> Сервисная
                                 </span>
                             @endif
+                            {{-- Бейдж обваловки — компактный, в заголовке --}}
+                            @if($this->activeBermRequests->isNotEmpty() && $this->activeBermRequests->contains('dump_id', $dump->id))
+                                @foreach($this->activeBermRequests->where('dump_id', $dump->id) as $berm)
+                                    <span class="px-2 py-0.5 bg-orange-100 text-orange-800 text-xs font-bold rounded-full border border-orange-300 whitespace-nowrap flex items-center gap-1">
+                                        <i class="fas fa-mountain"></i>
+                                        Обваловать {{ $berm->zone?->name_zone }}:
+                                        <span class="text-emerald-600">{{ $berm->trucks_completed }}</span><span class="text-gray-400">/</span><span class="text-red-600">{{ $berm->trucks_needed }}</span>
+                                        <button wire:click="cancelBermRequest({{ $berm->id }})" wire:confirm="Отменить обваловку?" class="text-red-500 hover:text-red-700 ml-0.5 leading-none" title="Отменить">×</button>
+                                    </span>
+                                @endforeach
+                            @endif
                         </div>
                         <div class="flex gap-2 items-center">
                             <button wire:click="toggleServicePoint({{ $dump->id }})"
@@ -944,9 +955,15 @@
                                         <input type="checkbox" wire:change="updateZoneField({{ $zone->id }}, 'delivery', $event.target.checked)" {{ $zone->delivery ? 'checked' : '' }} class="rounded text-emerald-600 h-5 w-5 cursor-pointer">
                                     </td>
                                     <td class="p-2 text-center">
-                                        <button wire:click="openBermModal({{ $zone->id }})" class="text-orange-500 hover:text-orange-700" title="Запросить обваловку">
-                                            <i class="fas fa-mountain"></i>
-                                        </button>
+                                        @if($zone->delivery)
+                                            <span class="text-gray-300" title="Зона открыта — обваловка не нужна">
+                                                <i class="fas fa-mountain"></i>
+                                            </span>
+                                        @else
+                                            <button wire:click="openBermModal({{ $zone->id }})" class="text-orange-500 hover:text-orange-700" title="Зона закрыта — запросить обваловку">
+                                                <i class="fas fa-mountain"></i>
+                                            </button>
+                                        @endif
                                     </td>
                                     <td class="p-2 text-center">
                                         <button wire:click="deleteZone({{ $zone->id }})" wire:confirm="Удалить зону? Привязанные к ней маршруты станут неактивными." class="text-red-400 hover:text-red-600">
@@ -961,53 +978,11 @@
                         <div class="p-4 text-center text-gray-500 text-sm">Нет зон. Нажмите "+ Добавить зону".</div>
                     @endif
 
-                    {{-- Активные запросы обваловки --}}
-                    {{-- Проверяем, что коллекция не пуста И содержит dump_id, равный $dump->id --}}
-                    @if($this->activeBermRequests->isNotEmpty() && $this->activeBermRequests->contains('dump_id', $dump->id))
-                    <div class="mt-6 p-4 bg-orange-50 border-2 border-orange-300 rounded-xl">
-                        <h4 class="text-sm font-bold text-orange-800 mb-3 flex items-center gap-2">
-                            <i class="fas fa-mountain"></i> Обваловать: 
-                            {{-- Считаем количество запросов именно для этого отвала --}}
-                            {{ $this->activeBermRequests->where('dump_id', $dump->id)->count() }}
-                        </h4>
-                        <div class="space-y-2">
-                            {{-- Фильтруем коллекцию через where, чтобы выводить только нужные строки --}}
-                            @foreach($this->activeBermRequests->where('dump_id', $dump->id) as $berm)
-                                @php
-                                    $progressPct = $berm->progressPercent();
-                                    $remaining = $berm->remainingToComplete();
-                                @endphp
-                                <div class="bg-white p-3 rounded-lg border border-orange-200 flex items-center gap-3">
-                                    <div class="flex-1">
-                                        <div class="text-sm font-semibold text-gray-800">
-                                            Перегрузка {{ $berm->dump?->name_dump }} зона «{{ $berm->zone?->name_zone }}» 
-                                            @if($berm->rock) <span class="text-xs text-gray-500">порода: {{ $berm->rock->name_rock }}</span> @endif
-                                        </div>
-                                        <div class="mt-1 flex items-center gap-2">
-                                            <div class="flex-1 bg-gray-200 rounded-full h-2.5">
-                                                <div class="bg-orange-500 h-2.5 rounded-full transition-all" style="width: {{ $progressPct }}%"></div>
-                                            </div>
-                                            <span class="text-xs font-medium text-gray-700 whitespace-nowrap">
-                                                {{ $berm->trucks_completed }}/{{ $berm->trucks_needed }} ({{ $progressPct }}%)
-                                            </span>
-                                        </div>
-                                        <div class="text-xs text-gray-500 mt-1">
-                                            Назначено: {{ $berm->trucks_assigned }} · Осталось завершить: {{ $remaining }}
-                                        </div>
-                                    </div>
-                                    <button wire:click="cancelBermRequest({{ $berm->id }})" wire:confirm="Отменить запрос обваловки?" class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded-md font-medium">
-                                        Отменить
-                                    </button>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                    @endif
                 </div>
             @endforeach
         </div>
 
-{{-- Модальное окно «Запрос обваловки» --}}
+{{-- Модальное окно «Запрос обваловки» — упрощённое --}}
 <div
     x-data="{ open: @entangle('showBermModal') }"
     x-show="open"
@@ -1018,51 +993,30 @@
     x-on:keydown.escape.window="open = false"
 >
     <div x-show="open" x-transition.opacity class="absolute inset-0 bg-black/60 backdrop-blur-sm" x-on:click="open = false"></div>
-    <div x-show="open" x-transition class="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
-        <div class="px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
-            <div class="flex items-center gap-3">
-                <i class="fas fa-mountain text-2xl"></i>
-                <div>
-                    <h3 class="text-lg font-semibold">Запрос обваловки зоны</h3>
-                    <p class="text-sm text-white/90">Отсыпка предохранительного вала</p>
-                </div>
+    <div x-show="open" x-transition class="relative w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-5 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-mountain text-xl"></i>
+                <h3 class="text-base font-semibold">Обваловать зону</h3>
             </div>
         </div>
-        <form wire:submit.prevent="createBermRequest" class="px-6 py-5 space-y-4">
+        <form wire:submit.prevent="createBermRequest" class="px-5 py-4 space-y-3">
             <div class="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-md border border-gray-100">
                 Зона: <strong>{{ $bermZoneName ?? '—' }}</strong>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Количество самосвалов</label>
                 <input type="number" wire:model.blur="bermTrucksNeeded" min="1" max="50" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                <p class="mt-1 text-xs text-gray-500">Сколько самосвалов нужно для отсыпки предохранительного вала</p>
-                        <div class="bg-slate-50 border border-slate-200 rounded-md p-3">
-                <label class="block text-xs font-medium text-slate-600 mb-1">Порода зоны (автоматически)</label>
-                @php
-                    $bermRockName = \App\Models\Rock::find($bermRockId)?->name_rock ?? '—';
-                @endphp
-                <p class="text-sm font-semibold text-slate-800">{{ $bermRockName }}</p>
-                <p class="mt-1 text-[10px] text-slate-400">Определяется по породе зоны — смешивание запрещено</p>
-
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Порода (необязательно)</label>
-                <select wire:model.live="bermRockId" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                    <option value="">Любая подходящая</option>
-                    @foreach(\App\Models\Rock::all() as $rock)
-                        <option value="{{ $rock->id }}">{{ $rock->name_rock }}</option>
-                    @endforeach
-                </select>
-                <p class="mt-1 text-xs text-gray-500">Если не указать — система найдёт забой с любой подходящей породой</p>
             </div>
-            <div class="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800">
+            <div class="bg-amber-50 border border-amber-200 rounded-md p-2 text-xs text-amber-800">
                 <i class="fas fa-info-circle mr-1"></i>
-                Пока зона  обваловывается, обычные маршруты на неё блокируются. Свободные самосвалы направляются на обваловку в первую очередь.
+                Порода берётся из зоны автоматически. Пока обваловывается — обычные маршруты на зону блокируются.
             </div>
-            <div class="flex gap-2 pt-2">
-                <button type="submit" class="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-md font-medium transition">
-                    <i class="fas fa-mountain mr-1"></i> Создать запрос
+            <div class="flex gap-2 pt-1">
+                <button type="submit" class="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-md font-medium text-sm transition">
+                    Обваловать
                 </button>
-                <button type="button" wire:click="closeBermModal" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium transition">
+                <button type="button" wire:click="closeBermModal" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md font-medium text-sm transition">
                     Отмена
                 </button>
             </div>
